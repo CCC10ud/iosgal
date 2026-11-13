@@ -1,0 +1,47 @@
+# GalBox 原生 iOS IPA 构建（无 Mac 也能出真 .ipa）
+# ---------------------------------------------------------------------------
+# 为什么有这个文件：GitHub 免费档 macOS runner 队列拥堵严重（实测排队 45 分钟+
+# 仍拿不到 runner）。Cirrus CI 对开源免费提供 macOS（Apple Silicon）实例，
+# 队列远没 GitHub 这么挤，是业界绕开 GitHub macOS 排队的标准做法。
+#
+# 启用步骤（一次性，做完才会自动构建）：
+#   1. 打开 https://cirrus-ci.com ，用 GitHub 登录。
+#   2. 给 CCC10ud/iosgal 仓库安装 Cirrus CI GitHub App（1 次点击授权）。
+#   3. 本文件已在 main 分支，push 后 Cirrus 自动触发；PR 也会触发。
+#
+# 产出：dist/GalBoxNative-adhoc.ipa（ad-hoc 伪签，供 Sideloadly / AltStore /
+#       SideStore 以免费 Apple ID 重签后装到 iOS 15+；7 天续签）。
+#       iOS 27 上 TrollStore / .tipa 不可用（CoreTrust 已在 17.0.1 修复）。
+#
+# 镜像：macos-sequoia-xcode 自带 Xcode 26.x 与较新 iOS SDK；部署目标设 15.0，
+#       用任意较新 SDK 编出的 arm64 包都能在 iOS 27 上运行（不要求 SDK 正好是 27）。
+# ---------------------------------------------------------------------------
+
+task:
+  name: Build GalBox Native iOS IPA (Cirrus macOS)
+  # 只在大仓 main 推送和 PR 上构建，避免每个分支都占 macOS 实例。
+  only_if: $CIRRUS_BRANCH == "main" || $CIRRUS_PR != ""
+  macos_instance:
+    image: ghcr.io/cirruslabs/macos-sequoia-xcode:26.2
+  env:
+    DIST_DIR: dist
+  toolchain_script:
+    - echo "macOS      : $(sw_vers -productVersion)"
+    - xcodebuild -version
+    - echo -n "iPhoneOS SDK: " && xcrun --sdk iphoneos --show-sdk-version
+    - python3 --version
+  fixtures_script:
+    - python3 tools/xp3_fixture.py
+  native_selfcheck_script:
+    - python3 tools/verify_native.py
+  static_check_script:
+    - python3 tests/native.test.py
+  ci_selfcheck_script:
+    - python3 tests/ci.test.py
+  build_script:
+    - bash tools/build_native.sh
+  artifacts:
+    path:
+      - "dist/GalBoxNative-adhoc.ipa"
+      - "dist/GalBoxNative-unsigned.ipa"
+      - "build-native/xcodebuild.log"
