@@ -1,0 +1,55 @@
+# GalBox 原生 iOS IPA 构建（无 Mac 也能出真 .ipa）
+# ---------------------------------------------------------------------------
+# 为什么用 Azure 而不是 GitHub Actions：GitHub 免费档 macOS runner 队列拥堵严重
+# （实测排队 65 分钟仍拿不到机器、job 被取消）。Azure Pipelines 对开源免费提供
+# macOS 代理（10 并行作业 + 不限分钟，含 macOS），且 dev.azure.com 国内可达。
+#
+# 启用步骤（一次性，做完才会自动构建）：
+#   1. 打开 https://dev.azure.com ，用 Microsoft 账号登录，新建一个 Organization + Project。
+#   2. 左侧 Pipelines → New Pipeline → 选 GitHub → 授权并选中 CCC10ud/iosgal。
+#   3. 配置页选 "Existing Azure Pipelines YAML file"，指向仓库根目录本文件 → Run。
+#   4. 构建完成后在 Pipeline 运行页的 Artifacts 里下载
+#      GalBoxNative-ios27-sideload（含 GalBoxNative-adhoc.ipa）。
+#
+# 产出：dist/GalBoxNative-adhoc.ipa（ad-hoc 伪签，Sideloadly / AltStore / SideStore
+#       以免费 Apple ID 重签后装到 iOS 15+；7 天续签）。
+#       iOS 27 上 TrollStore / .tipa 不可用（CoreTrust 漏洞已在 17.0.1 修复）。
+#
+# 镜像：macOS-latest 自带 Xcode 与较新 iOS SDK；部署目标设 15.0，
+#       用任意较新 SDK 编出的 arm64 包都能在 iOS 27 上运行（不要求 SDK 正好是 27）。
+# ---------------------------------------------------------------------------
+
+trigger:
+  - main
+
+pool:
+  vmImage: 'macOS-latest'
+
+steps:
+  - script: |
+      echo "macOS      : $(sw_vers -productVersion)"
+      xcodebuild -version
+      echo -n "iPhoneOS SDK: " && xcrun --sdk iphoneos --show-sdk-version
+      python3 --version
+    displayName: '工具链体检'
+
+  - script: python3 tools/xp3_fixture.py
+    displayName: '生成 XP3 夹具（合法包 + 坏包）'
+
+  - script: python3 tools/verify_native.py
+    displayName: 'C++ 内核真编译自检'
+
+  - script: python3 tests/native.test.py
+    displayName: '原生工程静态校验'
+
+  - script: python3 tests/ci.test.py
+    displayName: 'CI 出包链路自检'
+
+  - script: bash tools/build_native.sh
+    displayName: 'xcodebuild archive → ad-hoc ipa'
+
+  - task: PublishBuildArtifacts@1
+    condition: succeededOrFailed()
+    inputs:
+      pathToPublish: 'dist'
+      artifactName: 'GalBoxNative-ios27-sideload'
