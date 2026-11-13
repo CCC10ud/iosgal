@@ -1,0 +1,249 @@
+{
+  "fixtures": {
+    "basic.xp3": {
+      "base": 0,
+      "indexCompressed": false,
+      "indexContinue": false,
+      "count": 3,
+      "entries": [
+        {
+          "name": "startup.tjs",
+          "orgSize": 52,
+          "arcSize": 52,
+          "flags": 0,
+          "hash": 3972338197,
+          "parts": [
+            false
+          ],
+          "dataLen": 52,
+          "adler": 3972338197,
+          "head": "2f2f204b6972696b6972692073746172",
+          "sha256": "b43844a7e181d2e4"
+        },
+        {
+          "name": "main.ks",
+          "orgSize": 62,
+          "arcSize": 62,
+          "flags": 0,
+          "hash": 708123785,
+          "parts": [
+            false
+          ],
+          "dataLen": 62,
+          "adler": 708123785,
+          "head": "2a73746172740a5b62672073746f7261",
+          "sha256": "e79ec30cb1d0aa7f"
+        },
+        {
+          "name": "bg/room.bin",
+          "orgSize": 768,
+          "arcSize": 768,
+          "flags": 0,
+          "hash": 2690809488,
+          "parts": [
+            false
+          ],
+          "dataLen": 768,
+          "adler": 2690809488,
+          "head": "000102030405060708090a0b0c0d0e0f",
+          "sha256": "f3a25aa93aa2fbba"
+        }
+      ]
+    },
+    "compressed.xp3": {
+      "base": 0,
+      "indexCompressed": true,
+      "indexContinue": false,
+      "count": 3,
+      "entries": [
+        {
+          "name": "中文/剧本.ks",
+          "orgSize": 95,
+          "arcSize": 95,
+          "flags": 0,
+          "hash": 4203361354,
+          "parts": [
+            false
+          ],
+          "dataLen": 95,
+          "adler": 4203361354,
+          "head": "2a73746172740ae38090e5b08fe6a8b1",
+          "sha256": "d7f89bdd027f9f1b"
+        },
+        {
+          "name": "bg/aurora.png",
+          "orgSize": 5008,
+          "arcSize": 5008,
+          "flags": 0,
+          "hash": 2719545198,
+          "parts": [
+            true,
+            false,
+            true
+          ],
+          "dataLen": 5008,
+          "adler": 2719545198,
+          "head": "89504e470d0a1a0a4141414141414141",
+          "sha256": "974d1672f6cae46d"
+        },
+        {
+          "name": "bgm/theme.ogg",
+          "orgSize": 5124,
+          "arcSize": 5124,
+          "flags": 0,
+          "hash": 2373187501,
+          "parts": [
+            true
+          ],
+          "dataLen": 5124,
+          "adler": 2373187501,
+          "head": "4f676753000102030405060708090a0b",
+          "sha256": "5267f1bc52461c67"
+        }
+      ]
+    },
+    "selfextract.xp3": {
+      "base": 48,
+      "indexCompressed": false,
+      "indexContinue": false,
+      "count": 2,
+      "entries": [
+        {
+          "name": "data.xp3.inner",
+          "orgSize": 372,
+          "arcSize": 372,
+          "flags": 0,
+          "hash": 3923743057,
+          "parts": [
+            false
+          ],
+          "dataLen": 372,
+          "adler": 3923743057,
+          "head": "73656c662d65787472616374696e6720",
+          "sha256": "6cbd954fed80ff16"
+        },
+        {
+          "name": "readme.txt",
+          "orgSize": 32,
+          "arcSize": 32,
+          "flags": 0,
+          "hash": 2986216248,
+          "parts": [
+            false
+          ],
+          "dataLen": 32,
+          "adler": 2986216248,
+          "head": "58503320617070656e64656420746f20",
+          "sha256": "3f6b3855d070fc30"
+        }
+      ]
+    },
+    "demo-game.xp3": {
+      "base": 0,
+      "indexCompressed": true,
+      "indexContinue": false,
+      "count": 4,
+      "entries": [
+        {
+          "name": "startup.tjs",
+          "orgSize": 21,
+          "arcSize": 21,
+          "flags": 0,
+          "hash": 1215235796,
+          "parts": [
+            false
+          ],
+          "dataLen": 21,
+          "adler": 1215235796,
+          "head": "2f2f2064656d6f2067616d6520706163",
+          "sha256": "7835e4ed3faac789"
+        },
+        {
+          "name": "scenario/first.ks",
+          "orgSize": 269,
+          "arcSize": 269,
+          "flags": 0,
+          "hash": 3909519420,
+          "parts": [
+            false
+          ],
+          "dataLen": 269,
+          "adler": 3909519420,
+          "head": "2a73746172740a5b62672073746f7261",
+          "sha256": "03c623421560389f"
+        },
+        {
+          "name": "bg/room.png",
+          "orgSize": 2056,
+          "arcSize": 2056,
+          "flags": 0,
+          "hash": 1021874632,
+          "parts": [
+            true
+          ],
+          "dataLen": 2056,
+          "adler": 1021874632,
+          "head": "89504e470d0a1a0a5252525252525252",
+          "sha256": "2fece0f64d0301ae"
+        },
+        {
+          "name": "fg/sakura.png",
+          "orgSize": 1032,
+          "arcSize": 1032,
+          "flags": 0,
+          "hash": 2140687801,
+          "parts": [
+            true
+          ],
+          "dataLen": 1032,
+          "adler": 2140687801,
+          "head": "89504e470d0a1a0a5353535353535353",
+          "sha256": "40fcbe9cdb320af9"
+        }
+      ]
+    },
+    "encrypted.xp3": {
+      "base": 0,
+      "indexCompressed": false,
+      "indexContinue": false,
+      "count": 2,
+      "entries": [
+        {
+          "name": "secret.ks",
+          "orgSize": 88,
+          "arcSize": 88,
+          "flags": 2147483648,
+          "hash": 674245908,
+          "parts": [
+            true
+          ],
+          "dataLen": 88,
+          "adler": 674245908,
+          "head": "2a73746172740a5b62672073746f7261",
+          "sha256": "b82fd6020e115a88"
+        },
+        {
+          "name": "cfg.dat",
+          "orgSize": 1000,
+          "arcSize": 1000,
+          "flags": 2147483648,
+          "hash": 859276476,
+          "parts": [
+            false
+          ],
+          "dataLen": 1000,
+          "adler": 859276476,
+          "head": "000102030405060708090a0b0c0d0e0f",
+          "sha256": "b628a12f784b4f01"
+        }
+      ]
+    }
+  },
+  "broken": {
+    "bad_magic.xp3": "XP3 魔数不匹配",
+    "bad_offset.xp3": "索引偏移越界",
+    "bad_zlib.xp3": "Error -3 while decompressing data: invalid bit length repeat",
+    "bad_flag.xp3": "未知索引编码 7"
+  },
+  "kagScript": "first.ks"
+}

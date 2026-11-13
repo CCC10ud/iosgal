@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<!--
+	  GameViewController.swift 用 UserDefaults.standard 保存打字机速度等
+	  App 自身偏好。UserDefaults 属于 Apple 的 Required Reason API：不声明原因码，
+	  用 Xcode 27 上传 TestFlight / App Store 会被 ITMS-91053 打回。
+	  CA92.1 = 只读写 App 自身可见的 defaults，不跨 App、不读系统全域。
+	  本 App 不追踪、不采集数据，故 tracking=false、collectedDataTypes 为空。
+	-->
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

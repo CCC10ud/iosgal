@@ -1,0 +1,49 @@
+GalBox 原生引擎 · 没有 Mac 怎么出 .ipa
+========================================
+
+这是一份已经 git init + commit 好的干净仓库，只包含原生 App 工程和 CI 出包脚本，
+没有网页原型、没有 WKWebView 壳。编译 iOS arm64 程序必须用 macOS + Xcode，
+本机 Windows 做不到；GitHub Actions 的 macOS runner 可以，公开仓库免费。
+
+【第一步】在 github.com 新建一个空仓库（Public，不要勾选 Add a README）
+         记下仓库地址，例如 https://github.com/你的用户名/galbox-native.git
+
+【第二步】在本目录打开终端，执行两条命令：
+         git remote add origin https://github.com/你的用户名/galbox-native.git
+         git push -u origin main
+         推送需要 GitHub 登录：推荐装 GitHub Desktop 图形化登录，
+         或在 GitHub 设置里生成 Personal Access Token 代替密码。
+
+【第三步】打开仓库的 Actions 页，会出现
+         「Build GalBox Native iOS IPA」
+         首次 push 会自动开始，也可以点 Run workflow 手动重跑，约 5-15 分钟。
+
+【第四步】构建成功后，在页面下方 Artifacts 下载
+         GalBoxNative-ios27-sideload
+         里面 GalBoxNative-adhoc.ipa 就是要用的包（另一份 unsigned 是裸包备份）。
+         Artifact 保留 30 天，请及时下载。
+
+【第五步】装到 iOS 27：这一步不需要 Mac。
+         在 Windows 上装 Sideloadly，连上 iPhone，选 GalBoxNative-adhoc.ipa，
+         填免费 Apple ID 重签安装；AltStore / SideStore 同理。
+         免费签名 7 天有效，到期用同一工具重签一次即可。
+         iOS 27 上 TrollStore / .tipa 不可用（CoreTrust 漏洞已在 17.0.1 修复）。
+
+如果构建失败
+  - 先看 Artifact「GalBoxNative-build-log」里的 xcodebuild.log。
+  - 若报 SDK/Xcode 相关：Actions 页面点 Run workflow，在 xcode 输入框里
+    填日志开头「可用 Xcode」列出的某个目录名（如 Xcode_26.1.app）后重跑。
+  - 部署目标是 iOS 15.0，用任意较新 SDK 编出的 arm64 包都能在 iOS 27 上跑，
+    不必强求 SDK 正好是 27。
+
+本机自检（不需要 Mac，随时可跑）
+  python tools/xp3_fixture.py
+  python tools/verify_native.py      # 真编译并运行 C++ 引擎
+  python tests/native.test.py        # 原生工程静态校验
+  python tests/ci.test.py            # CI 出包链路 + 假包闭环校验
+
+能力边界：支持真实 XP3 归档与 KAG 剧本子集；不含 TJS2 虚拟机、完整 KAG
+指令集、音视频解码、商用加密包滤镜。要 100% 兼容商业 galgame，
+正确做法是编译 zeas2/Kirikiroid2 源码。
+
+Bundle ID: com.galbox.native   最低系统: iOS 15.0   架构: arm64

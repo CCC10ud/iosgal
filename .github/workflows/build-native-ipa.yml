@@ -1,0 +1,95 @@
+# 没有 Mac 也能出真 .ipa：GitHub 的 macOS runner 负责编译 + ad-hoc 伪签。
+# 产出的是「重签输入」，装到 iOS 27 还要用 Sideloadly / AltStore / SideStore
+# 以免费 Apple ID 重签（7 天续签）。iOS 27 上 TrollStore / .tipa 不可用。
+name: Build GalBox Native iOS IPA
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      xcode:
+        description: '可选：/Applications 下的 Xcode 目录名，例如 Xcode_26.1.app；留空用镜像默认'
+        required: false
+        default: ''
+      skip_selfcheck:
+        description: '跳过 C++ 内核自检（不建议）'
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: native-ipa-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: 在 macOS runner 上编译原生 arm64 App 并打 ipa
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      WANTED_XCODE: ${{ inputs.xcode }}
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 工具链体检（打印 Xcode / SDK 版本）
+        run: |
+          echo "runner arch : $(uname -m)"
+          echo "macOS       : $(sw_vers -productVersion)"
+          echo "可用 Xcode  :"
+          ls -d /Applications/Xcode*.app 2>/dev/null || true
+          if [ -n "$WANTED_XCODE" ] && [ -d "/Applications/$WANTED_XCODE/Contents/Developer" ]; then
+            echo "切换到 $WANTED_XCODE"
+            sudo xcode-select -s "/Applications/$WANTED_XCODE/Contents/Developer"
+          elif [ -n "$WANTED_XCODE" ]; then
+            echo "::warning::找不到 $WANTED_XCODE，继续使用镜像默认 Xcode"
+          fi
+          xcodebuild -version
+          echo -n "iPhoneOS SDK: "
+          xcrun --sdk iphoneos --show-sdk-version
+          python3 --version
+
+      - name: 生成 XP3 夹具（合法包 + 故意损坏的坏包）
+        run: python3 tools/xp3_fixture.py
+
+      - name: 真编译并运行 C++ 内核自检（clang++ / libz）
+        if: inputs.skip_selfcheck != true
+        run: python3 tools/verify_native.py
+
+      - name: 原生工程静态校验
+        run: python3 tests/native.test.py
+
+      - name: CI 出包链路自检
+        run: python3 tests/ci.test.py
+
+      - name: xcodebuild archive → unsigned / ad-hoc ipa
+        run: bash tools/build_native.sh
+
+      - name: 上传 xcodebuild 完整日志（失败时也在）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GalBoxNative-build-log
+          path: build-native/xcodebuild.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: 上传 iOS 27 侧载包
+        uses: actions/upload-artifact@v4
+        with:
+          name: GalBoxNative-ios27-sideload
+          path: |
+            dist/GalBoxNative-adhoc.ipa
+            dist/GalBoxNative-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 下一步提示
+        if: always()
+        run: |
+          echo "::notice::成功时下载 Artifact『GalBoxNative-ios27-sideload』里的 GalBoxNative-adhoc.ipa"
+          echo "::notice::用 Sideloadly / AltStore / SideStore 以免费 Apple ID 重签后装到 iOS 27（7 天续签）"
+          echo "::notice::部署目标 15.0，SDK 不必正好是 27；iOS 27 上 TrollStore / .tipa 不可用"

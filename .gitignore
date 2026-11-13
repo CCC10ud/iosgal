@@ -1,0 +1,8 @@
+# 本地构建产物不入库（CI 会重新生成）
+build-native/
+__pycache__/
+*.pyc
+*.ipa
+.DS_Store
+
+# 注意：dist/fixtures/ 故意入库，它是 C++ 引擎自检的独立参考夹具。

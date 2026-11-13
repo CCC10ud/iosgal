@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GalBox · 没有 Mac 怎么出 iOS 27 能装的真包</title>
+<style>
+  :root{--bg:#0b0e16;--card:#141a28;--card2:#101623;--line:#26314a;--txt:#e8edf7;--mut:#93a1bb;--blue:#78b6ff;--green:#7ee2a8;--amber:#ffbd66;--red:#ff8f8f}
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 20% -10%,#1a2540 0,var(--bg) 60%);color:var(--txt);font:15px/1.75 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+  .wrap{max-width:940px;margin:0 auto;padding:38px 20px 70px}
+  h1{font-size:30px;line-height:1.3;margin:0 0 8px}
+  h2{font-size:19px;margin:0 0 14px}
+  h3{font-size:15px;margin:18px 0 8px;color:var(--blue)}
+  p{margin:8px 0}
+  .sub{color:var(--mut);font-size:14px;margin-bottom:26px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;margin:16px 0;box-shadow:0 12px 40px rgba(0,0,0,.22)}
+  .hero{background:linear-gradient(135deg,#16243f,#101a2c);border-color:#2b4470}
+  .tag{display:inline-block;font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--mut);margin-left:6px;vertical-align:middle}
+  .tag.hot{color:var(--green);border-color:#2f6b4c;background:#122b22}
+  .tag.warn{color:var(--amber);border-color:#6b512a;background:#2b2112}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:14px}
+  .item{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .item b{display:block;color:var(--blue);margin-bottom:4px;font-size:14px}
+  .item span{color:var(--mut);font-size:13px}
+  pre{background:#080c15;border:1px solid var(--line);border-radius:10px;padding:14px;overflow:auto;font:12.5px/1.7 Consolas,Menlo,monospace;color:#cfe0ff;margin:10px 0}
+  code{background:#1c2740;padding:2px 6px;border-radius:5px;font:12.5px Consolas,monospace;color:#b9d4ff}
+  a{color:var(--blue);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:14px 0}
+  .flow span{background:#17233a;border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-size:13px;display:flex;flex-direction:column;min-width:120px}
+  .flow span i{color:var(--blue);font-style:normal;font-weight:700;font-size:12px;margin-bottom:2px}
+  .flow .arrow{background:none;border:none;color:var(--mut);font-size:18px;min-width:auto;padding:0}
+  .warn{background:#2a1d15;border:1px solid #6b4a26;border-radius:12px;padding:14px;font-size:13.5px}
+  .ok{color:var(--green)} .bad{color:var(--red)} .amber{color:var(--amber)}
+  .btnrow{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+  .btn{display:inline-block;padding:9px 15px;border-radius:10px;background:var(--blue);color:#08101f;font-weight:700;font-size:13px}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--txt);font-weight:500}
+  ol{margin:8px 0;padding-left:22px} li{margin:7px 0}
+  .foot{color:var(--mut);font-size:12.5px;text-align:center;margin-top:30px}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:10px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--mut);font-weight:600}
+  .num{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--blue);color:#08101f;font-weight:800;font-size:12px;align-items:center;justify-content:center;margin-right:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="card hero">
+    <h1>没有 Mac，怎么拿到 iOS 27 能装的真包 <span class="tag hot">已验证</span></h1>
+    <p class="sub">原生 App 源码已经做完（见 <a href="native.html">原生引擎说明</a>）。卡在最后一步：编出 iOS 的 <code>.ipa</code> 必须用 macOS + Xcode，而本机是 Windows。这条文档给你一条<strong>不买 Mac</strong> 的通路——把工程推到 GitHub，让 GitHub 的 Mac 云机器免费帮你编译。</p>
+    <div class="grid">
+      <div class="item"><b>✅ 你已经有</b><span>已经 git 提交好的干净仓库 zip（GalBoxNative-CI-repo.zip），只含原生工程，无网页壳</span></div>
+      <div class="item"><b>✅ 你只需要</b><span>一个免费 GitHub 账号 + 任意能上网的 Windows 电脑 + 一台 iPhone</span></div>
+      <div class="item"><b>✅ 花多少钱</b><span>公开仓库的 GitHub Actions 免费；侧载用免费 Apple ID 重签，也免费</span></div>
+      <div class="item"><b>⏱ 多久</b><span>首次编译约 5–15 分钟；每 7 天免费签名到期，重签一次约 1 分钟</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>整体流程</h2>
+    <div class="flow">
+      <span><i>① 建仓库</i>github.com 新建空 Public 仓库</span>
+      <span class="arrow">→</span>
+      <span><i>② 解压推送</i>解压 zip，push 到 GitHub</span>
+      <span class="arrow">→</span>
+      <span><i>③ 等 CI</i>Actions 自动编出 .ipa（5–15 分钟）</span>
+      <span class="arrow">→</span>
+      <span><i>④ 下载</i>取 Artifact 里的 adhoc.ipa</span>
+      <span class="arrow">→</span>
+      <span><i>⑤ 装手机</i>Sideloadly 连 iPhone 重签安装</span>
+    </div>
+    <p class="sub" style="margin-bottom:0">全程不需要 Mac。下面每一步都给了可复制的命令。</p>
+  </div>
+
+  <div class="card">
+    <h2>第一步 · 在 GitHub 建一个空仓库</h2>
+    <ol>
+      <li>打开 <a href="https://github.com/new" target="_blank">github.com/new</a>（没有账号先注册，免费）。</li>
+      <li>仓库名随意，例如 <code>galbox-native</code>。</li>
+      <li><span class="bad">务必选 Public</span>，<strong>不要</strong>勾选 "Add a README / .gitignore / license"（仓库必须完全空，否则 push 会被拒）。</li>
+      <li>记下仓库地址，形如 <code>https://github.com/你的用户名/galbox-native.git</code>。</li>
+    </ol>
+    <div class="warn">私有仓库的 Actions 每月免费额度很小，且编 iOS 更受限；<strong>公开仓库完全免费</strong>，代码本身也只是个播放器框架，没有敏感信息。</div>
+  </div>
+
+  <div class="card">
+    <h2>第二步 · 解压并推送到 GitHub</h2>
+    <p>先下载并解压 <strong>GalBoxNative-CI-repo.zip</strong>。解压后会得到一个已 <code>git init</code> 并提交好的文件夹，里面已经没有网页壳、没有 WKWebView，只有原生工程 + CI 脚本。</p>
+    <pre># 进入解压出来的文件夹（里面应该有 .git 目录和 ios-native/、native/ 等）
+cd GalBoxNative-CI-repo
+
+# 把远程指向你刚建的空仓库
+git remote add origin https://github.com/你的用户名/galbox-native.git
+
+# 推送（需要 GitHub 登录）
+git push -u origin main</pre>
+    <p><strong>推送要登录怎么办：</strong></p>
+    <ul>
+      <li>最省事：装 <a href="https://desktop.github.com/" target="_blank">GitHub Desktop</a>，图形化登录后直接拖文件夹发布；</li>
+      <li>或命令行登录：去 GitHub → Settings → Developer settings → Personal access tokens，生成一个有 <code>repo</code> 权限的 token，push 时用户名填你的账号、密码填那个 token。</li>
+    </ul>
+    <p class="sub" style="margin-bottom:0">推送成功即触发下一步。</p>
+  </div>
+
+  <div class="card">
+    <h2>第三步 · 让 GitHub 的 Mac 帮你编译（自动）</h2>
+    <ol>
+      <li>打开你的仓库页面，点顶部 <strong>Actions</strong> 标签。</li>
+      <li>会看到一个叫 <strong>「Build GalBox Native iOS IPA」</strong> 的工作流，push 后自动开始跑；也可以点 <strong>Run workflow</strong> 手动重跑。</li>
+      <li>点进去看日志，约 <strong>5–15 分钟</strong>后显示绿色 ✅。</li>
+    </ol>
+    <div class="warn">工作流会先做 C++ 引擎自检（真编译并跑 28 项断言），通过后才调 Xcode 出包；任何一步失败都会红，日志里能直接看到原因。</div>
+  </div>
+
+  <div class="card">
+    <h2>第四步 · 下载编好的包</h2>
+    <ol>
+      <li>构建成功后，在 Actions 运行详情页最下方 <strong>Artifacts</strong> 处下载 <code class="ok">GalBoxNative-ios27-sideload</code>。</li>
+      <li>解压后里面有两个包：
+        <ul>
+          <li><code>GalBoxNative-adhoc.ipa</code> —— <span class="ok">这就是要装到手机上的包</span>（ad-hoc 伪签，留给侧载工具重签）。</li>
+          <li><code>GalBoxNative-unsigned.ipa</code> —— 裸包备份，一般不用。</li>
+        </ul>
+      </li>
+      <li>另有一个 <code>GalBoxNative-build-log</code> Artifact，存了 <code>xcodebuild.log</code>，编译失败时才需要。</li>
+    </ol>
+    <div class="warn">GitHub 的 Artifact 只保留 <strong>30 天</strong>，下载下来及时备份；免费 Apple ID 重签 7 天有效，到期重新走第五步即可。</div>
+  </div>
+
+  <div class="card">
+    <h2>第五步 · 装到 iOS 27（不需要 Mac）</h2>
+    <ol>
+      <li>Windows 上装 <a href="https://sideloadly.io/" target="_blank">Sideloadly</a>（免费），iPhone 用数据线连电脑。</li>
+      <li>Sideloadly 里选 <code>GalBoxNative-adhoc.ipa</code>，Apple ID 填你的<strong>免费苹果账号</strong>，点 Start 重签安装。</li>
+      <li>手机上：设置 → 通用 → <strong>VPN与设备管理</strong>（或"描述文件与设备管理"）→ 信任该 Apple ID 的开发者证书。</li>
+      <li>桌面出现 <strong>GalBox</strong> 图标即可打开。AltStore / SideStore 走同一套免费重签流程，任选其一。</li>
+    </ol>
+    <div class="warn"><span class="bad">重要</span>：iOS 17.0.1 之后 CoreTrust 漏洞已被封，<strong>TrollStore / .tipa 在 iOS 27 上不可用</strong>。只能用"免费 Apple ID 重签"这种正规侧载路径，有效期 7 天，到期用同一工具点一下重签就行。</div>
+  </div>
+
+  <div class="card">
+    <h2>GalBoxNative-CI-repo.zip 里有什么</h2>
+    <table>
+      <tr><th>路径</th><th>作用</th></tr>
+      <tr><td><code>ios-native/</code></td><td>Xcode 原生工程：Swift UI + Objective-C++ 桥 + C++ 引擎，UIKit 写的游戏库/播放器</td></tr>
+      <tr><td><code>native/Engine/</code></td><td>XP3 归档解析 + KAG 脚本解释器（真实字节级解析，非模拟）</td></tr>
+      <tr><td><code>tools/build_native.sh</code></td><td>CI 里实际调 Xcode 出包 + 伪签的脚本</td></tr>
+      <tr><td><code>tools/verify_ipa.py</code></td><td>校验 ipa 里真有 arm64 Mach-O（杜绝空壳包）</td></tr>
+      <tr><td><code>.github/workflows/build-native-ipa.yml</code></td><td>无 Mac 出包的核心：macOS runner 上跑自检 + 编译 + 上传 Artifact</td></tr>
+      <tr><td><code>dist/fixtures/</code></td><td>C++ 引擎自检用的独立参考夹具（合法包 + 4 个坏包）</td></tr>
+      <tr><td><code>BUILD.txt</code></td><td>一份纯文本的离线版出包说明</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>本机自检（不需要 Mac，随时可跑）</h2>
+    <p>这些命令在本机 Windows 上就能验证引擎和出包链路没坏，跑完应全是 PASS：</p>
+    <pre>python tools/xp3_fixture.py      # 生成/校验 XP3 夹具
+python tools/verify_native.py    # 真编译并在 Windows 跑 C++ 引擎自检
+python tests/native.test.py      # 原生工程静态校验
+python tests/ci.test.py          # CI 出包链路 + 假包闭环校验</pre>
+    <p class="sub" style="margin-bottom:0">当前回归状态：<span class="ok">native 137 PASS / 0 FAIL</span> · <span class="ok">ci 50 PASS / 0 FAIL</span>。</p>
+  </div>
+
+  <div class="card">
+    <h2>能力边界（务必看清）</h2>
+    <ul>
+      <li>这是一个<strong>原生骨架 + 真实 XP3/KAG 子集</strong>，不是完整 Kirikiroid2。</li>
+      <li><span class="amber">不含</span>：TJS2 虚拟机、完整 KAG 指令集、音视频解码、商用加密包滤镜。</li>
+      <li>所以<strong>不能保证任意商业 galgame 直接跑</strong>；自制的、未加密的 XP3+KAG 游戏可以。</li>
+      <li>要 100% 兼容商业作品，正路是编译 <code>zeas2/Kirikiroid2</code> 源码——本工程是它的轻量原生替代/学习骨架。</li>
+    </ul>
+  </div>
+
+  <div class="btnrow">
+    <a class="btn" href="native.html">↩ 回到原生引擎说明</a>
+    <a class="btn ghost" href="dist/GalBoxNative-CI-repo.zip">⬇ 下载 CI 仓库 zip</a>
+    <a class="btn ghost" href="dist/GalBoxNative-project.zip">⬇ 下载完整工程 zip</a>
+  </div>
+
+  <p class="foot">Bundle ID: com.galbox.native · 最低系统 iOS 15.0 · 架构 arm64 · 部署目标 15.0（任意较新 SDK 编出的包都能在 iOS 27 跑）</p>
+</div>
+</body>
+</html>
