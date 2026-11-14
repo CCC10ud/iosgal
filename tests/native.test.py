@@ -153,7 +153,7 @@ for call, decl in [
     ("GBEngineBridge.saveState()", "+ (NSString *)saveState"),
     ("GBEngineBridge.restoreState(", "+ (BOOL)restoreState:"),
     ("GBEngineBridge.history()", "+ (NSArray"),
-    ("GBEngineBridge.jumpToHistory(", "+ (BOOL)jumpToHistory:"),
+    ("GBEngineBridge.jump(toHistory:", "+ (BOOL)jumpToHistory:"),
     ("GBEngineBridge.closePackage()", "+ (void)closePackage"),
 ]:
     ok(call in swift and decl in hdr, "桥接一致: " + call.split("(")[0])
