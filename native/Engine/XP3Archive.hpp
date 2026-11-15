@@ -66,8 +66,7 @@ private:
     // folder as the game root. When a folder is opened we either delegate to the
     // embedded data.xp3 (preferred) or build a virtual archive from loose files.
     bool openDir(const std::string& dir, std::string* err);
-    void collectDir(const std::string& dir, const std::string& rel, int depth,
-                    std::string* err);
+    void collectDir(const std::string& dir, const std::string& rel, int depth);
 
     std::ifstream file_;
     std::string path_;
