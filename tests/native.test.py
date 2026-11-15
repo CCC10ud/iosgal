@@ -310,8 +310,10 @@ ok("test_m2a.cpp" in test_sh and "m2a_game" in test_sh
 ok("M2A_SCRIPTS_EXEC_STORAGE" in wf, "CI 核验 M2a 适配层真的进 app 二进制")
 ok("tjs2ExecStartup" in objc_h and "tjs2ExecStartup" in objc_mm,
    "app 暴露官方 startup.tjs 诊断入口")
-ok("GBEngineBridge.tjs2ExecStartup()" not in swift_vc,
-   "不自动执行商业 startup.tjs（避免主线程长循环 / 缺类异常崩溃）")
+_i_bg = swift_vc.find("DispatchQueue.global(qos: .userInitiated).async")
+_i_call = swift_vc.find("GBEngineBridge.tjs2ExecStartup()")
+ok(_i_bg != -1 and _i_call != -1 and _i_bg < _i_call,
+   "M2c 自动跑官方 Initialize.tjs，但调用点在后台队列内（不在主线程同步执行）")
 
 print("\n[10] Milestone 2b — Storages 自动路径 + 官方原始 Shift-JIS 字节")
 host_hpp = read("native/Host/HostInterface.hpp")
@@ -369,8 +371,69 @@ ok("test_m2b.cpp" in test_sh and "M2B_RESULT=OK" in test_sh
    and '3658' in test_sh and "src/original/system/Utils.tjs" in test_sh,
    "CI 用官方原始 3658B SJIS blob 真跑 M2b 自测")
 ok("M2B_STORAGES_AUTOPATH" in wf, "CI 核验 M2b 适配层真的进 app 二进制")
-ok("GBEngineBridge.tjs2ExecStartup()" not in swift_vc,
-   "M2b 仍不自动执行商业 startup.tjs")
+ok("System / Debug" in swift_vc,
+   "M2b 阶段 UI 文案已随 M2c 更新（不再说「System 未移植」）")
+
+print("\n[11] Milestone 2c — 官方 Initialize.tjs 原文 + System / Debug")
+m2c_test = read("native/Host/test_m2c.cpp")
+m2c_cfg = read("native/KAG/src/m2c_probe_config.tjs")
+official_init = raw("native/KAG/src/original/system/Initialize.tjs").decode("shift_jis")
+
+# 本轮实现的两个原生类必须逐条对上官方 Initialize.tjs 的真实语句。
+for tok in ("tTJSNC_System", "tTJSNC_Debug",
+            "TJS_END_NATIVE_STATIC_PROP_DECL(exceptionHandler)",
+            "TJS_END_NATIVE_STATIC_PROP_DECL(exePath)",
+            "TJS_END_NATIVE_STATIC_METHOD_DECL(getTickCount)",
+            "TJS_END_NATIVE_STATIC_METHOD_DECL(inform)",
+            "TJS_END_NATIVE_STATIC_METHOD_DECL(createAppLock)",
+            "TJS_END_NATIVE_STATIC_METHOD_DECL(getArgument)",
+            "TJS_END_NATIVE_STATIC_METHOD_DECL(notice)",
+            "TJS_END_NATIVE_STATIC_METHOD_DECL(message)",
+            "RegisterSystemClass(engine)", "RegisterDebugClass(engine)",
+            "M2C_SYSTEM_DEBUG"):
+    ok(tok in bridge_cpp, "HostBridge 注册 M2c 能力: " + tok)
+
+# 官方脚本里出现过的语句，必须在实现里有对应成员（防「凭印象瞎写」）。
+for src_call, member in (("System.exceptionHandler =", "exceptionHandler"),
+                         ("System.exePath", "exePath"),
+                         ("System.getTickCount", "getTickCount"),
+                         ("System.inform", "inform"),
+                         ("System.createAppLock", "createAppLock"),
+                         ("System.getArgument", "getArgument"),
+                         ("Debug.notice", "notice"),
+                         ("var dm = Debug.message", "message")):
+    ok(src_call in official_init and member in bridge_cpp,
+       "官方 Initialize.tjs 用到的成员已实现: " + member)
+
+# 诊断能力：真实异常正文 / 脚本名 / 行号必须被捕获，而不是笼统一句。
+for tok in ("CaptureCurrentException", "fatalException", "fatalLine",
+            "fatalBlock", "eTJSScriptException", "GetSourceLine"):
+    ok(tok in bridge_cpp, "异常定位字段齐全: " + tok)
+ok("CaptureCurrentException()" in bridge_cpp,
+   "execStorage 的 catch 不再吞掉内层脚本的真实异常")
+ok("ClearEngineScopedDiagnostics" in bridge_cpp,
+   "引擎销毁前清掉持有 TJS 对象的字段（避免变量比引擎活得久）")
+
+# 自测必须两个场景都覆盖，且明确接受 ok=false（不假装跑通）。
+for tok in ("M2C_RESULT=OK", "m2c_game_cfg", "M2C_SYSTEM_DEBUG",
+            "exceptionHandlerSet", "autoPathCount", "debugNotices",
+            "tickCalls", "fatalBlock", "fatalLine", "fatalException",
+            "RegExp", "debugMessages"):
+    ok(tok in m2c_test, "M2c 自测含实质判据: " + tok)
+ok('ok\\":false' in m2c_test,
+   "M2c 自测明确断言 ok=false（本轮不假装 Initialize.tjs 跑通）")
+ok("config_version = kagVersion" in m2c_cfg,
+   "探针 Config.tjs 只做版本核对，用于把执行推到 createAppLock")
+ok("不是**官方文件**" in m2c_cfg or "不是" in m2c_cfg,
+   "探针 Config.tjs 明确标注为非官方文件")
+ok("test_m2c.cpp" in test_sh and "M2C_RESULT=OK" in test_sh
+   and "7246" in test_sh and "Initialize.tjs" in test_sh,
+   "CI 用官方 7246B SJIS Initialize.tjs 原文真跑 M2c 自测")
+ok("M2C_SYSTEM_DEBUG" in wf, "CI 核验 System/Debug 原生类真的进 app 二进制")
+
+# 已知的最外层阻塞点必须写清楚，避免下一轮重复排查。
+for tok in ("TJS_NO_REGEXP", "RegExp"):
+    ok(tok in bridge_cpp, "注释里记录了下一个阻塞点: " + tok)
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

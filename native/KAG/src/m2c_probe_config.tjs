@@ -1,0 +1,14 @@
+// m2c_probe_config.tjs — GalBox 自写探针，**不是**官方文件
+//
+// 官方 kag3/template/system/Config.tjs 有 200+ 行配置项，而本轮（M2c）
+// 要验证的是 System / Debug 两个原生类可用，不是 Config 的配置语义。
+//
+// 官方 Initialize.tjs 在读完 Config.tjs 后会做一次版本核对：
+//     if(typeof global.config_version == "undefined" || config_version != kagVersion)
+//         KAGLoadScript("UpdateConfig.tjs");
+// 这个探针只写一行 config_version，让核对通过、跳过 UpdateConfig.tjs，
+// 从而把执行**精确**推到紧接着的那一句：
+//     if(!System.createAppLock(System.exePath.replace(/[^A-Za-z]/g, '_')))
+// 那一行含正则字面量，而当前编译开了 TJS_NO_REGEXP（未注册全局 RegExp），
+// 所以在那里必然失败 —— 这正是本轮要如实测出来的「下一个阻塞点」。
+config_version = kagVersion;

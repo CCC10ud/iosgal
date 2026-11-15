@@ -1,4 +1,4 @@
-// HostBridge.cpp — Milestone 1c / 2a / 2b：把官方 TJS2 引擎接进 iOS app 的适配层
+// HostBridge.cpp — Milestone 1c / 2a / 2b / 2c：把官方 TJS2 引擎接进 iOS app 的适配层
 //
 // M1b 只证明 iOS 链接器能解析 TJS2 符号；M1c 要求：
 //   1) 打开游戏包时安装宿主（4 个流工厂桥到 XP3Archive/Documents/bundle）；
@@ -16,6 +16,16 @@
 // 对缺失文件返回「空流」（为兼容官方 Array.load），若不检查，缺失脚本会被
 // 静默当空脚本执行，把「加载失败」伪装成「加载成功」。
 //
+// M2c 补官方启动链第三段：`System` 与 `Debug` 两个原生静态类。
+// 对着官方 kag3/template/system/Initialize.tjs 的真实语句一条条实现，而不是
+// 按文档猜。这一轮的目标不是"跑通 KAG"，而是让**官方 Initialize.tjs 原文**
+// 真正执行起来，并把执行停在哪一句、因为什么停下来如实报出来。
+//
+// 关键发现（决定了本轮边界）：官方 `TJS_NO_REGEXP` 只影响 tjs.cpp:183 是否注册
+// 全局 `RegExp` 类，词法器照常把 /[^A-Za-z]/g 解析成 REGEXP token，编译期不报错，
+// 只有**执行到那一行**才会因找不到全局 RegExp 而失败。因此 Initialize.tjs 在
+// 触到 createAppLock（第 159 行附近的正则）之前的所有语句都可以真跑。
+//
 // 由 build_tjs2_test.sh（macOS host，真跑自测）与 build_tjs2_ios.sh
 // （iphoneos arm64，编 .o 供 app 链接）用同一套 flags 编译。
 
@@ -25,14 +35,17 @@
 #include "tjs.h"
 #include "tjsNative.h"
 #include "tjsErrorDefs.h"
+#include "tjsError.h"
 #include "HostInterface.hpp"
 #include "XP3Archive.hpp"
 
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
 
 // 官方 TJS_BEGIN_NATIVE_METHOD_DECL 等宏展开时使用未限定的 tjs_error /
 // tTJSVariant / TJSCreateNativeClassMethod，因此需要在本编译单元引入 TJS 命名空间。
@@ -142,6 +155,109 @@ std::string MakeResult(bool ok, const char *reason, long long evalValue,
     return s;
 }
 
+// ---- M2c：System / Debug 的状态与诊断 -----------------------------------
+// 这些状态全部是「一次 execScript 运行内」的观测值，由 GalBoxTJS2ExecScript
+// 在开始前清零，结束后写进返回的 JSON。放在 MakeExecResult 之前定义，
+// 是因为结果拼装要直接读它们（避免再加一堆函数参数）。
+struct SystemState {
+    std::string exePath;      // 官方语义：可执行文件所在目录（归档模式为 ""）
+    std::string title;
+    std::string lastInform;
+    std::string lastArgument;
+    bool eventDisabled;
+    bool exitRequested;
+    bool appLockGranted;
+    bool exceptionHandlerSet;
+    unsigned tickCalls;
+    unsigned informCalls;
+    unsigned continuousHandlers;
+    unsigned getKeyStateCalls;
+    tTJSVariant exceptionHandler;   // 脚本赋进来的函数对象，由 tTJSVariant 管引用计数
+
+    SystemState()
+        : eventDisabled(false), exitRequested(false), appLockGranted(false),
+          exceptionHandlerSet(false), tickCalls(0), informCalls(0),
+          continuousHandlers(0), getKeyStateCalls(0) {}
+};
+
+struct DebugState {
+    unsigned messageCalls;
+    unsigned noticeCalls;
+    unsigned logAsErrorCalls;
+    std::string last;                 // 最后一条，UI 用
+    std::vector<std::string> lines;   // 最多 kDebugKeep 条，防止长跑吃内存
+
+    DebugState() : messageCalls(0), noticeCalls(0), logAsErrorCalls(0) {}
+};
+
+const size_t kDebugKeep = 64;
+
+SystemState gSys;
+DebugState gDbg;
+
+// 异常定位：TJS2 抛异常时把源码块名/行号/正文都带出来。
+// M1c/M2a 早期只报一句 "exception while executing entry script"，
+// 结果 run #17 的真根因（Array 构造参数错）被这句话藏了整整一轮。
+std::string gFatalMessage;    // TJS 侧描述信息
+std::string gFatalBlock;      // 出错的脚本名
+long long gFatalLine = -1;    // 出错行号（1 起）
+std::string gFatalException;  // throw new Exception("...") 里的正文
+
+void ResetDiagnostics() {
+    gSys = SystemState();
+    gDbg = DebugState();
+    gFatalMessage.clear();
+    gFatalBlock.clear();
+    gFatalLine = -1;
+    gFatalException.clear();
+}
+
+// 引擎销毁前清掉「持有 TJS 对象引用」的字段（exceptionHandler 里存着脚本
+// 函数对象），但保留计数与布尔观测值 —— 这样 Release 之后还能拼出完整诊断。
+void ClearEngineScopedDiagnostics() {
+    gSys.exceptionHandler.Clear();
+}
+
+void PushDebugLine(const std::string &line, bool notice) {    if (notice) ++gDbg.noticeCalls; else ++gDbg.messageCalls;
+    gDbg.last = line;
+    gDbg.lines.push_back(line);
+    if (gDbg.lines.size() > kDebugKeep) gDbg.lines.erase(gDbg.lines.begin());
+}
+
+// 必须在 catch 块内部调用（内部用 throw; 重新抛出当前异常来做分类）。
+void CaptureCurrentException() {
+    try {
+        throw;
+    } catch (const TJS::eTJSScriptException &e) {
+        gFatalMessage = WideToUtf8(e.GetMessage().c_str());
+        if (e.GetBlockName()) gFatalBlock = WideToUtf8(e.GetBlockName());
+        gFatalLine = static_cast<long long>(e.GetSourceLine());
+        // throw new Exception("...") 的正文在异常对象的 message 属性里。
+        tTJSVariant &val = const_cast<TJS::eTJSScriptException &>(e).GetValue();
+        if (val.Type() == tvtObject) {
+            iTJSDispatch2 *obj = val.AsObjectNoAddRef();
+            if (obj) {
+                tTJSVariant m;
+                if (TJS_SUCCEEDED(obj->PropGet(0, TJS_W("message"), NULL, &m, obj)) &&
+                    m.Type() == tvtString)
+                    gFatalException = WideToUtf8(ttstr(m).c_str());
+            }
+        }
+    } catch (const TJS::eTJSScriptError &e) {
+        gFatalMessage = WideToUtf8(e.GetMessage().c_str());
+        if (e.GetBlockName()) gFatalBlock = WideToUtf8(e.GetBlockName());
+        gFatalLine = static_cast<long long>(e.GetSourceLine());
+    } catch (const TJS::eTJS &e) {
+        gFatalMessage = WideToUtf8(e.GetMessage().c_str());
+    } catch (const TJS::eTJSSilent &) {
+        gFatalMessage = "silent exception unwind";
+    } catch (...) {
+        gFatalMessage = "unknown C++ exception";
+    }
+    if (gFatalMessage.empty() && gFatalException.empty())
+        gFatalMessage = "exception with empty message";
+}
+
 std::string MakeExecResult(bool ok, const char *reason, const char *entry,
                            const char *probe, long long probeValue,
                            unsigned readDelta, unsigned execCalls) {
@@ -153,7 +269,12 @@ std::string MakeExecResult(bool ok, const char *reason, const char *entry,
     s += ",\"hostReadDelta\":" + std::to_string(readDelta);
     s += ",\"execStorageCalls\":" + std::to_string(execCalls);
     s += ",\"build\":\"" + std::string(kBuildTag) + "\"";
-    s += ",\"kag\":\"M2A_SCRIPTS_EXEC_STORAGE\"";
+    // 这三个固定标记都会被编进 app 二进制，CI 用 strings 逐个硬断言。
+    // 历史标记不能因为升级而被替换掉 —— 否则「M2a/M2b 能力是否还在包里」
+    // 就失去了可验证性（本轮差点把 M2A 标记覆盖成 M2C）。
+    s += ",\"kag\":\"M2C_SYSTEM_DEBUG\"";
+    s += ",\"storages\":\"M2B_STORAGES_AUTOPATH\"";
+    s += ",\"scripts\":\"M2A_SCRIPTS_EXEC_STORAGE\"";
     s += ",\"stage\":\"M2B_STORAGES_AUTOPATH\"";
     // 诊断必须能区分「真的按 autoPath 找到」与「碰巧被 basename 宽松回退命中」，
     // 也要能区分「Shift-JIS 正确解码」与「逐字节 latin-1 兜底但语法没报错」。
@@ -163,6 +284,28 @@ std::string MakeExecResult(bool ok, const char *reason, const char *entry,
     s += ",\"lastEncoding\":\"" + JsonEscape(galbox::host::LastTextEncoding()) + "\"";
     s += ",\"lastResolvedPath\":\""
        + JsonEscape(galbox::host::LastResolvedPath().c_str()) + "\"";
+
+    // ---- M2c：System / Debug 观测值 ----
+    s += ",\"exePath\":\"" + JsonEscape(gSys.exePath.c_str()) + "\"";
+    s += ",\"tickCalls\":" + std::to_string(gSys.tickCalls);
+    s += ",\"informCalls\":" + std::to_string(gSys.informCalls);
+    s += ",\"appLock\":" + std::string(gSys.appLockGranted ? "true" : "false");
+    s += ",\"exitRequested\":" + std::string(gSys.exitRequested ? "true" : "false");
+    s += ",\"continuousHandlers\":" + std::to_string(gSys.continuousHandlers);
+    s += ",\"exceptionHandlerSet\":"
+       + std::string(gSys.exceptionHandlerSet ? "true" : "false");
+    s += ",\"debugMessages\":" + std::to_string(gDbg.messageCalls);
+    s += ",\"debugNotices\":" + std::to_string(gDbg.noticeCalls);
+    s += ",\"logAsErrorCalls\":" + std::to_string(gDbg.logAsErrorCalls);
+    s += ",\"lastDebug\":\"" + JsonEscape(gDbg.last.c_str()) + "\"";
+    s += ",\"lastInformMsg\":\"" + JsonEscape(gSys.lastInform.c_str()) + "\"";
+
+    // ---- 异常定位：停在哪一句、什么原因 ----
+    s += ",\"fatal\":\"" + JsonEscape(gFatalMessage.c_str()) + "\"";
+    s += ",\"fatalBlock\":\"" + JsonEscape(gFatalBlock.c_str()) + "\"";
+    s += ",\"fatalLine\":" + std::to_string(gFatalLine);
+    s += ",\"fatalException\":\"" + JsonEscape(gFatalException.c_str()) + "\"";
+
     s += ",\"error\":\"" + JsonEscape(reason ? reason : "") + "\"";
     s += "}";
     return s;
@@ -224,6 +367,11 @@ public:
                                           name.c_str(), 0);
                 ++gExecStorageCalls;
             } catch (...) {
+                // 内层脚本抛的异常必须在这里就把「哪一句、什么正文」记下来。
+                // 只写一句 "exception in execStorage(xxx)" 会把 TJS 的真实错误
+                // （脚本名/行号/Exception 正文）永久丢掉 —— Initialize.tjs 的
+                // 失败点正是靠这些字段才能定位。
+                CaptureCurrentException();
                 gLastScriptError = "exception in execStorage(" +
                                    WideToUtf8(name.c_str()) + ")";
                 return TJS_E_FAIL;
@@ -321,6 +469,358 @@ private:
 };
 tjs_uint32 tTJSNC_Storages::ClassID = (tjs_uint32)-1;
 
+// ---- M2c：官方启动链第三段 System / Debug -------------------------------
+// 逐条对着 kag3/template/system/Initialize.tjs 的语句实现：
+//   System.exceptionHandler = function(e){...}   → 可写属性
+//   System.exePath                               → 读（拼接 "video/" 等）
+//   Storages.addAutoPath(System.exePath + ...)   → 依赖上一条返回字符串
+//   Debug.notice / System.osName / platformName / versionString
+//   System.getTickCount()
+//   System.getArgument('-ovr')
+//   System.createAppLock(...) / System.inform(...) / System.exit()
+// 其余成员（screenWidth/getKeyState/addContinuousHandler…）先给"不撒谎"的最小值，
+// 让脚本能继续往下走，并在 JSON 里如实记录被调用了几次。
+
+unsigned gScreenWidth = 1280;
+unsigned gScreenHeight = 720;
+
+#if defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
+const char kOsName[] = "iOS";
+#elif defined(__APPLE__)
+const char kOsName[] = "macOS";
+#elif defined(_WIN32)
+const char kOsName[] = "Windows";
+#else
+const char kOsName[] = "POSIX";
+#endif
+
+#if defined(__aarch64__) || defined(__arm64__)
+const char kPlatformName[] = "arm64";
+#elif defined(__x86_64__)
+const char kPlatformName[] = "x86_64";
+#elif defined(_M_IX86) || defined(__i386__)
+const char kPlatformName[] = "x86";
+#else
+const char kPlatformName[] = "unknown";
+#endif
+
+tjs_int TickCountMs() {
+    using namespace std::chrono;
+    static const steady_clock::time_point start = steady_clock::now();
+    return static_cast<tjs_int>(
+        duration_cast<milliseconds>(steady_clock::now() - start).count());
+}
+
+std::string JoinParams(tjs_int numparams, tTJSVariant **param) {
+    std::string out;
+    for (tjs_int i = 0; i < numparams; ++i) {
+        if (!param[i]) continue;
+        if (param[i]->Type() == tvtVoid) continue;
+        out += WideToUtf8(ttstr(*param[i]).c_str());
+    }
+    return out;
+}
+
+class tTJSNC_System : public tTJSNativeClass {
+public:
+    tTJSNC_System() : tTJSNativeClass(TJS_W("System")) {
+        TJS_BEGIN_NATIVE_MEMBERS(System)
+        TJS_DECL_EMPTY_FINALIZE_METHOD
+
+        TJS_BEGIN_NATIVE_PROP_DECL(exePath)
+        {
+            TJS_BEGIN_NATIVE_PROP_GETTER
+            {
+                *result = ttstr(Utf8ToWide(gSys.exePath.c_str()).c_str());
+                return TJS_S_OK;
+            }
+            TJS_END_NATIVE_PROP_GETTER
+            TJS_DENY_NATIVE_PROP_SETTER
+        }
+        TJS_END_NATIVE_STATIC_PROP_DECL(exePath)
+
+        TJS_BEGIN_NATIVE_PROP_DECL(title)
+        {
+            TJS_BEGIN_NATIVE_PROP_GETTER
+            {
+                *result = ttstr(Utf8ToWide(gSys.title.c_str()).c_str());
+                return TJS_S_OK;
+            }
+            TJS_END_NATIVE_PROP_GETTER
+            TJS_BEGIN_NATIVE_PROP_SETTER
+            {
+                gSys.title = WideToUtf8(ttstr(*param).c_str());
+                return TJS_S_OK;
+            }
+            TJS_END_NATIVE_PROP_SETTER
+        }
+        TJS_END_NATIVE_STATIC_PROP_DECL(title)
+
+        TJS_BEGIN_NATIVE_PROP_DECL(osName)
+        {
+            TJS_BEGIN_NATIVE_PROP_GETTER
+            {
+                *result = ttstr(Utf8ToWide(kOsName).c_str());
+                return TJS_S_OK;
+            }
+            TJS_END_NATIVE_PROP_GETTER
+            TJS_DENY_NATIVE_PROP_SETTER
+        }
+        TJS_END_NATIVE_STATIC_PROP_DECL(osName)
+
+        TJS_BEGIN_NATIVE_PROP_DECL(platformName)
+        {
+            TJS_BEGIN_NATIVE_PROP_GETTER
+            {
+                *result = ttstr(Utf8ToWide(kPlatformName).c_str());
+                return TJS_S_OK;
+            }
+            TJS_END_NATIVE_PROP_GETTER
+            TJS_DENY_NATIVE_PROP_SETTER
+        }
+        TJS_END_NATIVE_STATIC_PROP_DECL(platformName)
+
+        TJS_BEGIN_NATIVE_PROP_DECL(versionString)
+        {
+            TJS_BEGIN_NATIVE_PROP_GETTER
+            {
+                char buf[64];
+                std::snprintf(buf, sizeof(buf), "TJS2 %d.%d.%d (GalBox)",
+                              (int)TJS::TJSVersionMajor,
+                              (int)TJS::TJSVersionMinor,
+                              (int)TJS::TJSVersionRelease);
+                *result = ttstr(Utf8ToWide(buf).c_str());
+                return TJS_S_OK;
+            }
+            TJS_END_NATIVE_PROP_GETTER
+            TJS_DENY_NATIVE_PROP_SETTER
+        }
+        TJS_END_NATIVE_STATIC_PROP_DECL(versionString)
+
+        TJS_BEGIN_NATIVE_PROP_DECL(eventDisabled)
+        {
+            TJS_BEGIN_NATIVE_PROP_GETTER
+            {
+                *result = static_cast<tjs_int>(gSys.eventDisabled ? 1 : 0);
+                return TJS_S_OK;
+            }
+            TJS_END_NATIVE_PROP_GETTER
+            TJS_BEGIN_NATIVE_PROP_SETTER
+            {
+                gSys.eventDisabled = (static_cast<tjs_int>(*param) != 0);
+                return TJS_S_OK;
+            }
+            TJS_END_NATIVE_PROP_SETTER
+        }
+        TJS_END_NATIVE_STATIC_PROP_DECL(eventDisabled)
+
+        // 官方 Initialize.tjs 第 20 行就 `System.exceptionHandler = function(e){...}`，
+        // 这个属性必须可写，否则整篇脚本第一句赋值就失败。
+        TJS_BEGIN_NATIVE_PROP_DECL(exceptionHandler)
+        {
+            TJS_BEGIN_NATIVE_PROP_GETTER
+            {
+                if (result) result->CopyRef(gSys.exceptionHandler);
+                return TJS_S_OK;
+            }
+            TJS_END_NATIVE_PROP_GETTER
+            TJS_BEGIN_NATIVE_PROP_SETTER
+            {
+                // 脚本写进来的是函数对象；只在这里保留引用（CopyRef 加计数）。
+                // 引擎销毁前由 ClearEngineScopedDiagnostics() 清掉，避免变量
+                // 比引擎活得更久。
+                if (param) {
+                    gSys.exceptionHandler.CopyRef(*param);
+                    gSys.exceptionHandlerSet = true;
+                }
+                return TJS_S_OK;
+            }
+            TJS_END_NATIVE_PROP_SETTER
+        }
+        TJS_END_NATIVE_STATIC_PROP_DECL(exceptionHandler)
+
+        TJS_BEGIN_NATIVE_PROP_DECL(screenWidth)
+        {
+            TJS_BEGIN_NATIVE_PROP_GETTER
+            {
+                *result = static_cast<tjs_int>(gScreenWidth);
+                return TJS_S_OK;
+            }
+            TJS_END_NATIVE_PROP_GETTER
+            TJS_DENY_NATIVE_PROP_SETTER
+        }
+        TJS_END_NATIVE_STATIC_PROP_DECL(screenWidth)
+
+        TJS_BEGIN_NATIVE_PROP_DECL(screenHeight)
+        {
+            TJS_BEGIN_NATIVE_PROP_GETTER
+            {
+                *result = static_cast<tjs_int>(gScreenHeight);
+                return TJS_S_OK;
+            }
+            TJS_END_NATIVE_PROP_GETTER
+            TJS_DENY_NATIVE_PROP_SETTER
+        }
+        TJS_END_NATIVE_STATIC_PROP_DECL(screenHeight)
+
+        TJS_BEGIN_NATIVE_PROP_DECL(desktopLeft)
+        {
+            TJS_BEGIN_NATIVE_PROP_GETTER
+            {
+                *result = static_cast<tjs_int>(0);
+                return TJS_S_OK;
+            }
+            TJS_END_NATIVE_PROP_GETTER
+            TJS_DENY_NATIVE_PROP_SETTER
+        }
+        TJS_END_NATIVE_STATIC_PROP_DECL(desktopLeft)
+
+        TJS_BEGIN_NATIVE_PROP_DECL(desktopTop)
+        {
+            TJS_BEGIN_NATIVE_PROP_GETTER
+            {
+                *result = static_cast<tjs_int>(0);
+                return TJS_S_OK;
+            }
+            TJS_END_NATIVE_PROP_GETTER
+            TJS_DENY_NATIVE_PROP_SETTER
+        }
+        TJS_END_NATIVE_STATIC_PROP_DECL(desktopTop)
+
+        TJS_BEGIN_NATIVE_PROP_DECL(desktopWidth)
+        {
+            TJS_BEGIN_NATIVE_PROP_GETTER
+            {
+                *result = static_cast<tjs_int>(gScreenWidth);
+                return TJS_S_OK;
+            }
+            TJS_END_NATIVE_PROP_GETTER
+            TJS_DENY_NATIVE_PROP_SETTER
+        }
+        TJS_END_NATIVE_STATIC_PROP_DECL(desktopWidth)
+
+        TJS_BEGIN_NATIVE_PROP_DECL(desktopHeight)
+        {
+            TJS_BEGIN_NATIVE_PROP_GETTER
+            {
+                *result = static_cast<tjs_int>(gScreenHeight);
+                return TJS_S_OK;
+            }
+            TJS_END_NATIVE_PROP_GETTER
+            TJS_DENY_NATIVE_PROP_SETTER
+        }
+        TJS_END_NATIVE_STATIC_PROP_DECL(desktopHeight)
+
+        TJS_BEGIN_NATIVE_METHOD_DECL(getTickCount)
+        {
+            ++gSys.tickCalls;
+            if (result) *result = static_cast<tjs_int>(TickCountMs());
+            return TJS_S_OK;
+        }
+        TJS_END_NATIVE_STATIC_METHOD_DECL(getTickCount)
+
+        TJS_BEGIN_NATIVE_METHOD_DECL(inform)
+        {
+            ++gSys.informCalls;
+            gSys.lastInform = JoinParams(numparams, param);
+            PushDebugLine("[inform] " + gSys.lastInform, true);
+            return TJS_S_OK;
+        }
+        TJS_END_NATIVE_STATIC_METHOD_DECL(inform)
+
+        // 官方语义是"终止应用"：这里只记录请求并抛 silent 异常把脚本栈解开，
+        // 不真的退出进程 —— iOS 上没有可退的"应用"，但脚本必须停止执行。
+        TJS_BEGIN_NATIVE_METHOD_DECL(exit)
+        {
+            gSys.exitRequested = true;
+            throw TJS::eTJSSilent();
+        }
+        TJS_END_NATIVE_STATIC_METHOD_DECL(exit)
+
+        TJS_BEGIN_NATIVE_METHOD_DECL(getArgument)
+        {
+            // iOS 无命令行。官方 Initialize.tjs 用它读 -ovr，返回 void 即可。
+            gSys.lastArgument = JoinParams(numparams, param);
+            return TJS_S_OK;
+        }
+        TJS_END_NATIVE_STATIC_METHOD_DECL(getArgument)
+
+        TJS_BEGIN_NATIVE_METHOD_DECL(createAppLock)
+        {
+            // 二重起動チェック：iOS 应用天然单实例，直接放行。
+            gSys.appLockGranted = true;
+            if (result) *result = static_cast<tjs_int>(1);
+            return TJS_S_OK;
+        }
+        TJS_END_NATIVE_STATIC_METHOD_DECL(createAppLock)
+
+        TJS_BEGIN_NATIVE_METHOD_DECL(addContinuousHandler)
+        {
+            ++gSys.continuousHandlers;
+            return TJS_S_OK;
+        }
+        TJS_END_NATIVE_STATIC_METHOD_DECL(addContinuousHandler)
+
+        TJS_BEGIN_NATIVE_METHOD_DECL(removeContinuousHandler)
+        {
+            if (gSys.continuousHandlers > 0) --gSys.continuousHandlers;
+            return TJS_S_OK;
+        }
+        TJS_END_NATIVE_STATIC_METHOD_DECL(removeContinuousHandler)
+
+        TJS_BEGIN_NATIVE_METHOD_DECL(getKeyState)
+        {
+            // 键盘状态要等 M2d 的 iOS 输入层；现在如实返回"未按下"。
+            ++gSys.getKeyStateCalls;
+            if (result) *result = static_cast<tjs_int>(0);
+            return TJS_S_OK;
+        }
+        TJS_END_NATIVE_STATIC_METHOD_DECL(getKeyState)
+
+        TJS_END_NATIVE_MEMBERS
+    }
+private:
+    static tjs_uint32 ClassID;
+};
+tjs_uint32 tTJSNC_System::ClassID = (tjs_uint32)-1;
+
+class tTJSNC_Debug : public tTJSNativeClass {
+public:
+    tTJSNC_Debug() : tTJSNativeClass(TJS_W("Debug")) {
+        TJS_BEGIN_NATIVE_MEMBERS(Debug)
+        TJS_DECL_EMPTY_FINALIZE_METHOD
+
+        // 官方 Initialize.tjs: `var dm = Debug.message;` 然后 dm("...")。
+        // 取函数值能不能用，取决于注册时存的是纯 dispatch（RegisterNCM 里
+        // `val = dsp;`，不带 objthis）—— 因此这里必须用静态方法宏。
+        TJS_BEGIN_NATIVE_METHOD_DECL(message)
+        {
+            PushDebugLine(JoinParams(numparams, param), false);
+            return TJS_S_OK;
+        }
+        TJS_END_NATIVE_STATIC_METHOD_DECL(message)
+
+        TJS_BEGIN_NATIVE_METHOD_DECL(notice)
+        {
+            PushDebugLine(JoinParams(numparams, param), true);
+            return TJS_S_OK;
+        }
+        TJS_END_NATIVE_STATIC_METHOD_DECL(notice)
+
+        TJS_BEGIN_NATIVE_METHOD_DECL(logAsError)
+        {
+            ++gDbg.logAsErrorCalls;
+            return TJS_S_OK;
+        }
+        TJS_END_NATIVE_STATIC_METHOD_DECL(logAsError)
+
+        TJS_END_NATIVE_MEMBERS
+    }
+private:
+    static tjs_uint32 ClassID;
+};
+tjs_uint32 tTJSNC_Debug::ClassID = (tjs_uint32)-1;
+
 void RegisterScriptsClass(tTJS *engine) {
     iTJSDispatch2 *global = engine->GetGlobalNoAddRef();
     if (!global) return;
@@ -341,6 +841,26 @@ void RegisterStoragesClass(tTJS *engine) {
     global->PropSet(TJS_MEMBERENSURE, TJS_W("Storages"), NULL, &val, global);
 }
 
+void RegisterSystemClass(tTJS *engine) {
+    iTJSDispatch2 *global = engine->GetGlobalNoAddRef();
+    if (!global) return;
+    iTJSDispatch2 *dsp = new tTJSNC_System();
+    tTJSVariant val;
+    val = tTJSVariant(dsp, NULL);
+    dsp->Release();
+    global->PropSet(TJS_MEMBERENSURE, TJS_W("System"), NULL, &val, global);
+}
+
+void RegisterDebugClass(tTJS *engine) {
+    iTJSDispatch2 *global = engine->GetGlobalNoAddRef();
+    if (!global) return;
+    iTJSDispatch2 *dsp = new tTJSNC_Debug();
+    tTJSVariant val;
+    val = tTJSVariant(dsp, NULL);
+    dsp->Release();
+    global->PropSet(TJS_MEMBERENSURE, TJS_W("Debug"), NULL, &val, global);
+}
+
 }  // namespace
 
 extern "C" int GalBoxTJS2Available(void) { return 1; }
@@ -357,6 +877,13 @@ extern "C" int GalBoxTJS2Install(void *archive, const char *storageRoot,
 }
 
 extern "C" void GalBoxTJS2Uninstall(void) { galbox::host::Uninstall(); }
+
+// M2c：让上层把真实屏幕尺寸告诉 TJS2（System.screenWidth / desktopWidth）。
+// 未调用时用 1280x720，UI 侧接上 UIScreen 后以实际值覆盖。
+extern "C" void GalBoxTJS2SetScreenSize(int width, int height) {
+    if (width > 0) gScreenWidth = static_cast<unsigned>(width);
+    if (height > 0) gScreenHeight = static_cast<unsigned>(height);
+}
 
 extern "C" char *GalBoxTJS2SmokeTest(const char *probeFile) {
     if (!galbox::host::IsInstalled())
@@ -464,6 +991,7 @@ extern "C" char *GalBoxTJS2ExecScript(const char *entryName,
     gActiveEngine = nullptr;
     gLastScriptError.clear();
     gExecStorageCalls = 0;
+    ResetDiagnostics();
     long long probeValue = -1;
     bool probeRan = false;
     std::string reason;
@@ -474,6 +1002,8 @@ extern "C" char *GalBoxTJS2ExecScript(const char *entryName,
         gActiveEngine = engine;
         RegisterScriptsClass(engine);
         RegisterStoragesClass(engine);
+        RegisterSystemClass(engine);
+        RegisterDebugClass(engine);
 
         std::wstring entryW = Utf8ToWide(entryName);
         ttstr entry(entryW.c_str());
@@ -494,11 +1024,16 @@ extern "C" char *GalBoxTJS2ExecScript(const char *entryName,
                     engine->ExecScript(body.c_str(), NULL, NULL,
                                        entry.c_str(), 0);
                 } catch (...) {
-                    reason = gLastScriptError.empty()
-                           ? "exception while executing entry script"
-                           : gLastScriptError;
+                    CaptureCurrentException();
+                    // 优先级：脚本自己 throw 的正文 > execStorage 的定位串 >
+                    // TJS 引擎消息 > 兜底。早期只有最后一项，等于把根因藏起来。
+                    if (!gFatalException.empty()) reason = gFatalException;
+                    else if (!gLastScriptError.empty()) reason = gLastScriptError;
+                    else if (!gFatalMessage.empty()) reason = gFatalMessage;
+                    else reason = "exception while executing entry script";
                 }
-                if (!gLastScriptError.empty()) reason = gLastScriptError;
+                if (reason.empty() && !gLastScriptError.empty())
+                    reason = gLastScriptError;
             }
         }
 
@@ -511,12 +1046,14 @@ extern "C" char *GalBoxTJS2ExecScript(const char *entryName,
                 probeValue = static_cast<long long>(r.AsInteger());
                 probeRan = true;
             } catch (...) {
+                CaptureCurrentException();
                 reason = "probe expression threw (loaded script functions unavailable?)";
             }
         }
     } catch (...) {
         reason = "tTJS construction threw";
     }
+    ClearEngineScopedDiagnostics();
     if (engine) {
         try { engine->Release(); }
         catch (...) { if (reason.empty()) reason = "tTJS::Release threw"; }

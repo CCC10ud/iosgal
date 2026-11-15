@@ -236,6 +236,34 @@ final class GameViewController: UIViewController {
             self?.toast(diag)
         }
 
+        // M2c：官方 startup.tjs → system/Initialize.tjs 原文真跑一次，把
+        // 「执行到哪一句、为什么停」变成界面上看得见的东西。
+        // 必须放后台队列：Initialize.tjs 会递归加载整串系统脚本，
+        // 上次导入卡死就是主线程同步干活导致的。结果里只取计数与停点，
+        // 完整 JSON 进设备日志。
+        if isTJS2 {
+            DispatchQueue.global(qos: .userInitiated).async {
+                let r = GBEngineBridge.tjs2ExecStartup()
+                NSLog("[GalBox][M2c] %@", r)
+                let paths = r["autoPathCount"] as? Int ?? 0
+                let notices = r["debugNotices"] as? Int ?? 0
+                let ticks = r["tickCalls"] as? Int ?? 0
+                let block = r["fatalBlock"] as? String ?? ""
+                let line = r["fatalLine"] as? Int ?? -1
+                var why = r["fatalException"] as? String ?? ""
+                if why.isEmpty { why = r["fatal"] as? String ?? "" }
+                if why.count > 34 { why = String(why.prefix(34)) + "…" }
+                var msg = "KAG 初始化：autoPath \(paths) · notice \(notices) · tick \(ticks)"
+                if !why.isEmpty {
+                    let shortBlock = (block as NSString).lastPathComponent
+                    msg += "，停在 \(shortBlock):\(line) \(why)"
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.7) { [weak self] in
+                    self?.toast(msg)
+                }
+            }
+        }
+
         var scriptName: String?
         for f in files {
             let n = f["name"] as? String ?? ""
@@ -253,7 +281,7 @@ final class GameViewController: UIViewController {
         guard let name = scriptName, let data = GBEngineBridge.data(forFile: name),
               let text = String(data: data, encoding: .utf8) else {
             if isTJS2 {
-                showError("检测到 TJS2 启动脚本（startup.tjs）。TJS2 引擎已可启动，打通了官方启动链前两段：Scripts.execStorage（能执行包内 .tjs）与 Storages 自动路径（含商业游戏常用的 Shift-JIS 解码）。但 KAG 系统层仍未移植 —— Initialize.tjs 依赖 Layer / Window / System / Debug 原生类与事件循环（M2c），商业游戏仍无法运行。包内也没有可直接播放的 .ks 剧本。")
+                showError("检测到 TJS2 启动脚本（startup.tjs）。启动链前三段已打通：Scripts.execStorage（执行包内 .tjs）、Storages 自动路径（含 Shift-JIS 解码）、System / Debug 原生类 —— 官方 Initialize.tjs 原文已能真跑，会一路执行到配置检查。但它随后必然停下：createAppLock 用了正则字面量（当前编译关闭了 RegExp），之后还需要 KAGWindow / Layer / 事件循环。商业游戏仍无法运行。包内也没有可直接播放的 .ks 剧本。")
             } else {
                 showError("包内没有可运行的 .ks 剧本")
             }

@@ -4,6 +4,7 @@
 #                      + 真跑 app 侧纯 C 边界 HostBridge（Milestone 1c）
 #                      + 真跑官方 KAG3 系统脚本经 Scripts.execStorage（Milestone 2a）
 #                      + 真跑 Storages 自动路径 + 官方原始 Shift-JIS 字节（Milestone 2b）
+#                      + 真跑官方 Initialize.tjs 原文 + System/Debug 原生类（Milestone 2c）
 #
 # 由 CI 在 xcodebuild 之前调用。设计原则：
 #   - 源码尚未 vendoring 时直接跳过（exit 0），绝不破坏现有出包链路。
@@ -198,6 +199,51 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2b.cpp" ] \
     fi
   else
     echo "[tjs2] M2b 自测链接失败:"; cat "$OUT/link_m2b.log"; exit 1
+  fi
+fi
+
+# ---- Milestone 2c: 官方 Initialize.tjs 原文真跑（System / Debug） --------
+# 前两轮跑的都是自写探针。本轮把官方 kag3/template/startup.tjs 与
+# system/Initialize.tjs 原文（Shift-JIS 字节，一字不改）放进目录归档，
+# 看它到底能执行到哪一句。两个场景：「没有 Config.tjs」与「有探针 Config」。
+if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2c.cpp" ] \
+   && [ -f "$KAG/src/original/startup.tjs" ] \
+   && [ -f "$KAG/src/original/system/Initialize.tjs" ] \
+   && [ -f "$KAG/src/original/system/Utils.tjs" ] \
+   && [ -f "$KAG/src/m2c_probe_config.tjs" ]; then
+  M2C_A="$OUT/m2c_game"
+  M2C_B="$OUT/m2c_game_cfg"
+  rm -rf "$M2C_A" "$M2C_B"
+  mkdir -p "$M2C_A/system"
+  cp "$KAG/src/original/startup.tjs"           "$M2C_A/startup.tjs"
+  cp "$KAG/src/original/system/Initialize.tjs" "$M2C_A/system/Initialize.tjs"
+  cp "$KAG/src/original/system/Utils.tjs"      "$M2C_A/system/Utils.tjs"
+  cp -R "$M2C_A" "$M2C_B"
+  cp "$KAG/src/m2c_probe_config.tjs"           "$M2C_B/system/Config.tjs"
+
+  # 硬校验：必须是官方原始 Shift-JIS 字节（7246 B），不能是转码后的 UTF-8 副本。
+  INIT_BYTES=$(wc -c < "$M2C_A/system/Initialize.tjs" | tr -d ' ')
+  if [ "$INIT_BYTES" != "7246" ]; then
+    echo "[tjs2] M2c fixture 不是官方 Initialize.tjs 原始字节: ${INIT_BYTES}B (期望 7246B)"
+    exit 1
+  fi
+  echo "[tjs2] M2c fixture: 官方 startup.tjs + Initialize.tjs (${INIT_BYTES}B SJIS) + Utils.tjs"
+
+  echo "[tjs2] M2c: 编译并运行官方 Initialize.tjs 原文自测（System / Debug）"
+  if clang++ -std=c++14 -O1 -fexceptions -DTJS_NO_REGEXP -DTJS2_POSIX \
+        -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
+        "$HOST/test_m2c.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
+        "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
+        -lz -liconv -lpthread -o "$OUT/tjs2test_m2c" 2>"$OUT/link_m2c.log"; then
+    OUTPUT_M2C=$("$OUT/tjs2test_m2c" "$M2C_A" "$M2C_B" "$OUT" 2>&1)
+    echo "$OUTPUT_M2C" | sed 's/^/[tjs2]   /'
+    if echo "$OUTPUT_M2C" | grep -q "M2C_RESULT=OK"; then
+      echo "[tjs2] M2c 自测通过（官方 Initialize.tjs 真跑，停在 Config 检查 / RegExp 阻塞点）"
+    else
+      echo "[tjs2] M2c 自测未通过"; exit 1
+    fi
+  else
+    echo "[tjs2] M2c 自测链接失败:"; cat "$OUT/link_m2c.log"; exit 1
   fi
 fi
 exit 0

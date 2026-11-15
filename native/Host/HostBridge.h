@@ -41,6 +41,10 @@ char *GalBoxTJS2SmokeTest(const char *probeFile);
    Returns UTF-8 JSON (malloc), caller frees via GalBoxTJS2Free. */
 char *GalBoxTJS2ExecScript(const char *entryName, const char *probeExpression);
 
+/* Milestone 2c: tell TJS2 the real screen size (System.screenWidth /
+   desktopWidth). Optional; defaults to 1280x720 until the UI layer calls it. */
+void GalBoxTJS2SetScreenSize(int width, int height);
+
 void GalBoxTJS2Free(char *p);
 
 /* 供 UI 判断本包是否真的链接了 TJS2（无库时降级出包会返回 0）。 */

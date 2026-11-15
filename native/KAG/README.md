@@ -37,12 +37,20 @@
   `Initialize.tjs` 开头连调 13 次 `addAutoPath`，后面所有 `Scripts.execStorage`
   都用短文件名，必须靠 autoPath 展开）+ **Shift-JIS 原始字节真解码**。
   同时 vendoring `Initialize.tjs` 原文作为依赖分析依据（不执行）。
-  `System` / `Debug` / `Layer` / `Window` 与事件队列仍在 M2c。
   实测：`lastEncoding=cp932`、`autoPathHits=1`、
   `lastResolvedPath=system/Utils.tjs`、`str2num("１２３")==123`、
   错误 autoPath 明确失败；`M2B_RESULT=OK`。
-- **M2c**：`KAGParserEx` / `KAGParser` 原生类 + 渲染/音频回调面（文本、层、图像、转场），
-  把 `GameViewController` 接到官方 KAG 播放循环，取代手写 `KagEngine`。
+- **M2c（已实现，待 CI 验证）**：官方启动链第三段，且**第一次真跑官方
+  `Initialize.tjs` 原文**（前两轮跑的都是自写探针）。实现 `System` / `Debug`
+  两个原生静态类，逐条对齐脚本里的真实语句（`exceptionHandler` / `exePath` /
+  `getTickCount` / `inform` / `createAppLock` / `getArgument` / `notice` /
+  `message` 等）。结论：脚本能一路执行到
+  `System.createAppLock(System.exePath.replace(/[^A-Za-z]/g,'_'))`，
+  在那里因全局 `RegExp` 缺失而停 —— `TJS_NO_REGEXP` 只影响类注册，不影响词法解析，
+  所以是**运行期**失败而非编译期失败。下一个阻塞点因此是正则，不是 System/Debug。
+- **M2d**：正则（`RegExp` 原生类，boost 或 `std::regex` 背书）。
+- **M2e**：`Layer` / `Window` / `KAGParserEx` 原生类 + 渲染/音频回调面 +
+  事件队列，把 `GameViewController` 接到官方 KAG 播放循环，取代手写 `KagEngine`。
 - **M3/M4**：TLG/TPP/WAV/OGG 解码、视频换 AVFoundation、产品化切换。
 
 ## 当前目录
@@ -51,8 +59,11 @@
   （GitHub contents API 转码版，含 CRLF、版权头；**不是**官方原始字节）。
 - `src/original/{startup.tjs,system/Utils.tjs,system/Initialize.tjs}`：
   按 git blob sha 取的**官方原始 Shift-JIS 字节**，与上游字节完全一致。
-  `Initialize.tjs` 仅用于依赖分析，M2c 之前不执行。
+  `Initialize.tjs` 自 M2c 起作为自测入口**原文真跑**（不经任何改写）。
 - `src/m2a_probe_startup.tjs`、`src/m2b_probe_startup.tjs`：GalBox 自写探针。
+- `src/m2c_probe_config.tjs`：M2c 用的**探针版** `Config.tjs`（只写
+  `config_version = kagVersion`），用来跳过 `UpdateConfig.tjs`、把执行
+  精确推到 `createAppLock` 的正则处。**不是官方文件**，不进 `src/original/`。
 - `VENDOR_MANIFEST.json`：两套副本的来源、字节数、SHA-256、blob sha、
   编码差异说明、未 vendoring 清单。
 
@@ -69,7 +80,8 @@
 
 `Initialize.tjs` 会依次 `KAGLoadScript` 加载 14 个系统脚本，最后
 `global.kag = new KAGWindow()` 并 `kag.process("first.ks")` —— 这一步需要
-`Layer` / `Window` / `KAGParserEx` 与渲染回调面，属于 M2c，本轮**没有**跑。
+`Layer` / `Window` / `KAGParserEx` 与渲染回调面属于 M2e；M2c 的自测在
+`createAppLock`（正则）处就停了，因此**没有**跑到这一步。
 
 ## 授权
 

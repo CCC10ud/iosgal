@@ -7,6 +7,8 @@
 > `Scripts.execStorage` 原生类，TJS2 已能执行包内 `.tjs` 脚本（官方启动链第一段）。
 > **M2b ✅（run #22 一次全绿）**：`Storages` 自动路径 + 官方原始
 > Shift-JIS 字节真解码 + `Scripts.eval`，并更正 M2a 的 vendoring 编码误判。
+> **M2c 已实现，待 macOS runner 验证**：`System` / `Debug` 原生类 +
+> **官方 `Initialize.tjs` 原文真跑**（第一次跑官方脚本，不再只跑自写探针）。
 > 交付包 `dist/GalBoxNative-adhoc-M2b-9dbbef2a.ipa`（654,875 B，Mach-O arm64）。
 > 早期"网络被代理拦截"的判断**已推翻**：沙盒默认无代理变量，是我手动 `export`
 > 了失效的 `127.0.0.1:54662` 才导致 `http=000`；直连即可。上游仓库也从
@@ -135,6 +137,44 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
 ## 7. 当前状态与下一步
 
 **已完成**
+- **M2c（已实现，待 CI 验证）**：官方启动链第三段 —— `System` / `Debug` 原生类，
+  并且第一次真跑**官方 `Initialize.tjs` 原文**（一个字不改）。
+  - 决定性发现：`TJS_NO_REGEXP` **只**影响 `tjs.cpp:183` 是否把全局 `RegExp`
+    类注册进 Global（`tjs.cpp:36` 的另一处只是省掉 include）。词法器
+    `TJSParseRegExp`（`tjsLex.cpp:861/1320`）照常把 `/[^A-Za-z]/g` 解析成
+    `T_REGEXP`，代码生成器只是把 `"RegExp"` 当成一次全局成员查找
+    （`tjsInterCodeGen.cpp:2476`）。**结论：脚本能编译，只有在执行到那一行时才失败。**
+    所以 Initialize.tjs 里 `createAppLock` 之前的全部语句都可以真跑。
+  - 实现成员（逐条对齐官方脚本的真实语句，不按文档猜）：
+    `exceptionHandler`（可写，第一句就是它）/ `exePath` / `osName` /
+    `platformName` / `versionString` / `title` / `eventDisabled` /
+    `screenWidth|Height` / `desktopLeft|Top|Width|Height` /
+    `getTickCount` / `inform` / `exit` / `getArgument` / `createAppLock` /
+    `addContinuousHandler` / `removeContinuousHandler` / `getKeyState`；
+    `Debug.message`（**必须可当函数值取用**，官方第一句 `var dm = Debug.message`）/
+    `Debug.notice` / `Debug.logAsError`。
+  - 诊断升级：以前所有异常都被压成一句 "exception while executing entry script"
+    （run #17 的真根因就是这样被藏了一整轮）。现在 `CaptureCurrentException()`
+    抓 `eTJSScriptException` / `eTJSScriptError`，把 **脚本名（fatalBlock）、
+    行号（fatalLine）、`throw new Exception(...)` 的正文（fatalException）**
+    一并回传；`Scripts.execStorage` 自己的 catch 也改为先捕获再返回，
+    不再吞掉内层脚本的真实异常。
+  - 两个场景（都**期望 ok=false**，本轮不假装跑通）：
+    A) 无 `Config.tjs` → 一路执行到官方自己那句
+       `throw new Exception("Config.tjs が見つかりません。")`；
+       断言 `execStorageCalls=1`、`autoPathCount=11`、`debugNotices=3`、
+       `tickCalls≥1`、`exceptionHandlerSet=true`、`appLock=false`、
+       `fatalBlock` 指向 `Initialize.tjs`、`fatalLine>0`、`fatalException` 含 `Config.tjs`。
+    B) 加一个**探针版** `Config.tjs`（只写 `config_version = kagVersion`，明确标注非官方）
+       → 版本核对通过、跳过 `UpdateConfig.tjs`，执行推进到
+       `System.createAppLock(System.exePath.replace(/[^A-Za-z]/g,'_'))`，
+       因全局 `RegExp` 缺失而失败。断言 `execStorageCalls=2`、
+       `lastResolvedPath=system/Config.tjs`、`debugMessages≥1`
+       （证明原生方法当函数值调用 `dm(...)` 真的生效），且失败原因含 `RegExp`
+       —— 这就是**下一个阻塞点的硬证据**。
+  - app 侧：`GameViewController` 打开含 `startup.tjs` 的包后，**在后台队列**
+    跑一次 `tjs2ExecStartup`，把「autoPath / notice / tick 次数 + 停在哪一句」
+    做成第 4 秒的 toast 显示出来（主线程同步执行曾导致导入卡死，不重犯）。
 - **M2b** ✅（run #22 一次全绿）：官方启动链第二段。
   **实测**（macOS host 自测，非推断）：
   `{"ok":true,"probeValue":5,"hostReadDelta":2,"execStorageCalls":1,
@@ -203,23 +243,26 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
 **无阻塞项**：网络直连可用；`push_via_api.py` 走 Git Data API 原子提交（git 协议仍被墙）。
 
 **下一步（按序）**
-1. **M2c（KAG 系统层，工作量最高）**：按 20 个官方系统脚本的调用面补齐
-   `System`（`getTickCount` 24 次 / `exePath` 12 / `inform` 9 / `createAppLock` 等）、
-   `Debug`（`notice` / `message` / `logAsError`）、`Layer` / `Window` 原生类，
-   再接 iOS 事件队列（run loop / CADisplayLink）与渲染/音频回调面。
-   `Initialize.tjs` 最后会 `new KAGWindow()` 并 `kag.process("first.ks")`，
-   这一步还需要 `KAGParserEx`。宿主回调面继续走
-   `HostBridge` 的「纯 C 边界 + C++ 适配层」，不要把官方 `tp_stub` 头暴露给 ObjC++/Swift。
+1. **M2d（正则）**：官方 `Initialize.tjs` 的下一句就是
+   `System.exePath.replace(/[^A-Za-z]/g, '_')`，全局 `RegExp` 缺失即失败。
+   两条路：**(a)** 让 `tjsRegExp.cpp` 复活 —— 它 832 行全部绑定
+   `boost::reg_expression` / `boost::match_results` 的 C++ API，需要 runner
+   装 boost（`brew install boost`）并解决这一版老代码与现代 boost 的编译差异；
+   **(b)** 自己写一个 `std::regex` 背书的 `RegExp` 原生类，接口对齐
+   `tjsRegExp.h`（`compile/test/match/exec/replace/split` + `lastMatch` 等属性）。
+   (b) 不引外部依赖、可控性更好，但要自己保证 `replace/split` 语义与官方一致。
+2. **M2e（Layer / Window + 事件队列）**：`new KAGWindow()` 与
+   `kag.process("first.ks")` 需要的原生类，接 iOS run loop / CADisplayLink
+   与渲染/音频回调面。宿主回调面继续走「纯 C 边界 + C++ 适配层」，
+   不要把官方 `tp_stub` 头暴露给 ObjC++/Swift。
    ⚠️ app 已编译 `XP3Archive.cpp`，宿主层**只能链 `HostStreams_ios.o` /
    `HostBridge_ios.o`**，勿重复打包 XP3Archive.o。
-   ⚠️ 商业 `startup.tjs` 的执行必须放后台队列（Initialize.tjs 可能长循环/等待），
-   且缺原生类时会抛异常，切勿在主线程同步调用。
-2. **M3/M4**：TLG/TPP/WAV/OGG 解码、视频换 AVFoundation、产品化切换。
+   ⚠️ 商业 `startup.tjs` 的执行必须放后台队列，切勿在主线程同步调用。
+3. **M3/M4**：TLG/TPP/WAV/OGG 解码、视频换 AVFoundation、产品化切换。
 
-**当前边界**：`startup.tjs` 在 app 里仍**不会自动执行** —— 引擎已具备
-`Scripts.execStorage`（M2a）+ `Storages` 自动路径与 Shift-JIS 解码（M2b），
-但商业游戏系统脚本依赖 `System` / `Debug` / `Layer` / `Window` / KAG 插件层（M2c）。
-界面文案已改为准确表述，不再说「内核未实现 TJS2」。
+**当前边界**：`System` / `Debug` 已就位，官方 `Initialize.tjs` 原文能真跑并被
+精确停在 `createAppLock`（缺 `RegExp`）或配置检查处；`Layer` / `Window` /
+`KAGParserEx` 与事件循环仍是 M2e。界面文案已随本轮更新，不再说「System 未移植」。
 
 **踩坑记录**：
 - **GitHub contents API 会静默转码**（M2b 发现）：`/repos/.../contents/<path>`
