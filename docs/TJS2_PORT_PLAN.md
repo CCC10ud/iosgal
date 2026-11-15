@@ -167,15 +167,22 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
        `autoPathCount=11`、`debugNotices=3`、`tickCalls≥1`、
        `exceptionHandlerSet=true`、`appLock=false`、`fatalLine>0`、
        `fatalException` 含 `Config.tjs`、`lastEncoding=cp932`。
-       ⚠️ run #26 实测：`fatalBlock` 报的是 **`startup.tjs:6`**（execStorage
-       调用点）而不是 `Initialize.tjs` 的真行号 —— 因为同一个失败会被捕获两次
-       （execStorage 内层抓到真异常，之后原生方法返回 `TJS_E_FAIL`，TJS2 又把它
-       转成笼统的 `Unknown failure : FFFFFFFF` 抛给外层），第二次无条件覆盖会
-       把精确定位冲掉。已改为「先存局部变量，再按不覆盖更具体信息提交」。
-       断言只要求指向某个 `.tjs` 且行号有效，不写死文件。
+       ⚠️ run #26 实测 `fatalBlock` 是 **`startup.tjs:6`**（execStorage 调用点），
+       `Initialize.tjs` 的真定位丢了 —— 同一个失败被捕获两次（execStorage 内层抓到
+       真异常 → 返回 `TJS_E_FAIL` → TJS2 转成笼统的 `Unknown failure : FFFFFFFF`
+       抛给外层），第二次无条件覆盖把精确定位冲掉。已改为「先存局部变量，再按
+       不覆盖更具体信息提交」。run #27 验证生效：`fatalBlock=system/Initialize.tjs`、
+       `fatal="script exception : Config.tjs が見つかりません。"`。
+       ⚠️ 但 `fatalLine` 对「跨原生调用抛出的异常」**不可靠**：#27 实测报 280
+       （文件共 280 行，即末行），而 `throw` 实际在第 148 行附近。
+       所以断言只要求 `fatalLine > 0` + block 指向某个 `.tjs`，不写死行号。
     B) 加一个**探针版** `Config.tjs`（只写 `config_version = "3.29-dev.20071022"`，明确标注非官方）
-       （注意必须写字面量：`kagVersion` 是 `Initialize.tjs` 的**块内变量**，
-       TJS2 的 `var` 作用域是所在脚本块而非 global，跨块读必抛「成员未找到」）
+       （run #26/#27 两次踩坑：TJS2 里**裸赋值不创建成员** —— 写
+       `config_version = "..."` 会当场抛 `Member "config_version" does not exist`
+       并带 `fatalBlock=Config.tjs fatalLine=20`；必须写成 `global.config_version`，
+       与官方 `global.kag = new KAGWindow()` 同一套语义。
+       #26 曾误判成「`kagVersion` 是块内变量读不到」，#27 换成字面量后报同一个错，
+       才确认是赋值目标本身，不是右值。）
        → 版本核对通过、跳过 `UpdateConfig.tjs`，执行推进到
        `System.createAppLock(System.exePath.replace(/[^A-Za-z]/g,'_'))`，
        因全局 `RegExp` 缺失而失败。断言 `execStorageAttempts=2` /

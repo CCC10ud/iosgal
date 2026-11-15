@@ -3,7 +3,7 @@
 // 官方 kag3/template/system/Config.tjs 有 200+ 行配置项，而本轮（M2c）
 // 要验证的是 System / Debug 两个原生类可用，不是 Config 的配置语义。
 //
-// 官方 Initialize.tjs 在读完 Config.tjs 后会做一次版本核对：
+// 官方 Initialize.tjs 读完 Config.tjs 后做一次版本核对：
 //     if(typeof global.config_version == "undefined" || config_version != kagVersion)
 //         KAGLoadScript("UpdateConfig.tjs");
 // 这个探针只写一行 config_version，让核对通过、跳过 UpdateConfig.tjs，
@@ -12,9 +12,12 @@
 // 那一行含正则字面量，而当前编译开了 TJS_NO_REGEXP（未注册全局 RegExp），
 // 所以在那里必然失败 —— 这正是本轮要如实测出来的「下一个阻塞点」。
 //
-// ⚠️ 必须写字面量，不能写 `config_version = kagVersion;`：
-// Initialize.tjs 顶部的 `var kagVersion = "3.29-dev.20071022";` 是**块内变量**
-// （TJS2 的 var 作用域是所在脚本块，不是 global），Config.tjs 是另一个块，
-// 读 kagVersion 会抛「成员未找到」—— run #26 就是这么红的。
-// 官方 Config.tjs 同样写的是字面量版本号。
-config_version = "3.29-dev.20071022";
+// ⚠️ 为什么要写 `global.` 前缀（run #26 / #27 两次踩坑得出）：
+// 在 TJS2 里，**裸赋值不会创建成员**。写
+//     config_version = "3.29-dev.20071022";
+// 会在这一行直接抛 `Member "config_version" does not exist`
+// （#26 用 kagVersion 当右值、#27 换成字面量，两次都是同一个错），
+// 因为赋值走的是「设置已存在成员」而没带 MEMBERENSURE。
+// 官方 Initialize.tjs 自己也用 `global.kag = new KAGWindow()`
+// 这种显式写法来创建全局成员，这里照同一套语义写。
+global.config_version = "3.29-dev.20071022";
