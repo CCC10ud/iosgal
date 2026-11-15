@@ -37,6 +37,12 @@ NS_ASSUME_NONNULL_BEGIN
 // iOS TJS2 library it returns ok=false with a reason instead of crashing.
 + (NSDictionary<NSString *, id> *)tjs2SmokeTest NS_SWIFT_NAME(tjs2SmokeTest());
 
+// Milestone 2a: execute startup.tjs through the official boot chain's first
+// native class (Scripts.execStorage). Diagnostic only — commercial startup
+// scripts still stop at Initialize.tjs because the KAG system layer is M2b.
+// Returns ok / entry / hostReadDelta / execStorageCalls / error.
++ (NSDictionary<NSString *, id> *)tjs2ExecStartup NS_SWIFT_NAME(tjs2ExecStartup());
+
 @end
 
 NS_ASSUME_NONNULL_END

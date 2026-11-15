@@ -247,4 +247,39 @@ static NSDictionary<NSString *, id> *StepToDict(const galbox::Step &s) {
 #endif
 }
 
++ (NSDictionary<NSString *, id> *)tjs2ExecStartup {
+#if defined(GALBOX_HAS_TJS2)
+    if (!gPackageOpen)
+        return @{@"ok": @NO, @"reason": @"尚未打开游戏包"};
+
+    NSString *entry = nil;
+    for (const auto &e : gArchive.entries()) {
+        NSString *n = ToNS(e.name);
+        NSString *low = [n lowercaseString];
+        if ([low isEqualToString:@"startup.tjs"] ||
+            [low hasSuffix:@"/startup.tjs"]) { entry = n; break; }
+    }
+    if (!entry) return @{@"ok": @NO, @"reason": @"包内没有 startup.tjs"};
+
+    // 注意：这是诊断入口，caller 必须放后台队列。商业 startup.tjs 会递归
+    // 加载 Initialize.tjs 等系统脚本，M2b 之前必然在缺原生类处抛异常；
+    // 绝不能在主线程同步执行（可能长循环/等待）。
+    char *json = GalBoxTJS2ExecScript([entry UTF8String], NULL);
+    if (!json) return @{@"ok": @NO, @"reason": @"执行返回空结果"};
+    NSString *text = [NSString stringWithUTF8String:json] ?: @"";
+    GalBoxTJS2Free(json);
+
+    NSData *data = [text dataUsingEncoding:NSUTF8StringEncoding];
+    id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (![parsed isKindOfClass:[NSDictionary class]]) {
+        return @{@"ok": @NO, @"reason": @"结果解析失败", @"raw": text};
+    }
+    NSMutableDictionary *out = [NSMutableDictionary dictionaryWithDictionary:parsed];
+    out[@"entryFile"] = entry;
+    return out;
+#else
+    return @{@"ok": @NO, @"reason": @"本包未链接 iOS TJS2（GALBOX_HAS_TJS2 未定义）"};
+#endif
+}
+
 @end

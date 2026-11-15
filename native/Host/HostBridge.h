@@ -33,6 +33,14 @@ void GalBoxTJS2Uninstall(void);
    probeFile 可传 NULL 或 ""，此时跳过读回调检查。 */
 char *GalBoxTJS2SmokeTest(const char *probeFile);
 
+/* Milestone 2a: execute a .tjs entry script from the game package.
+   The official startup.tjs calls Scripts.execStorage(...), which is registered
+   as a TJS2 native static class by this layer and loads further .tjs files
+   through the GalBox host stream. probeExpression (optional, UTF-8 TJS2 code)
+   is evaluated afterwards to prove functions from the loaded script work.
+   Returns UTF-8 JSON (malloc), caller frees via GalBoxTJS2Free. */
+char *GalBoxTJS2ExecScript(const char *entryName, const char *probeExpression);
+
 void GalBoxTJS2Free(char *p);
 
 /* 供 UI 判断本包是否真的链接了 TJS2（无库时降级出包会返回 0）。 */

@@ -1,0 +1,8 @@
+// m2a_probe_startup.tjs — GalBox Milestone 2a 自测入口（由 GalBox 编写，非官方文件）
+//
+// 仿官方 startup.tjs 的调用形态 Scripts.execStorage(...)，但指向纯 TJS2 的
+// 官方 system/Utils.tjs。官方 startup.tjs 指向 system/Initialize.tjs，
+// 后者会连环依赖 Layer / Window / System 等尚未移植的原生类，M2a 阶段必然失败。
+// 这个探针用来单独证明「原生类 Scripts.execStorage → 宿主读包内 .tjs → TJS2 执行」
+// 这条官方启动链的第一段已经打通。
+Scripts.execStorage("system/Utils.tjs");

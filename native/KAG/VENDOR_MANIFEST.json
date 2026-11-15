@@ -1,0 +1,36 @@
+{
+  "milestone": "M2a",
+  "upstream": "jeeb/kirikiri2",
+  "branch": "master",
+  "source_root": "kag3/template/",
+  "retrieved": "2026-11-15",
+  "encoding": "UTF-8 with CRLF (upstream original, byte-for-byte)",
+  "license_note": "KAG3 template scripts carry their own header: 'Copyright (C) 2001-2009, W.Dee  改変・配布は自由です' (free to modify and redistribute). This differs from the TJS2 core dual license; see ../TJS2/LICENSE.txt for the core.",
+  "files": [
+    {
+      "path": "startup.tjs",
+      "source": "kag3/template/startup.tjs",
+      "bytes": 288,
+      "sha256": "574a22311275ec851d5ae1243782cd904b24a9f343a2db3c1de656ee720b710a",
+      "note": "Official entry. Single effective line: Scripts.execStorage(\"system/Initialize.tjs\"); Proves the KAG boot chain starts from a TJS2 native class, not from KAG itself."
+    },
+    {
+      "path": "system/Utils.tjs",
+      "source": "kag3/template/system/Utils.tjs",
+      "bytes": 3940,
+      "sha256": "21a9b8258757fdd1455d7b74c414c10c14485f2725963634f9925cc4df612510",
+      "note": "Pure TJS2 official system script: property block, functions, '<->' swap operator, Japanese comments. Used by test_m2a.cpp as the real script GalBox must execute."
+    }
+  ],
+  "galbox_authored": [
+    {
+      "path": "m2a_probe_startup.tjs",
+      "note": "Not from upstream. Mirrors the official startup call form but points at system/Utils.tjs so M2a can be verified without the unported KAG native classes."
+    }
+  ],
+  "not_vendored_yet": [
+    "kag3/template/system/Initialize.tjs and the other 26 system/*.tjs (448,729 B total) — need Layer/Window/System/Storages native classes first (M2b/M2c)",
+    "kirikiri2/src/plugins/win32/KAGParserEx/ (KAGParser.cpp 83 KB) — needs tp_stub platform layer",
+    "kirikiri2/src/core/base/{ScriptMgnIntf,StorageIntf,EventIntf}.cpp — official implementation of Scripts/Storages/events, currently replaced by a minimal GalBox implementation"
+  ]
+}

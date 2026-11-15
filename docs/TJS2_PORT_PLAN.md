@@ -3,6 +3,8 @@
 > 状态（2026-11-15 更新）：**路线 A 已确认（完整移植官方 TJS2 + KAG）**。
 > M0 ✅（run #11）、M1a ✅（run #13）、M1b ✅（run #15）、
 > **M1c ✅（run #18 全绿）**：app 内第一次真的调用 TJS2。
+> **M2a 进行中**：vendoring 官方 KAG3 系统脚本 + 补齐 `Scripts.execStorage` 原生类，
+> 让 TJS2 能执行包内 `.tjs` 脚本（官方启动链第一段）。
 > 交付包 `dist/GalBoxNative-adhoc-M1c-773cf357.ipa`（Mach-O arm64）。
 > 早期"网络被代理拦截"的判断**已推翻**：沙盒默认无代理变量，是我手动 `export`
 > 了失效的 `127.0.0.1:54662` 才导致 `http=000`；直连即可。上游仓库也从
@@ -50,11 +52,30 @@ GalBox 缺的是"程序语言那一半"。手写补 TJS2 等于从零造一门�
   - **应用路径 / 本地化**：返回 Documents、bundle 路径、`TVPGetLanguage`。
 - ✅ 出口：TJS2 能跑真实脚本，能用 `TVPPrint` 输出、能 `openStorage` 读 xp3 内文件。
 
-### Milestone 2 — KAG 层（移植官方 KAG 插件）
-- 拉取 `kirikiri2/src/plugins/win32/kag/` 的 KAG 解析器/播放器 + 游戏的 `system/` 脚本（`System.tjs` 等）。
-- 实现 **KAG→渲染/音频宿主回调**（GalBox 现有 Swift/ObjC++ 层即渲染/音频后端）：KAG 每帧把文本/图片/音频指令推给 `GameViewController`。
-- 启动改为：检测到 `startup.tjs` 时由 TJS2 走官方启动路径加载 KAG，而非 GalBox 手写解释器。
-- ✅ 出口：一个真实 KAG 游戏（如内置 demo 升级为用 KAG 跑）能从头播到尾；`[iscript]` 块不再被丢弃。
+### Milestone 2 — KAG 层（已按官方源码重新拆分）
+
+**⚠️ 早期写法有误**：不存在 `src/plugins/win32/kag/`；KAG 的 C++ 解析器在
+`src/plugins/win32/KAGParserEx/`（`KAGParser.cpp` 83 KB），而且 KAG3 的**系统脚本
+本来就在官方仓库里**：`kag3/template/system/*.tjs`（28 个 / 448,729 B）。
+官方 `kag3/template/startup.tjs` 只有一行有效代码：
+`Scripts.execStorage("system/Initialize.tjs");` —— 即启动链的第一环是一个
+**TJS2 原生类**，不是 KAG 解析器。完整规模：`src/core` 4,120 文件 / 38.7 MB，
+`tp_stub.h` 486 KB，`LayerIntf.cpp` 293 KB，且整体绑 Windows。
+⇒ 一轮推不完，拆成三段：
+
+- **M2a（本轮）**：vendoring 官方 `startup.tjs` + 纯 TJS2 的 `system/Utils.tjs`；
+  在 `HostBridge.cpp` 注册原生静态类 `Scripts` 实现 `execStorage`，
+  让 TJS2 经宿主读流加载并执行包内 `.tjs`（含递归）。
+  ✅ 出口：`test_m2a.cpp` 用目录模式归档真跑官方 `Utils.tjs`
+  （`intrandom(5,5)==5`），iOS 侧 `strings` 校验 `M2A_SCRIPTS_EXEC_STORAGE` 进包。
+- **M2b**：补 `Storages` / `System` 等原生类 + `Initialize.tjs` 依赖链，
+  让官方 `startup.tjs` 一路执行到 KAG 初始化；接 iOS 事件队列
+  （run loop / CADisplayLink）。⚠️ 执行必须放后台队列，不能占主线程。
+- **M2c**：`KAGParserEx` / `KAGParser` 原生类 + KAG→渲染/音频宿主回调面，
+  把 `GameViewController` 接到官方 KAG 播放循环，取代手写 `KagEngine`。
+  ✅ 出口：一个真实 KAG 游戏能从头播到尾；`[iscript]` 块不再被丢弃。
+
+详见 `native/KAG/README.md` 与 `native/KAG/VENDOR_MANIFEST.json`。
 
 ### Milestone 3 — 资源解码
 - TLG/TPP → `CGImage`；WAV/OGG → `AVAudioPlayer`/`AudioQueue`；视频 → `AVPlayer`（替换 DirectShow）；字符编码检测（Shift-JIS/EUC-JP/UTF-8）。
@@ -141,16 +162,20 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
 **无阻塞项**：网络直连可用；`push_via_api.py` 走 Git Data API 原子提交（git 协议仍被墙）。
 
 **下一步（按序）**
-1. **M2**：vendoring `src/plugins/win32/kag/`，实现 KAG 宿主回调面 + 事件队列
-   （iOS run loop / CADisplayLink），这是工作量最高的里程碑，需再拆细。
-   M2 的宿主回调面建议继续走 `HostBridge` 这种「纯 C 边界 + C++ 适配层」结构，
-   不要把官方 `tp_stub` 头直接暴露给 ObjC++/Swift。
+1. **M2b**：vendoring `Initialize.tjs` 及其依赖链、补 `Storages` / `System` 原生类、
+   接 iOS 事件队列（run loop / CADisplayLink）。宿主回调面继续走
+   `HostBridge` 这种「纯 C 边界 + C++ 适配层」结构，不要把官方 `tp_stub` 头
+   直接暴露给 ObjC++/Swift。
    ⚠️ app 已编译 `XP3Archive.cpp`，宿主层**只能链 `HostStreams_ios.o` /
    `HostBridge_ios.o`**，勿重复打包 XP3Archive.o。
-2. **M3/M4**：TLG/TPP/WAV/OGG 解码、视频换 AVFoundation、产品化切换。
-3. **M1c 之后仍需验证的边界**：`startup.tjs` 依然不会被执行 —— TJS2 引擎能跑，
-   但商业游戏的系统脚本依赖 KAG 插件层（M2）；此时界面文案已改为准确表述，
-   不再说「内核未实现 TJS2」。
+   ⚠️ 商业 `startup.tjs` 的执行必须放后台队列（Initialize.tjs 可能长循环/等待），
+   且 M2b 前会在缺原生类处抛异常，切勿在主线程同步调用。
+2. **M2c**：`KAGParserEx` / `KAGParser` 原生类 + 渲染/音频回调面，取代手写 `KagEngine`。
+3. **M3/M4**：TLG/TPP/WAV/OGG 解码、视频换 AVFoundation、产品化切换。
+
+**当前边界**：`startup.tjs` 在 app 里仍**不会自动执行** —— 引擎已具备
+`Scripts.execStorage`（M2a），但商业游戏系统脚本依赖 KAG 插件层（M2b/M2c）。
+界面文案已改为准确表述，不再说「内核未实现 TJS2」。
 
 **踩坑记录**：
 - Windows 工作区的 `.sh` 易带 CRLF，macOS bash 3.2 会把

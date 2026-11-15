@@ -1,11 +1,14 @@
-// HostBridge.cpp — Milestone 1c：把官方 TJS2 引擎接进 iOS app 的适配层
+// HostBridge.cpp — Milestone 1c / 2a：把官方 TJS2 引擎接进 iOS app 的适配层
 //
-// 这一层是「app 内第一次真的跑 TJS2」的地方。M1b 只证明 iOS 链接器能解析
-// TJS2 符号；M1c 要求：
+// M1b 只证明 iOS 链接器能解析 TJS2 符号；M1c 要求：
 //   1) 打开游戏包时安装宿主（4 个流工厂桥到 XP3Archive/Documents/bundle）；
 //   2) 构造 tTJS 引擎、求值表达式；
 //   3) 通过 TJS2 脚本 Array.load / Array.save 真正回调宿主读写；
 //   4) 把计数与结果以 JSON 送回 Swift UI。
+//
+// M2a 再往前一步：注册官方启动链的第一个原生静态类 `Scripts`，实现
+// `Scripts.execStorage(path)` —— 官方 startup.tjs 唯一做的事就是调它。
+// 这让 TJS2 能从游戏包读 .tjs 脚本并递归执行，而不只是 eval 表达式。
 //
 // 由 build_tjs2_test.sh（macOS host，真跑自测）与 build_tjs2_ios.sh
 // （iphoneos arm64，编 .o 供 app 链接）用同一套 flags 编译。
@@ -14,6 +17,8 @@
 
 #include "tjsCommHead.h"
 #include "tjs.h"
+#include "tjsNative.h"
+#include "tjsErrorDefs.h"
 #include "HostInterface.hpp"
 #include "XP3Archive.hpp"
 
@@ -22,6 +27,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+
+// 官方 TJS_BEGIN_NATIVE_METHOD_DECL 等宏展开时使用未限定的 tjs_error /
+// tTJSVariant / TJSCreateNativeClassMethod，因此需要在本编译单元引入 TJS 命名空间。
+using namespace TJS;
 
 namespace {
 
@@ -53,6 +62,30 @@ std::wstring Utf8ToWide(const char *s) {
         for (int i = 0; i < extra && (*p & 0xC0) == 0x80; ++i)
             cp = (cp << 6) | (*p++ & 0x3F);
         out.push_back(static_cast<wchar_t>(cp));
+    }
+    return out;
+}
+
+std::string WideToUtf8(const wchar_t *s) {
+    std::string out;
+    if (!s) return out;
+    while (*s) {
+        uint32_t cp = static_cast<uint32_t>(*s++);
+        if (cp <= 0x7F) {
+            out.push_back(static_cast<char>(cp));
+        } else if (cp <= 0x7FF) {
+            out.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+            out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+        } else if (cp <= 0xFFFF) {
+            out.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+            out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+        } else {
+            out.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+            out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+        }
     }
     return out;
 }
@@ -101,6 +134,94 @@ std::string MakeResult(bool ok, const char *reason, long long evalValue,
     s += ",\"reason\":\"" + JsonEscape(reason ? reason : "") + "\"";
     s += "}";
     return s;
+}
+
+std::string MakeExecResult(bool ok, const char *reason, const char *entry,
+                           const char *probe, long long probeValue,
+                           unsigned readDelta, unsigned execCalls) {
+    std::string s = "{\"ok\":";
+    s += ok ? "true" : "false";
+    s += ",\"entry\":\"" + JsonEscape(entry ? entry : "") + "\"";
+    s += ",\"probe\":\"" + JsonEscape(probe ? probe : "") + "\"";
+    s += ",\"probeValue\":" + std::to_string(probeValue);
+    s += ",\"hostReadDelta\":" + std::to_string(readDelta);
+    s += ",\"execStorageCalls\":" + std::to_string(execCalls);
+    s += ",\"build\":\"" + std::string(kBuildTag) + "\"";
+    s += ",\"kag\":\"M2A_SCRIPTS_EXEC_STORAGE\"";
+    s += ",\"error\":\"" + JsonEscape(reason ? reason : "") + "\"";
+    s += "}";
+    return s;
+}
+
+// ---- M2a：官方启动链的第一个原生类 Scripts -------------------------------
+// kag3/template/startup.tjs 的唯一有效语句是
+//     Scripts.execStorage("system/Initialize.tjs");
+// 官方实现在 kirikiri2/src/core/base/ScriptMgnIntf.cpp（绑 tp_stub / Windows）。
+// 这里给最小 iOS 实现：从宿主读脚本 → 交给同一个 tTJS 递归执行。
+tTJS *gActiveEngine = nullptr;
+std::string gLastScriptError;
+unsigned gExecStorageCalls = 0;
+
+class tTJSNC_Scripts : public tTJSNativeClass {
+public:
+    tTJSNC_Scripts() : tTJSNativeClass(TJS_W("Scripts")) {
+        TJS_BEGIN_NATIVE_MEMBERS(Scripts)
+        TJS_DECL_EMPTY_FINALIZE_METHOD
+
+        TJS_BEGIN_NATIVE_METHOD_DECL(execStorage)
+        {
+            if (numparams < 1) return TJS_E_BADPARAMCOUNT;
+            ttstr name(*param[0]);
+            ttstr mode;
+            if (numparams >= 2 && param[1]->Type() != tvtVoid)
+                mode = *param[1];
+
+            iTJSTextReadStream *stream = TJSCreateTextStreamForRead(name, mode);
+            if (!stream) {
+                gLastScriptError = "stream factory returned NULL for " +
+                                   WideToUtf8(name.c_str());
+                return TJS_E_FAIL;
+            }
+            tTJSString body;
+            try {
+                stream->Read(body, 0);
+                stream->Destruct();
+            } catch (...) {
+                try { stream->Destruct(); } catch (...) {}
+                gLastScriptError = "host read failed for " + WideToUtf8(name.c_str());
+                return TJS_E_FAIL;
+            }
+            if (!gActiveEngine) {
+                gLastScriptError = "no active TJS2 engine";
+                return TJS_E_FAIL;
+            }
+            try {
+                gActiveEngine->ExecScript(body.c_str(), result, NULL,
+                                          name.c_str(), 0);
+                ++gExecStorageCalls;
+            } catch (...) {
+                gLastScriptError = "exception in execStorage(" +
+                                   WideToUtf8(name.c_str()) + ")";
+                return TJS_E_FAIL;
+            }
+            return TJS_S_OK;
+        }
+        TJS_END_NATIVE_STATIC_METHOD_DECL(execStorage)
+        TJS_END_NATIVE_MEMBERS
+    }
+private:
+    static tjs_uint32 ClassID;
+};
+tjs_uint32 tTJSNC_Scripts::ClassID = (tjs_uint32)-1;
+
+void RegisterScriptsClass(tTJS *engine) {
+    iTJSDispatch2 *global = engine->GetGlobalNoAddRef();
+    if (!global) return;
+    iTJSDispatch2 *dsp = new tTJSNC_Scripts();
+    tTJSVariant val;
+    val = tTJSVariant(dsp, NULL);
+    dsp->Release();
+    global->PropSet(TJS_MEMBERENSURE, TJS_W("Scripts"), NULL, &val, global);
 }
 
 }  // namespace
@@ -203,4 +324,88 @@ extern "C" char *GalBoxTJS2SmokeTest(const char *probeFile) {
     return DupString(MakeResult(ok, reason.c_str(), evalValue,
                                 probeFile ? probeFile : "",
                                 readDelta, writeDelta));
+}
+
+// M2a：执行游戏包内的 .tjs 入口脚本。
+// 与 M1c 的 SmokeTest 不同，这里不是 eval 一段写死的表达式，而是
+// ① 经宿主读流拿到脚本正文 → ② ExecScript → ③ 脚本里的
+// Scripts.execStorage(...) 再经宿主读流加载下一个 .tjs 并递归执行。
+// probeExpression 可选：执行完后求值，用来证明被加载脚本里的函数确实可用。
+extern "C" char *GalBoxTJS2ExecScript(const char *entryName,
+                                      const char *probeExpression) {
+    if (!galbox::host::IsInstalled())
+        return DupString(MakeExecResult(false, "host not installed",
+                                        entryName, probeExpression, -1, 0, 0));
+    if (!entryName || !*entryName)
+        return DupString(MakeExecResult(false, "empty entry script name",
+                                        "", probeExpression, -1, 0, 0));
+
+    const unsigned readsBefore = galbox::host::ReadCallCount();
+    gActiveEngine = nullptr;
+    gLastScriptError.clear();
+    gExecStorageCalls = 0;
+    long long probeValue = -1;
+    bool probeRan = false;
+    std::string reason;
+    tTJS *engine = nullptr;
+
+    try {
+        engine = new tTJS();
+        gActiveEngine = engine;
+        RegisterScriptsClass(engine);
+
+        std::wstring entryW = Utf8ToWide(entryName);
+        ttstr entry(entryW.c_str());
+        iTJSTextReadStream *st = TJSCreateTextStreamForRead(entry, ttstr());
+        if (!st) {
+            reason = "cannot open entry script";
+        } else {
+            tTJSString body;
+            try {
+                st->Read(body, 0);
+                st->Destruct();
+            } catch (...) {
+                try { st->Destruct(); } catch (...) {}
+                reason = "failed to read entry script";
+            }
+            if (reason.empty()) {
+                try {
+                    engine->ExecScript(body.c_str(), NULL, NULL,
+                                       entry.c_str(), 0);
+                } catch (...) {
+                    reason = gLastScriptError.empty()
+                           ? "exception while executing entry script"
+                           : gLastScriptError;
+                }
+                if (!gLastScriptError.empty()) reason = gLastScriptError;
+            }
+        }
+
+        if (reason.empty() && probeExpression && *probeExpression) {
+            try {
+                std::wstring expr = Utf8ToWide(probeExpression);
+                tTJSVariant r;
+                engine->EvalExpression(expr.c_str(), &r, NULL,
+                                       TJS_W("m2a-probe"), 0);
+                probeValue = static_cast<long long>(r.AsInteger());
+                probeRan = true;
+            } catch (...) {
+                reason = "probe expression threw (loaded script functions unavailable?)";
+            }
+        }
+    } catch (...) {
+        reason = "tTJS construction threw";
+    }
+    if (engine) {
+        try { engine->Release(); }
+        catch (...) { if (reason.empty()) reason = "tTJS::Release threw"; }
+    }
+    gActiveEngine = nullptr;
+
+    const unsigned readDelta = galbox::host::ReadCallCount() - readsBefore;
+    bool ok = reason.empty();
+    if (probeExpression && *probeExpression && !probeRan) ok = false;
+    return DupString(MakeExecResult(ok, reason.c_str(), entryName,
+                                    probeExpression, probeValue,
+                                    readDelta, gExecStorageCalls));
 }

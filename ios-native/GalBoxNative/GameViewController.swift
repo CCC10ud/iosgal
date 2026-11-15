@@ -253,7 +253,7 @@ final class GameViewController: UIViewController {
         guard let name = scriptName, let data = GBEngineBridge.data(forFile: name),
               let text = String(data: data, encoding: .utf8) else {
             if isTJS2 {
-                showError("检测到 TJS2 启动脚本（startup.tjs）。TJS2 引擎已可启动，但 KAG 层（Milestone 2）尚未移植，暂不能执行 startup.tjs；包内也没有可直接播放的 .ks 剧本。")
+                showError("检测到 TJS2 启动脚本（startup.tjs）。TJS2 引擎已可启动，并打通了官方启动链第一段 Scripts.execStorage（M2a，能执行包内 .tjs 脚本）；但 KAG 系统层（Initialize.tjs 及 Layer / Window / System 等原生类，M2b）尚未移植，商业游戏仍无法运行。包内也没有可直接播放的 .ks 剧本。")
             } else {
                 showError("包内没有可运行的 .ks 剧本")
             }

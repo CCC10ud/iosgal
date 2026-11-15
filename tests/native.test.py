@@ -268,6 +268,49 @@ for tok, desc in [("HostStreams_ios.o", "宿主流 .o 进 app 链接"),
     ok(tok in sh, "build_native.sh: " + desc)
 ok("M1C_HOST_v1" in wf, "CI 核验 app 二进制含 M1c 标记（不只是链接成功）")
 
+print("\n[9] Milestone 2a — 官方 KAG3 启动链第一段")
+kag_man = json.loads(read("native/KAG/VENDOR_MANIFEST.json"))
+kag_readme = read("native/KAG/README.md")
+official_startup = read("native/KAG/src/startup.tjs")
+official_utils = read("native/KAG/src/system/Utils.tjs")
+probe_startup = read("native/KAG/src/m2a_probe_startup.tjs")
+m2a_test = read("native/Host/test_m2a.cpp")
+
+for item in kag_man["files"]:
+    rel = "native/KAG/src/" + item["path"]
+    b = raw(rel)
+    ok(len(b) == item["bytes"] and hashlib.sha256(b).hexdigest() == item["sha256"],
+       "官方 KAG3 脚本逐字节保真: " + item["path"])
+ok("jeeb/kirikiri2" in kag_readme and "KAGParserEx" in kag_readme
+   and "kag3/template/system" in kag_readme and "404" in kag_readme,
+   "KAG README 已更正上游仓库名与真实目录结构")
+ok('Scripts.execStorage("system/Initialize.tjs")' in official_startup,
+   "官方 startup.tjs 的唯一启动动作是原生类 Scripts.execStorage")
+ok("function intrandom" in official_utils and "<->" in official_utils
+   and "property" in official_utils,
+   "vendored Utils.tjs 含 TJS2 特有语法（property / <-> 交换运算符）")
+ok('Scripts.execStorage("system/Utils.tjs")' in probe_startup,
+   "M2a 探针复刻官方调用形态且指向无依赖的 Utils.tjs")
+ok("tTJSNC_Scripts" in bridge_cpp
+   and "TJS_END_NATIVE_STATIC_METHOD_DECL(execStorage)" in bridge_cpp,
+   "注册官方启动链所需的 TJS2 原生静态类 Scripts")
+ok("GalBoxTJS2ExecScript" in bridge_cpp and "GalBoxTJS2ExecScript" in bridge_h,
+   "纯 C 边界暴露「执行包内 .tjs 入口脚本」")
+ok("M2A_SCRIPTS_EXEC_STORAGE" in bridge_cpp,
+   "M2a 二进制固定标记（CI strings 硬断言）")
+ok("probeValue\\\":5" in m2a_test or '"probeValue":5' in m2a_test,
+   "M2a 用官方 intrandom(5,5)==5 作实质判据（不靠读计数自证）")
+ok("M2A_RESULT=OK" in m2a_test and "isDirectoryMode()" in m2a_test,
+   "M2a 自测走 Kirikiri 的 Data 文件夹形态并有通过标记")
+ok("test_m2a.cpp" in test_sh and "m2a_game" in test_sh
+   and "M2A_RESULT=OK" in test_sh,
+   "CI 在 macOS host 上真跑官方 KAG3 脚本")
+ok("M2A_SCRIPTS_EXEC_STORAGE" in wf, "CI 核验 M2a 适配层真的进 app 二进制")
+ok("tjs2ExecStartup" in objc_h and "tjs2ExecStartup" in objc_mm,
+   "app 暴露官方 startup.tjs 诊断入口")
+ok("GBEngineBridge.tjs2ExecStartup()" not in swift_vc,
+   "不自动执行商业 startup.tjs（避免主线程长循环 / 缺类异常崩溃）")
+
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
 sys.exit(0 if F == 0 else 1)

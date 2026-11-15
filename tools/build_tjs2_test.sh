@@ -2,6 +2,7 @@
 # build_tjs2_test.sh — 编译官方 TJS2 核心为静态库并运行 eval 自测（Milestone 0）
 #                      + 编译 GalBox 宿主层并真跑 XP3 文件读取自测（Milestone 1a）
 #                      + 真跑 app 侧纯 C 边界 HostBridge（Milestone 1c）
+#                      + 真跑官方 KAG3 系统脚本经 Scripts.execStorage（Milestone 2a）
 #
 # 由 CI 在 xcodebuild 之前调用。设计原则：
 #   - 源码尚未 vendoring 时直接跳过（exit 0），绝不破坏现有出包链路。
@@ -127,6 +128,35 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m1c.cpp" ]; then
     fi
   else
     echo "[tjs2] M1c 自测链接失败:"; cat "$OUT/link_m1c.log"; exit 1
+  fi
+fi
+
+# ---- Milestone 2a: 官方 KAG3 系统脚本经 Scripts.execStorage 真跑 ----------
+# 用「目录模式归档」造一个最小游戏：startup.tjs 调 Scripts.execStorage，
+# 被加载的 system/Utils.tjs 是官方 KAG3 原文（日文注释 / property / <->）。
+KAG="$ROOT/native/KAG"
+if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2a.cpp" ] \
+   && [ -f "$KAG/src/system/Utils.tjs" ] && [ -f "$KAG/src/m2a_probe_startup.tjs" ]; then
+  M2A_GAME="$OUT/m2a_game"
+  mkdir -p "$M2A_GAME/system"
+  cp "$KAG/src/m2a_probe_startup.tjs" "$M2A_GAME/startup.tjs"
+  cp "$KAG/src/system/Utils.tjs" "$M2A_GAME/system/Utils.tjs"
+
+  echo "[tjs2] M2a: 编译并运行官方 KAG3 脚本自测（Scripts.execStorage）"
+  if clang++ -std=c++14 -O1 -fexceptions -DTJS_NO_REGEXP -DTJS2_POSIX \
+        -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
+        "$HOST/test_m2a.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
+        "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
+        -lz -liconv -lpthread -o "$OUT/tjs2test_m2a" 2>"$OUT/link_m2a.log"; then
+    OUTPUT_M2A=$("$OUT/tjs2test_m2a" "$M2A_GAME" "$OUT" 2>&1)
+    echo "$OUTPUT_M2A" | sed 's/^/[tjs2]   /'
+    if echo "$OUTPUT_M2A" | grep -q "M2A_RESULT=OK"; then
+      echo "[tjs2] M2a 自测通过（官方 KAG3 Utils.tjs 经 TJS2 真跑，intrandom(5,5)==5）"
+    else
+      echo "[tjs2] M2a 自测未通过"; exit 1
+    fi
+  else
+    echo "[tjs2] M2a 自测链接失败:"; cat "$OUT/link_m2a.log"; exit 1
   fi
 fi
 exit 0
