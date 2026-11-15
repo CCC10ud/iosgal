@@ -110,19 +110,29 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
 ## 7. 当前状态与下一步
 
 **已完成**
-- M0：官方 TJS2 核心 vendoring + 6 类 POSIX 补丁 + `libtjs2.a` / `eval` 自测（run #11 全绿）。
-- M1a：宿主契约对齐官方 + 4 个流工厂桥到 XP3Archive（本轮推送，CI 验证中）。
+- **M0** ✅（run #11）：官方 TJS2 核心 vendoring + 6 类 POSIX 补丁 + `libtjs2.a` / `eval` 自测。
+- **M1a** ✅（run #13）：宿主契约对齐官方 + 4 个流工厂桥到 XP3Archive；
+  实测 `Array.load via TJS2: host read calls 2 -> 3`，`M1_RESULT=OK`。
+- **M1b** ✅（run #15）：`xcrun --sdk iphoneos clang++ -arch arm64` 编出
+  `libtjs2_ios.a`（1,230,280 B / 35 objs，Mach-O arm64）+ `HostStreams_ios.o`；
+  `build_native.sh` 以 `-liconv -force_load` 注入 `OTHER_LDFLAGS`，Ld 目标
+  `arm64-apple-ios15.0`，`ARCHIVE SUCCEEDED`，app 二进制含 TJS2 符号。
 
 **无阻塞项**：网络直连可用；`push_via_api.py` 走 Git Data API 原子提交（git 协议仍被墙）。
 
 **下一步（按序）**
-1. **M1b**：用 `xcrun --sdk iphoneos clang++ -target arm64-apple-ios15.0`
-   编出 `libtjs2_ios.a` + `HostStreams.o`，通过 `OTHER_LDFLAGS` /
-   `HEADER_SEARCH_PATHS` 链接进 Xcode target；`GBEngineBridge` 加 TJS2 冒烟入口。
-   ⚠️ app 已编译 `XP3Archive.cpp`，宿主层**只能链 `HostStreams.o`**，勿重复打包 XP3Archive.o。
+1. **M1c**：在 app 内加一个真实的 TJS2 冒烟入口 —— `GBEngineBridge` 暴露
+   `+tjs2SmokeTest`，打开游戏包时 `Install(&gArchive, Documents, bundle)`，
+   跑 `eval` + `Array.load` 并把结果送到 UI/日志。需要给 Xcode target 加
+   `HEADER_SEARCH_PATHS`（指向 `native/TJS2/src` 与 `native/Host`）。
+   ⚠️ app 已编译 `XP3Archive.cpp`，宿主层**只能链 `HostStreams_ios.o`**，勿重复打包 XP3Archive.o。
 2. **M2**：vendoring `src/plugins/win32/kag/`，实现 KAG 宿主回调面 + 事件队列
    （iOS run loop / CADisplayLink），这是工作量最高的里程碑，需再拆细。
 3. **M3/M4**：TLG/TPP/WAV/OGG 解码、视频换 AVFoundation、产品化切换。
+
+**踩坑记录**：Windows 工作区的 `.sh` 易带 CRLF，macOS bash 3.2 会把
+`set -euo pipefail\r` 判为 `invalid option name`（run #14 失败根因）。
+`push_via_api.py` 已加自动 LF 守卫；所有 `.sh`/`.yml` 推送前统一 LF。
 
 **长期约束**：本机无 C++ 编译器，每个原生改动都必须靠 GitHub macOS runner 真编译验证；
 一次推送能验证的粒度要小，避免把多个未验证改动堆在一轮里。

@@ -48,7 +48,7 @@ ar rcs libtjs2.a *.o
 |---|---|---|
 | M0 | macOS clang 编出 `libtjs2.a` + `eval(1+1)==2` | run #11 全绿，`libtjs2.a` 1,229,824 B / 35 objs，TJS 2.4.28 |
 | M1a | TJS2 的 4 个流工厂桥到 XP3Archive，Mac runner 真跑 | 见 CI 日志 `M1_RESULT=OK` |
-| M1b | iOS arm64 编译链接进 app + app 内冒烟 | 待做 |
+| M1b | iOS arm64 编译链接进 app | run #15 ✅：`libtjs2_ios.a` 1,230,280 B / 35 objs（Mach-O arm64），`-force_load` 链进 app，`ARCHIVE SUCCEEDED` |
 | M2~M4 | KAG 插件 / 资源解码 / 产品化 | 见 `docs/TJS2_PORT_PLAN.md` |
 
 ⚠️ 本机（Windows 沙盒）**没有 C++ 编译器**，所有原生改动只能靠 GitHub macOS runner
