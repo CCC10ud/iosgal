@@ -103,21 +103,87 @@ final class LibraryViewController: UIViewController, UITableViewDataSource,
         present(picker, animated: true)
     }
 
+    // MARK: - import (background copy so the UI never freezes on big games)
+
+    private var importHUD: UIView?
+
+    private func showImportHUD() {
+        guard importHUD == nil else { return }
+        let hud = UIView()
+        hud.backgroundColor = UIColor.black.withAlphaComponent(0.62)
+        hud.translatesAutoresizingMaskIntoConstraints = false
+        let spinner = UIActivityIndicatorView(style: .large)
+        spinner.color = .white
+        spinner.startAnimating()
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        let label = UILabel()
+        label.text = "导入中…"
+        label.textColor = .white
+        label.font = .systemFont(ofSize: 14)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        hud.addSubview(spinner)
+        hud.addSubview(label)
+        view.addSubview(hud)
+        NSLayoutConstraint.activate([
+            hud.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            hud.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            hud.topAnchor.constraint(equalTo: view.topAnchor),
+            hud.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            spinner.centerXAnchor.constraint(equalTo: hud.centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: hud.centerYAnchor, constant: -12),
+            label.topAnchor.constraint(equalTo: spinner.bottomAnchor, constant: 10),
+            label.centerXAnchor.constraint(equalTo: hud.centerXAnchor)
+        ])
+        importHUD = hud
+    }
+
+    private func hideImportHUD() {
+        importHUD?.removeFromSuperview()
+        importHUD = nil
+    }
+
     func documentPicker(_ controller: UIDocumentPickerViewController,
                         didPickDocumentsAt urls: [URL]) {
         let fm = FileManager.default
-        for url in urls {
-            guard url.startAccessingSecurityScopedResource() else { continue }
-            defer { url.stopAccessingSecurityScopedResource() }
-            let dest = documentsURL().appendingPathComponent(url.lastPathComponent)
-            try? fm.removeItem(at: dest)
-            do {
-                try fm.copyItem(at: url, to: dest)
-            } catch {
-                showMessage("导入失败", error.localizedDescription)
+        // .zip archives are not opened directly; ask the user to unzip first.
+        let zips = urls.filter { $0.pathExtension.lowercased() == "zip" }
+        let valid = urls.filter { $0.pathExtension.lowercased() != "zip" }
+
+        showImportHUD()
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var copied = 0
+            var failed: String?
+            for url in valid {
+                guard url.startAccessingSecurityScopedResource() else { continue }
+                let ok = autoreleasepool { () -> Bool in
+                    guard let dest = self?.documentsURL()
+                        .appendingPathComponent(url.lastPathComponent) else { return false }
+                    do {
+                        try? fm.removeItem(at: dest)
+                        try fm.copyItem(at: url, to: dest)
+                        return true
+                    } catch {
+                        failed = error.localizedDescription
+                        return false
+                    }
+                }
+                url.stopAccessingSecurityScopedResource()
+                if ok { copied += 1 }
+            }
+            DispatchQueue.main.async {
+                self?.hideImportHUD()
+                self?.reload()
+                if let failed = failed {
+                    self?.showMessage("导入失败", failed)
+                } else if !zips.isEmpty {
+                    self?.showMessage("提示",
+                        "检测到 \(zips.count) 个 .zip 压缩包未导入。请先在电脑上解压成文件夹或 .xp3 文件，再导入。")
+                } else if copied == 0 {
+                    self?.showMessage("导入",
+                        "没有可导入的内容（请选择 .xp3 文件或解压后的游戏文件夹）。")
+                }
             }
         }
-        reload()
     }
 
     private func showMessage(_ title: String, _ msg: String) {

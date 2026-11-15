@@ -176,4 +176,16 @@ static NSDictionary<NSString *, id> *StepToDict(const galbox::Step &s) {
     return @"kag-script";
 }
 
++ (BOOL)hasTJS2Startup {
+    if (!gPackageOpen) return NO;
+    for (const auto &e : gArchive.entries()) {
+        NSString *low = [ToNS(e.name) lowercaseString];
+        if ([low isEqualToString:@"startup.tjs"] ||
+            [low hasSuffix:@"/startup.tjs"]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
 @end

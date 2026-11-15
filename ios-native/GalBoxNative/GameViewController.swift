@@ -213,6 +213,7 @@ final class GameViewController: UIViewController {
             return
         }
         let files = GBEngineBridge.fileList()
+        let isTJS2 = GBEngineBridge.hasTJS2Startup()
         toast("包内 \(files.count) 个文件 · Kirikiri XP3")
 
         var scriptName: String?
@@ -231,7 +232,11 @@ final class GameViewController: UIViewController {
         }
         guard let name = scriptName, let data = GBEngineBridge.data(forFile: name),
               let text = String(data: data, encoding: .utf8) else {
-            showError("包内没有可运行的 .ks 剧本")
+            if isTJS2 {
+                showError("检测到 TJS2 启动脚本（startup.tjs），但当前内核未实现 TJS2，且包内没有可直接运行的 .ks 剧本。这款游戏暂时无法运行。")
+            } else {
+                showError("包内没有可运行的 .ks 剧本")
+            }
             return
         }
         guard GBEngineBridge.loadScript(text) else {
@@ -239,6 +244,9 @@ final class GameViewController: UIViewController {
             return
         }
         render(GBEngineBridge.currentStep())
+        if isTJS2 {
+            toast("⚠️ 该游戏使用 TJS2 启动，部分初始化未执行，可能显示异常")
+        }
     }
 
     private func render(_ raw: [String: Any]) {

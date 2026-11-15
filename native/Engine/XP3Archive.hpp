@@ -7,6 +7,7 @@
 #pragma once
 #include <cstdint>
 #include <fstream>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -40,6 +41,9 @@ public:
     bool open(const std::string& path, std::string* err);
     void close();
     bool isOpen() const { return opened_; }
+    // True when `open` was given a folder and the archive is backed by loose
+    // files on disk (Kirikiri unpacked "Data folder" form) rather than a .xp3.
+    bool isDirectoryMode() const { return dirMode_; }
 
     size_t count() const { return entries_.size(); }
     const std::vector<XP3Entry>& entries() const { return entries_; }
@@ -58,6 +62,13 @@ private:
     bool parseIndex(const std::vector<uint8_t>& idx, std::string* err);
     bool fail(std::string* err, const std::string& msg);
 
+    // Directory ("Data folder") support, mirroring Kirikiri's acceptance of a
+    // folder as the game root. When a folder is opened we either delegate to the
+    // embedded data.xp3 (preferred) or build a virtual archive from loose files.
+    bool openDir(const std::string& dir, std::string* err);
+    void collectDir(const std::string& dir, const std::string& rel, int depth,
+                    std::string* err);
+
     std::ifstream file_;
     std::string path_;
     uint64_t fileSize_ = 0;
@@ -65,6 +76,11 @@ private:
     bool opened_ = false;
     std::vector<XP3Entry> entries_;
     std::vector<std::string> warnings_;
+
+    bool dirMode_ = false;
+    std::string dirRoot_;
+    std::map<std::string, std::string> dirFiles_;   // lowerName -> absolute path
+    std::map<std::string, std::string> dirBase_;     // lower basename -> absolute path
 };
 
 }  // namespace galbox

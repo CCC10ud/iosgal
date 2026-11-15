@@ -27,6 +27,10 @@ NS_ASSUME_NONNULL_BEGIN
 // Kirikiroid2-style signature detection: returns the engine id for a folder.
 + (NSString *)detectEngineAtPath:(NSString *)path NS_SWIFT_NAME(detectEngine(atPath:));
 
+// YES when the currently open package contains a TJS2 entry point (startup.tjs),
+// which this engine does not execute yet. Lets the UI warn instead of failing.
++ (BOOL)hasTJS2Startup NS_SWIFT_NAME(hasTJS2Startup());
+
 @end
 
 NS_ASSUME_NONNULL_END
