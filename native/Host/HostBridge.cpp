@@ -130,40 +130,63 @@ extern "C" char *GalBoxTJS2SmokeTest(const char *probeFile) {
     std::string reason;
     bool engineOk = false;
 
+    tTJS *engine = NULL;
     try {
-        tTJS *engine = new tTJS();
+        engine = new tTJS();
         tTJSVariant result;
 
-        engine->EvalExpression(TJS_W("1+2*3"), &result, NULL,
-                               TJS_W("m1c-eval"), 0);
-        evalValue = static_cast<long long>(result.AsInteger());
-
-        // 经 TJS2 脚本触发宿主「读」：Array.load 会调 TJSCreateTextStreamForRead。
-        if (probeFile && *probeFile) {
-            std::wstring script = L"var a = new Array(); a.load(\"";
-            std::wstring name = Utf8ToWide(probeFile);
-            for (size_t i = 0; i < name.size(); ++i) {
-                const wchar_t c = name[i];
-                if (c == L'"' || c == L'\\') script += L'\\';
-                if (c != L'\r' && c != L'\n') script += c;
-            }
-            script += L"\"); a.count;";
-            tTJSVariant loaded;
-            engine->ExecScript(script.c_str(), &loaded, NULL,
-                               TJS_W("m1c-load"), 0);
+        // 每段单独包 try：失败时精确报出是 eval / load / save 哪一步，
+        // 而不是笼统一句 "TJS2 exception"（run #17 就是被这句藏住了根因）。
+        try {
+            engine->EvalExpression(TJS_W("1+2*3"), &result, NULL,
+                                   TJS_W("m1c-eval"), 0);
+            evalValue = static_cast<long long>(result.AsInteger());
+            engineOk = (evalValue == 7);
+            if (!engineOk) reason = "eval(1+2*3) != 7";
+        } catch (...) {
+            reason = "eval threw";
         }
 
-        // 经 TJS2 脚本触发宿主「写」：Array.save 会调 TJSCreateTextStreamForWrite，
-        // 文件落在 Documents（存档路径），这也是 M2 存档能力的探针。
-        engine->ExecScript(
-            TJS_W("var b = new Array(\"galbox\",\"m1c\"); b.save(\"m1c_smoke.txt\");"),
-            NULL, NULL, TJS_W("m1c-save"), 0);
+        // 经 TJS2 脚本触发宿主「读」：Array.load 会调 TJSCreateTextStreamForRead。
+        if (reason.empty() && probeFile && *probeFile) {
+            try {
+                std::wstring script = L"var a = new Array(); a.load(\"";
+                std::wstring name = Utf8ToWide(probeFile);
+                for (size_t i = 0; i < name.size(); ++i) {
+                    const wchar_t c = name[i];
+                    if (c == L'"' || c == L'\\') script += L'\\';
+                    if (c != L'\r' && c != L'\n') script += c;
+                }
+                script += L"\"); a.count;";
+                tTJSVariant loaded;
+                engine->ExecScript(script.c_str(), &loaded, NULL,
+                                   TJS_W("m1c-load"), 0);
+            } catch (...) {
+                reason = "Array.load threw";
+            }
+        }
 
-        engine->Release();
-        engineOk = (evalValue == 7);
-        if (!engineOk) reason = "eval(1+2*3) != 7";
+        // 经 TJS2 脚本触发宿主「写」：Array.save 会调 TJSCreateTextStreamForWrite。
+        // 注意官方 Array 构造函数要求 numparams == 0（tjsArrayNI::Construct），
+        // 写 `new Array("x","y")` 会抛 TJS_E_BADPARAMCOUNT —— run #17 的失败根因。
+        // 正确写法是无参构造 + add()，这样写出的文件还非空，便于闭环核对。
+        if (reason.empty()) {
+            try {
+                engine->ExecScript(
+                    TJS_W("var b = new Array(); b.add(\"galbox\"); b.save(\"m1c_smoke.txt\");"),
+                    NULL, NULL, TJS_W("m1c-save"), 0);
+            } catch (...) {
+                reason = "Array.save threw";
+            }
+        }
     } catch (...) {
-        reason = "TJS2 exception during smoke test";
+        reason = "tTJS construction threw";
+    }
+    // 无论中途是否抛异常都要 Release：TJS2 的全局初始化有引用计数，
+    // 漏掉会污染后续 Uninstall / 再次启动的状态。
+    if (engine) {
+        try { engine->Release(); }
+        catch (...) { if (reason.empty()) reason = "tTJS::Release threw"; }
     }
 
     const unsigned readsAfter = galbox::host::ReadCallCount();

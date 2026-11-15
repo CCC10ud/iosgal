@@ -16,6 +16,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <string>
 
 static int Fail(const char *why, const char *json) {
@@ -61,6 +63,17 @@ int main(int argc, char **argv) {
     if (!Has(j1, "\"hostReadDelta\":1")) return Fail("Array.load did not hit host", j1);
     if (!Has(j1, "\"hostWriteDelta\":1")) return Fail("Array.save did not hit host", j1);
     if (!Has(j1, "M1C_HOST_v1")) return Fail("build tag missing", j1);
+
+    // 闭环：宿主写计数 +1 只证明回调发生，不等于数据真的落盘。
+    // 核对 Array.save 写出的内容，避免"计数自证"式的假通过。
+    std::ifstream saved((std::string(storage) + "/m1c_smoke.txt").c_str(),
+                        std::ios::binary);
+    const std::string body((std::istreambuf_iterator<char>(saved)),
+                           std::istreambuf_iterator<char>());
+    std::printf("[m1c] saved file: %zu bytes, body=%s\n",
+                body.size(), body.c_str());
+    if (body.find("galbox") == std::string::npos)
+        return Fail("Array.save did not persist content", j1);
     GalBoxTJS2Free(j1);
 
     // ---- 4) 收尾：卸载后必须回到失败态 ----------------------------------

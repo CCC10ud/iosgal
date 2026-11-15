@@ -1,8 +1,9 @@
 # GalBox → 完整 Kirikiri 运行时：移植方案与架构
 
 > 状态（2026-11-15 更新）：**路线 A 已确认（完整移植官方 TJS2 + KAG）**。
-> M0 ✅（run #11）、M1a ✅（run #13）、M1b ✅（run #15）、
-> **M1c 已实现，待 macOS runner 真编译验证**（app 内第一次真的调用 TJS2）。
+> M0 ✅（run #11）、M1a ✅（run #13）、M1b ✅（run #15）。
+> **M1c 已实现**：run #17 的 macOS host 自测抓出冒烟脚本的 Array 构造写法错误，
+> 已修正并补强落盘闭环，待 run #18 复验（app 内第一次真的调用 TJS2）。
 > 早期"网络被代理拦截"的判断**已推翻**：沙盒默认无代理变量，是我手动 `export`
 > 了失效的 `127.0.0.1:54662` 才导致 `http=000`；直连即可。上游仓库也从
 > `kikikracle/kirikiri2`（404）更正为 `jeeb/kirikiri2`。
@@ -145,9 +146,21 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
    但商业游戏的系统脚本依赖 KAG 插件层（M2）；此时界面文案已改为准确表述，
    不再说「内核未实现 TJS2」。
 
-**踩坑记录**：Windows 工作区的 `.sh` 易带 CRLF，macOS bash 3.2 会把
-`set -euo pipefail\r` 判为 `invalid option name`（run #14 失败根因）。
-`push_via_api.py` 已加自动 LF 守卫；所有 `.sh`/`.yml` 推送前统一 LF。
+**踩坑记录**：
+- Windows 工作区的 `.sh` 易带 CRLF，macOS bash 3.2 会把
+  `set -euo pipefail\r` 判为 `invalid option name`（run #14 失败根因）。
+  `push_via_api.py` 已加自动 LF 守卫；所有 `.sh`/`.yml` 推送前统一 LF。
+- **run #17（M1c 首次 CI 失败）**：冒烟脚本写了 `new Array("galbox","m1c")`，
+  但官方 `tTJSArrayNI::Construct` 要求 `numparams == 0`（`tjsArray.cpp:1002`），
+  直接抛 `TJS_E_BADPARAMCOUNT`，导致 `Array.save` 从未执行 → `hostWriteDelta=0`。
+  改成 `new Array(); b.add("galbox"); b.save(...)`。
+  同时发现两处诊断缺陷：① 整个 try 只报一句笼统的 "TJS2 exception"，
+  藏住了失败阶段；② 异常时 `engine->Release()` 被跳过。
+  现已改为 eval/load/save 三段独立 try + 收尾必 Release。
+  **闭环补强**：`test_m1c.cpp` 现在会打开 `m1c_smoke.txt` 核对内容含 `galbox`，
+  不再只靠「写计数 +1」自证落盘。
+- **判据铁律补充**：链接成功 / 回调计数增加都只是「线接上了」，
+  不等于数据真的落盘、更不等于游戏能跑；每加一层都要有独立可证伪的出口。
 
 **长期约束**：本机无 C++ 编译器，每个原生改动都必须靠 GitHub macOS runner 真编译验证；
 一次推送能验证的粒度要小，避免把多个未验证改动堆在一轮里。

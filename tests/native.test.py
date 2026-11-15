@@ -230,6 +230,15 @@ ok("tjs.h" in bridge_cpp and "HostInterface.hpp" in bridge_cpp
    "HostBridge.cpp 真正构造 TJS2 引擎并安装宿主")
 ok("a.load" in bridge_cpp and "b.save" in bridge_cpp,
    "冒烟脚本经 TJS2 触发宿主读/写回调")
+ok("new Array(\\\"" not in bridge_cpp and "b.add(" in bridge_cpp,
+   "Array 用无参构造 + add（官方 Construct 要求 numparams==0，run #17 踩坑）")
+ok("Array.load threw" in bridge_cpp and "Array.save threw" in bridge_cpp
+   and "eval threw" in bridge_cpp,
+   "异常按阶段分别定位，不笼统报 TJS2 exception")
+ok("if (engine) {" in bridge_cpp and "engine->Release()" in bridge_cpp,
+   "异常路径也保证 Release（不污染后续启动状态）")
+ok("m1c_smoke.txt" in m1c_test and "did not persist content" in m1c_test,
+   "M1c 自测核对写盘内容（计数 +1 不能自证落盘）")
 ok("M1C_HOST_v1" in bridge_cpp, "二进制里带 M1c 链接标记")
 ok("hostReadDelta" in bridge_cpp and "hostWriteDelta" in bridge_cpp,
    "冒烟结果回报宿主读/写计数")
