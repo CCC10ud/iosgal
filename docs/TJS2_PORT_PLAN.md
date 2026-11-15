@@ -3,9 +3,9 @@
 > 状态（2026-11-15 更新）：**路线 A 已确认（完整移植官方 TJS2 + KAG）**。
 > M0 ✅（run #11）、M1a ✅（run #13）、M1b ✅（run #15）、
 > **M1c ✅（run #18 全绿）**：app 内第一次真的调用 TJS2。
-> **M2a 进行中**：vendoring 官方 KAG3 系统脚本 + 补齐 `Scripts.execStorage` 原生类，
-> 让 TJS2 能执行包内 `.tjs` 脚本（官方启动链第一段）。
-> 交付包 `dist/GalBoxNative-adhoc-M1c-773cf357.ipa`（Mach-O arm64）。
+> **M2a ✅（run #20 全绿）**：vendoring 官方 KAG3 系统脚本 + 补齐
+> `Scripts.execStorage` 原生类，TJS2 已能执行包内 `.tjs` 脚本（官方启动链第一段）。
+> 交付包 `dist/GalBoxNative-adhoc-M2a-afe0d29a.ipa`（Mach-O arm64）。
 > 早期"网络被代理拦截"的判断**已推翻**：沙盒默认无代理变量，是我手动 `export`
 > 了失效的 `127.0.0.1:54662` 才导致 `http=000`；直连即可。上游仓库也从
 > `kikikracle/kirikiri2`（404）更正为 `jeeb/kirikiri2`。
@@ -133,6 +133,18 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
 ## 7. 当前状态与下一步
 
 **已完成**
+- **M2a** ✅（run #20 一次全绿）：官方 `kag3/template/startup.tjs` + `system/Utils.tjs`
+  逐字节 vendoring（UTF-8 + CRLF，SHA-256 见 `native/KAG/VENDOR_MANIFEST.json`）；
+  `HostBridge.cpp` 注册 TJS2 原生静态类 `Scripts` 实现 `execStorage`，
+  让 TJS2 经宿主读流加载并递归执行包内 `.tjs`。
+  **实测**：目录模式归档 `entries=2, dirMode=1`；
+  `{"ok":true,"entry":"startup.tjs","probe":"intrandom(5,5)","probeValue":5,
+  "hostReadDelta":2,"execStorageCalls":1}` — 官方 `Utils.tjs` 里的
+  `intrandom` 真的被 TJS2 执行并返回值（不是靠读计数自证）；
+  `M2A_RESULT=OK`；静态 181 PASS / 0 FAIL；`ARCHIVE SUCCEEDED`，
+  app 二进制 807,104 B，`strings` 命中 `M1C_HOST_v1` 与 `M2A_SCRIPTS_EXEC_STORAGE`。
+  ⚠️ app 里**仍不自动执行**商业 `startup.tjs`：M2b 前 `Initialize.tjs` 会因缺原生类抛异常，
+  且可能长循环/等待，放主线程有卡死风险；`+tjs2ExecStartup` 仅作诊断入口，接线须走后台队列。
 - **M0** ✅（run #11）：官方 TJS2 核心 vendoring + 6 类 POSIX 补丁 + `libtjs2.a` / `eval` 自测。
 - **M1b 校正**：run #15 的 `OTHER_LDFLAGS` **只 `-force_load` 了 `libtjs2_ios.a`**，
   `HostStreams_ios.o` 并没有进包；app 二进制里也没有任何 TJS2 调用点。

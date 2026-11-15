@@ -22,7 +22,7 @@
 
 ## M2 拆分
 
-- **M2a（本轮）**：vendoring 官方 `startup.tjs` + 纯 TJS2 的 `system/Utils.tjs`；
+- **M2a ✅（run #20 全绿）**：vendoring 官方 `startup.tjs` + 纯 TJS2 的 `system/Utils.tjs`；
   在 `HostBridge.cpp` 里注册 TJS2 原生静态类 `Scripts`，实现 `execStorage`，
   让 TJS2 能从游戏包读 `.tjs` 并递归执行。自测用目录模式归档真跑官方 `Utils.tjs`
   （含 `property` 块、`<->` 交换运算符、日文注释），探针 `intrandom(5,5) == 5`。
