@@ -167,10 +167,15 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
        `autoPathCount=11`、`debugNotices=3`、`tickCalls≥1`、
        `exceptionHandlerSet=true`、`appLock=false`、`fatalLine>0`、
        `fatalException` 含 `Config.tjs`、`lastEncoding=cp932`。
-       ⚠️ 实测 `fatalBlock` 是 **`startup.tjs:6`**（execStorage 调用点）而非
-       `Initialize.tjs` —— TJS2 把跨 execStorage 的异常按外层块上报。
-       所以断言只要求指向某个 `.tjs` 且行号有效，不写死文件。
-    B) 加一个**探针版** `Config.tjs`（只写 `config_version = kagVersion`，明确标注非官方）
+       ⚠️ run #26 实测：`fatalBlock` 报的是 **`startup.tjs:6`**（execStorage
+       调用点）而不是 `Initialize.tjs` 的真行号 —— 因为同一个失败会被捕获两次
+       （execStorage 内层抓到真异常，之后原生方法返回 `TJS_E_FAIL`，TJS2 又把它
+       转成笼统的 `Unknown failure : FFFFFFFF` 抛给外层），第二次无条件覆盖会
+       把精确定位冲掉。已改为「先存局部变量，再按不覆盖更具体信息提交」。
+       断言只要求指向某个 `.tjs` 且行号有效，不写死文件。
+    B) 加一个**探针版** `Config.tjs`（只写 `config_version = "3.29-dev.20071022"`，明确标注非官方）
+       （注意必须写字面量：`kagVersion` 是 `Initialize.tjs` 的**块内变量**，
+       TJS2 的 `var` 作用域是所在脚本块而非 global，跨块读必抛「成员未找到」）
        → 版本核对通过、跳过 `UpdateConfig.tjs`，执行推进到
        `System.createAppLock(System.exePath.replace(/[^A-Za-z]/g,'_'))`，
        因全局 `RegExp` 缺失而失败。断言 `execStorageAttempts=2` /

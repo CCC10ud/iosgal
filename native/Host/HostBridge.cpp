@@ -230,13 +230,22 @@ void PushDebugLine(const std::string &line, bool notice) {    if (notice) ++gDbg
 }
 
 // 必须在 catch 块内部调用（内部用 throw; 重新抛出当前异常来做分类）。
+//
+// 关键：**先捕获到局部变量，再按「不覆盖更具体信息」的原则提交**。
+// 因为同一个失败会被捕获两次：execStorage 内部先抓到真正的异常，
+// 之后原生方法返回 TJS_E_FAIL，TJS2 又把它转成一句笼统的
+// "Unknown failure : FFFFFFFF" 抛给外层。若第二次无条件覆盖，
+// 脚本名/行号会退化成调用点（run #26 实测 fatalBlock=startup.tjs:6，
+// 真正抛错的 Initialize.tjs 行号被冲掉）。
 void CaptureCurrentException() {
+    std::string msg, block, exc;
+    long long line = -1;
     try {
         throw;
     } catch (const TJS::eTJSScriptException &e) {
-        gFatalMessage = WideToUtf8(e.GetMessage().c_str());
-        if (e.GetBlockName()) gFatalBlock = WideToUtf8(e.GetBlockName());
-        gFatalLine = static_cast<long long>(e.GetSourceLine());
+        msg = WideToUtf8(e.GetMessage().c_str());
+        if (e.GetBlockName()) block = WideToUtf8(e.GetBlockName());
+        line = static_cast<long long>(e.GetSourceLine());
         // throw new Exception("...") 的正文在异常对象的 message 属性里。
         tTJSVariant &val = const_cast<TJS::eTJSScriptException &>(e).GetValue();
         if (val.Type() == tvtObject) {
@@ -245,24 +254,26 @@ void CaptureCurrentException() {
                 tTJSVariant m;
                 if (TJS_SUCCEEDED(obj->PropGet(0, TJS_W("message"), NULL, &m, obj)) &&
                     m.Type() == tvtString)
-                    gFatalException = WideToUtf8(ttstr(m).c_str());
+                    exc = WideToUtf8(ttstr(m).c_str());
             }
         }
     } catch (const TJS::eTJSScriptError &e) {
-        gFatalMessage = WideToUtf8(e.GetMessage().c_str());
-        if (e.GetBlockName()) gFatalBlock = WideToUtf8(e.GetBlockName());
-        gFatalLine = static_cast<long long>(e.GetSourceLine());
+        msg = WideToUtf8(e.GetMessage().c_str());
+        if (e.GetBlockName()) block = WideToUtf8(e.GetBlockName());
+        line = static_cast<long long>(e.GetSourceLine());
     } catch (const TJS::eTJS &e) {
-        // 这条分支拿到的常常是原生方法返回 TJS_E_FAIL 之后被 TJS2 转成的
-        // 笼统消息（"Unknown failure : FFFFFFFF"）。内层已经捕获过更具体的
-        // 内容时不要用它覆盖掉。
-        if (gFatalMessage.empty())
-            gFatalMessage = WideToUtf8(e.GetMessage().c_str());
+        msg = WideToUtf8(e.GetMessage().c_str());
     } catch (const TJS::eTJSSilent &) {
-        gFatalMessage = "silent exception unwind";
+        msg = "silent exception unwind";
     } catch (...) {
-        gFatalMessage = "unknown C++ exception";
+        msg = "unknown C++ exception";
     }
+
+    if (gFatalMessage.empty() && !msg.empty()) gFatalMessage = msg;
+    if (gFatalBlock.empty() && !block.empty()) gFatalBlock = block;
+    if (gFatalLine < 0 && line > 0) gFatalLine = line;
+    if (gFatalException.empty() && !exc.empty()) gFatalException = exc;
+
     if (gFatalMessage.empty() && gFatalException.empty())
         gFatalMessage = "exception with empty message";
 }

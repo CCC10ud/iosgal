@@ -422,8 +422,11 @@ for tok in ("M2C_RESULT=OK", "m2c_game_cfg", "M2C_SYSTEM_DEBUG",
     ok(tok in m2c_test, "M2c 自测含实质判据: " + tok)
 ok('ok\\":false' in m2c_test,
    "M2c 自测明确断言 ok=false（本轮不假装 Initialize.tjs 跑通）")
-ok("config_version = kagVersion" in m2c_cfg,
+ok('config_version = "3.29-dev.20071022"' in m2c_cfg,
    "探针 Config.tjs 只做版本核对，用于把执行推到 createAppLock")
+_cfg_code = [l for l in m2c_cfg.splitlines() if not l.strip().startswith("//")]
+ok(all("kagVersion" not in l for l in _cfg_code),
+   "探针不引用 kagVersion（它是 Initialize.tjs 的块内变量，跨块读必抛错）")
 ok("不是**官方文件**" in m2c_cfg or "不是" in m2c_cfg,
    "探针 Config.tjs 明确标注为非官方文件")
 ok("test_m2c.cpp" in test_sh and "M2C_RESULT=OK" in test_sh

@@ -11,4 +11,10 @@
 //     if(!System.createAppLock(System.exePath.replace(/[^A-Za-z]/g, '_')))
 // 那一行含正则字面量，而当前编译开了 TJS_NO_REGEXP（未注册全局 RegExp），
 // 所以在那里必然失败 —— 这正是本轮要如实测出来的「下一个阻塞点」。
-config_version = kagVersion;
+//
+// ⚠️ 必须写字面量，不能写 `config_version = kagVersion;`：
+// Initialize.tjs 顶部的 `var kagVersion = "3.29-dev.20071022";` 是**块内变量**
+// （TJS2 的 var 作用域是所在脚本块，不是 global），Config.tjs 是另一个块，
+// 读 kagVersion 会抛「成员未找到」—— run #26 就是这么红的。
+// 官方 Config.tjs 同样写的是字面量版本号。
+config_version = "3.29-dev.20071022";
