@@ -7,16 +7,33 @@
 */
 //---------------------------------------------------------------------------
 // Regular Expression Support
+//
+// ⚠️ GalBox 重写（Milestone 2d）：**不是上游原文**。
+//
+// 上游实现绑 boost::reg_expression（regex_grep / match_results / std::bind1st），
+// 本文件用标准库 std::basic_regex 重写，但保持与上游**完全一致的对外语义**：
+//   - 类名 tTJSNC_RegExp / 实例 tTJSNI_RegExp / 工厂 TJSCreateRegExpClass()
+//   - 成员：_compile / compile / test / match / exec / replace / split
+//           start / index / lastIndex / input / lastMatch / lastParen /
+//           leftContext / rightContext / matches / 静态 last
+//   - 标志：g（全局，下一轮从上次结束处继续）/ i（忽略大小写）/ l（本地化排序，
+//           std::regex 无对应，保持码点比较 —— 与上游 nocollate 一致）
+//   - 正则字面量走 tjsInterCodeGen 的 `new RegExp() ; _compile("//flags/pat")`，
+//     所以 _compile 必须能吃 "//flag/body" 这种内部表示。
+//
+// 与 boost 的已知差异（已在 test_m2d 里用判据覆盖）：
+//   1) boost 的 "." 默认**匹配换行**，ECMAScript 默认不匹配 → 编译前把字符类
+//      外的裸 '.' 翻译成 [\s\S]，还原上游行为；
+//   2) boost 支持 \Q...\E，ECMAScript 不支持 → 未实现（KAG 脚本里未出现）；
+//   3) replace 的替换串**不展开 $1**（上游就是这样，不是 JS 语义），保持一致。
 //---------------------------------------------------------------------------
 #include "tjsCommHead.h"
 
 #include "tjsRegExp.h"
 #include "tjsArray.h"
 
-#include <function.h>
-
-using namespace boost;
-
+#include <regex>
+#include <string>
 
 namespace TJS
 {
@@ -36,10 +53,10 @@ static tjs_uint32 TJSRegExpFlagToValue(tjs_char ch, tjs_uint32 prev)
 
 	if(ch == 0)
 	{
-		return regbase::normal|regbase::use_except| // default behavior
-			regbase::nocollate
-				// for portability, local collation rules are disabled by the default
-			;
+		// 上游是 regbase::normal|regbase::use_except|regbase::nocollate。
+		// std::regex 出错必抛 std::regex_error（等于 use_except），
+		// ECMAScript 语法最接近 TJS2/JS 的写法，字符范围按码点比较（等于 nocollate）。
+		return (tjs_uint32)std::regex_constants::ECMAScript;
 	}
 
 	switch(ch)
@@ -47,9 +64,9 @@ static tjs_uint32 TJSRegExpFlagToValue(tjs_char ch, tjs_uint32 prev)
 	case TJS_W('g'): // global search
 		prev|=globalsearch; return prev;
 	case TJS_W('i'): // ignore case
-		prev|=regbase::icase; return prev;
-	case TJS_W('l'): // use localized collation
-		prev &= ~regbase::nocollate; return prev;
+		prev|=(tjs_uint32)std::regex_constants::icase; return prev;
+	case TJS_W('l'): // use localized collation (std::regex 无对应，保持码点比较)
+		return prev;
 	default:
 		return prev;
 	}
@@ -70,72 +87,128 @@ static tjs_uint32 TJSGetRegExpFlagsFromString(const tjs_char *string)
 	return flag;
 }
 //---------------------------------------------------------------------------
-
-
-
-
-
-//---------------------------------------------------------------------------
-// predicating class for replace
-//---------------------------------------------------------------------------
-class tTJSReplacePredicator
+// boost 的 . 默认吃换行，ECMAScript 的 . 不吃 —— 语义差异会直接改变匹配结果，
+// 所以编译前先做一次翻译：字符类（[...]）外、未被反斜杠转义的裸 '.' 换成
+// [\s\S]。这样 /a.b/ 依然能匹配 "a\nb"，与上游一致。
+static std::basic_string<tjs_char> TJSConvertDotToAnyChar(const std::basic_string<tjs_char> &pat)
 {
-	ttstr target;
-	ttstr to;
-	tTJSVariantClosure funcval;
-	bool func;
-	ttstr res;
-	tTJSNI_RegExp * _this;
-	tjs_int lastpos;
+	std::basic_string<tjs_char> out;
+	out.reserve(pat.size() + 8);
 
-public:
-	tTJSReplacePredicator(tTJSVariant **param, tjs_int numparams, tTJSNI_RegExp *__this,
-		iTJSDispatch2 *objthis)
+	bool inclass = false;
+	for(std::size_t i = 0; i < pat.size(); i++)
 	{
-		_this = __this;
-		lastpos = 0;
+		const tjs_char c = pat[i];
 
-		target = *param[0];
-		if(param[1]->Type() != tvtObject)
+		if(c == TJS_W('\\'))
 		{
-			to = (*param[1]);
-			func = false;
-		}
-		else
-		{
-			funcval = param[1]->AsObjectClosureNoAddRef();
-			if(funcval.ObjThis == NULL)
-			{
-				// replace with objthis when funcval's objthis is null
-				funcval.ObjThis = objthis;
-			}
-			func = true;
+			// 转义序列整体拷贝，\. 不能被翻译
+			out += c;
+			if(i + 1 < pat.size()) { out += pat[i + 1]; i++; }
+			continue;
 		}
 
-		// grep thru target string
-		tjs_int targlen = target.GetLen();
-		unsigned int match_count = regex_grep
-			(
-			std::bind1st(std::mem_fun(&tTJSReplacePredicator::Callback), this),
-			target.c_str(),
-			_this->RegEx,
-			match_default|match_not_dot_null);
+		if(inclass)
+		{
+			out += c;
+			if(c == TJS_W(']')) inclass = false;
+			continue;
+		}
 
-		if(lastpos < targlen)
-			res += ttstr(target.c_str() + lastpos, targlen - lastpos);
+		if(c == TJS_W('[')) { inclass = true; out += c; continue; }
+
+		if(c == TJS_W('.')) { out += TJS_W("[\\s\\S]"); continue; }
+
+		out += c;
 	}
 
-	const ttstr & GetRes() const { return res; }
-
-	bool TJS_cdecl Callback(match_results<const tjs_char *> what)
+	return out;
+}
+//---------------------------------------------------------------------------
+// std::regex_error 的正文是窄字符串，TJS_eTJSError 要宽字符串。
+static void TJSThrowRegExpError(const std::exception &e)
+{
+	const char *what = e.what();
+	std::basic_string<tjs_char> msg;
+	while(what && *what) msg += (tjs_char)(unsigned char)*what++;
+	if(msg.empty()) msg = TJS_W("regular expression error");
+	TJS_eTJSError(msg.c_str());
+}
+//---------------------------------------------------------------------------
+static void TJSAssignRegEx(tTJSNI_RegExp *_this,
+	const std::basic_string<tjs_char> &expr, tjs_uint32 flags)
+{
+	const std::basic_string<tjs_char> translated = TJSConvertDotToAnyChar(expr);
+	try
 	{
-		// callback on each match
+		_this->RegEx.assign(translated.c_str(),
+			(std::regex_constants::syntax_option_type)(flags & ~tjsflagsmask));
+	}
+	catch(std::exception &e)
+	{
+		TJSThrowRegExpError(e);
+	}
 
-		tjs_int pos = what.position();
-		tjs_int len = what.length();
+	_this->Flags = flags;
+	_this->EmptyPattern = translated.empty();
+}
+//---------------------------------------------------------------------------
+
+
+
+//---------------------------------------------------------------------------
+// replace 的迭代体（对应上游 tTJSReplacePredicator）
+//
+// 上游用 boost::regex_grep + 回调：回调返回 true 继续找下一个（由 g 标志决定），
+// 返回 false 结束。这里换成显式循环，但结果拼装顺序与上游逐行对齐：
+//   每命中一次 → 先补「上一处结束到本处开始」的原文 → 再补替换串 → lastpos 前移。
+// 替换串**原样写入**，不展开 $1/$2（上游即如此）。
+// 替换串若为函数，则用「本次匹配的结果数组」调用它，把返回值转成字符串写入。
+//---------------------------------------------------------------------------
+static void TJSDoReplace(iTJSDispatch2 *objthis, tTJSVariant **param,
+	tjs_int numparams, tTJSNI_RegExp *_this, ttstr &res)
+{
+	const ttstr target = *param[0];
+
+	ttstr to;
+	tTJSVariantClosure funcval;
+	bool func = false;
+
+	if(param[1]->Type() != tvtObject)
+	{
+		to = (*param[1]);
+	}
+	else
+	{
+		funcval = param[1]->AsObjectClosureNoAddRef();
+		if(funcval.ObjThis == NULL)
+		{
+			// replace with objthis when funcval's objthis is null
+			funcval.ObjThis = objthis;
+		}
+		func = true;
+	}
+
+	const tjs_char *s = target.c_str();
+	const tjs_int targlen = target.GetLen();
+	const tjs_char *end = s + targlen;
+	const tjs_char *p = s;
+
+	tjs_int lastpos = 0;
+	// 零宽匹配（如 /(?:)/g 或 /x*/g）在 global 下会原地反复命中，
+	// 必须有硬上限，否则就是一个死循环（regex_grep 内部会前进一个字符）。
+	tjs_int guard = targlen + 2;
+
+	while(p <= end && guard-- > 0)
+	{
+		std::match_results<const tjs_char *> what;
+		if(!std::regex_search(p, end, what, _this->RegEx)) break;
+
+		const tjs_int pos = (tjs_int)(p - s) + (tjs_int)what.position();
+		const tjs_int len = (tjs_int)what.length();
 
 		if(pos > lastpos)
-			res += ttstr(target.c_str() + lastpos, pos - lastpos);
+			res += ttstr(s + lastpos, pos - lastpos);
 
 		if(!func)
 		{
@@ -143,115 +216,45 @@ public:
 		}
 		else
 		{
-			// call the callback function descripted as param[1]
+			// call the callback function described as param[1]
 			tTJSVariant result;
-			tjs_error hr;
 			iTJSDispatch2 *array =
 				tTJSNC_RegExp::GetResultArray(true, _this, what);
 			tTJSVariant arrayval(array, array);
-			tTJSVariant *param = &arrayval;
+			tTJSVariant *ap = &arrayval;
 			array->Release();
-			hr = funcval.FuncCall(0, NULL, NULL, &result, 1, &param, NULL);
-			if(TJS_FAILED(hr)) return hr;
+			const tjs_error hr =
+				funcval.FuncCall(0, NULL, NULL, &result, 1, &ap, objthis);
+			// 上游的回调在这里 `return hr;`（bool 化后中途停掉，替换串悄悄丢失）。
+			// 静默丢字符比抛错更难查，这里改成把错误抛回脚本。
+			if(TJS_FAILED(hr))
+				TJS_eTJSError(TJS_W("RegExp.replace: replacement function failed"));
 			result.ToString();
-			res += result.GetString();
+			res += ttstr(result);
 		}
 
 		lastpos = pos + len;
 
-		return _this->Flags & globalsearch;
-	}
-};
-//---------------------------------------------------------------------------
+		if(!(_this->Flags & globalsearch))
+			break;   // 非 global：只替换第一处（上游靠回调返回 false 实现）
 
-
-
-
-//---------------------------------------------------------------------------
-// predicating class for split
-//---------------------------------------------------------------------------
-class tTJSSplitPredicator
-{
-	ttstr target;
-
-	iTJSDispatch2 * array;
-
-	tjs_int lastpos;
-	tjs_int lastlen;
-
-	tjs_int storecount;
-
-	bool purgeempty;
-
-public:
-	tTJSSplitPredicator(const ttstr &target, iTJSDispatch2 * array,
-		const tTJSRegEx &regex, bool purgeempty)
-	{
-		this->array = array;
-		this->purgeempty = purgeempty;
-		lastpos = 0;
-		storecount = 0;
-
-		this->target = target;
-
-		// grep thru target
-		tjs_int targlen = target.GetLen();
-		unsigned int match_count = regex_grep
-			(
-			std::bind1st(std::mem_fun(&tTJSSplitPredicator::Callback), this),
-			target.c_str(),
-			regex,
-			match_default|match_not_dot_null);
-
-
-		// output last
-		if(lastlen !=0 || lastpos != targlen)
+		if(len == 0)
 		{
-			// unless null match at last of target
-			if(!purgeempty || targlen - lastpos)
-			{
-				tTJSVariant val(ttstr(target.c_str() + lastpos, targlen - lastpos));
-				array->PropSetByNum(TJS_MEMBERENSURE, storecount++, &val, array);
-			}
+			// 零宽匹配：只把「搜索起点」往前挪一格，**不能**动 lastpos ——
+			// lastpos 决定原文片段从哪里续接，挪了就会把这一个字符吃掉。
+			if(lastpos >= targlen) break;
+			p = s + lastpos + 1;
+		}
+		else
+		{
+			p = s + lastpos;
 		}
 	}
 
-	bool TJS_cdecl Callback(match_results<const tjs_char *> what)
-	{
-		tjs_int pos = what.position();
-		tjs_int len = what.length();
-
-		if(pos >= lastpos && (len || pos != 0))
-		{
-			if(!purgeempty || pos - lastpos)
-			{
-				tTJSVariant val(ttstr(target.c_str() + lastpos, pos - lastpos));
-				array->PropSetByNum(TJS_MEMBERENSURE, storecount++, &val, array);
-			}
-		}
-
-		if(what.size() > 1)
-		{
-			// output sub-expression
-			for(unsigned i = 1; i < what.size(); i++)
-			{
-				tTJSVariant val;
-				if(!purgeempty || what[i].second - what[i].first)
-				{
-					val = ttstr(what[i].first, what[i].second - what[i].first);
-					array->PropSetByNum(TJS_MEMBERENSURE, storecount++, &val, array);
-				}
-			}
-		}
-
-		lastpos = pos + len;
-		lastlen = len;
-
-		return true;
-	}
-};
+	if(lastpos < targlen)
+		res += ttstr(s + lastpos, targlen - lastpos);
+}
 //---------------------------------------------------------------------------
-
 
 
 //---------------------------------------------------------------------------
@@ -261,19 +264,107 @@ tTJSNI_RegExp::tTJSNI_RegExp()
 {
 	// C++constructor
 	Flags = TJSRegExpFlagToValue(0, 0);
+	EmptyPattern = true;
 	Start = 0;
-	Index =0;
+	Index = 0;
 	LastIndex = 0;
+
+	// 必须给 RegEx 一个**合法的空模式**：boost 的默认 reg_expression 是
+	// 「空但有效」的对象，而 libc++ 的 basic_regex 默认构造后再 regex_search
+	// 属于未定义行为（内部指针为空）。脚本里 `var r = new RegExp();`
+	// 之后直接 test/match 是合法写法，所以这里补一次 (?:) 编译。
+	try
+	{
+		RegEx.assign(TJS_W("(?:)"),
+			(std::regex_constants::syntax_option_type)(Flags & ~tjsflagsmask));
+	}
+	catch(...)
+	{
+		// (?:) 在 ECMAScript 语法下不可能失败；万一失败也不该在构造期抛。
+	}
 }
 //---------------------------------------------------------------------------
 void tTJSNI_RegExp::Split(iTJSDispatch2 ** array, const ttstr &target, bool purgeempty)
 {
+	// 与上游 tTJSSplitPredicator 逐条对齐（含 purgeempty 与子表达式展开规则）。
 	bool arrayallocated = false;
-	if(!*array) *array = TJSCreateArrayObject(), arrayallocated = true;
+	if(!*array) { *array = TJSCreateArrayObject(), arrayallocated = true; }
 
 	try
 	{
-		tTJSSplitPredicator pred(target, *array, RegEx, purgeempty);
+		const tjs_char *s = target.c_str();
+		const tjs_int targlen = target.GetLen();
+		const tjs_char *end = s + targlen;
+		const tjs_char *p = s;
+
+		tjs_int lastpos = 0;
+		tjs_int lastlen = 0;
+		tjs_int storecount = 0;
+		tjs_int guard = targlen + 2;
+
+		while(p <= end && guard-- > 0)
+		{
+			std::match_results<const tjs_char *> what;
+			if(!std::regex_search(p, end, what, RegEx)) break;
+
+			const tjs_int pos = (tjs_int)(p - s) + (tjs_int)what.position();
+			const tjs_int len = (tjs_int)what.length();
+
+			if(pos >= lastpos && (len || pos != 0))
+			{
+				if(!purgeempty || pos - lastpos)
+				{
+					tTJSVariant val(ttstr(s + lastpos, pos - lastpos));
+					(*array)->PropSetByNum(TJS_MEMBERENSURE, storecount++, &val, *array);
+				}
+			}
+
+			if(what.size() > 1)
+			{
+				// output sub-expression
+				for(std::size_t i = 1; i < what.size(); i++)
+				{
+					const tjs_int sublen = what[i].matched ?
+						(tjs_int)(what[i].second - what[i].first) : 0;
+					if(!purgeempty || sublen)
+					{
+						tTJSVariant val;
+						if(sublen)
+							val = ttstr(what[i].first, sublen);
+						else
+							val = tTJSVariant(TJS_W(""));
+						(*array)->PropSetByNum(TJS_MEMBERENSURE, storecount++, &val, *array);
+					}
+				}
+			}
+
+			lastpos = pos + len;
+			lastlen = len;
+
+			if(len == 0)
+			{
+				// 零宽匹配：只推进搜索起点，lastpos 保持不动
+				// （它决定下一段原文从哪里切，动了就会吃掉一个字符）。
+				if(lastpos >= targlen) break;
+				p = s + lastpos + 1;
+				lastlen = 0;
+			}
+			else
+			{
+				p = s + lastpos;
+			}
+		}
+
+		// output last
+		if(lastlen != 0 || lastpos != targlen)
+		{
+			// unless null match at last of target
+			if(!purgeempty || targlen - lastpos)
+			{
+				tTJSVariant val(ttstr(s + lastpos, targlen - lastpos));
+				(*array)->PropSetByNum(TJS_MEMBERENSURE, storecount++, &val, *array);
+			}
+		}
 	}
 	catch(...)
 	{
@@ -328,7 +419,6 @@ TJS_BEGIN_NATIVE_METHOD_DECL(/*func. name*/compile)
 
 	tTJSNC_RegExp::Compile(numparams, param, _this);
 
-
 	return TJS_S_OK;
 }
 TJS_END_NATIVE_METHOD_DECL(/*func. name*/compile)
@@ -343,6 +433,10 @@ TJS_BEGIN_NATIVE_METHOD_DECL(/*func. name*/_compile)
 		//flags/expression
 		where flags is flag letters ( [gil] )
 		and expression is a Regular Expression
+
+		这个成员是正则字面量的唯一入口：tjsInterCodeGen.cpp 对 T_REGEXP 生成
+		`new RegExp(); _compile("//flag/body")`。删掉它，脚本里每一个 /.../ 都会
+		在运行期变成 "Member _compile does not exist"。
 	*/
 
 	if(numparams != 1) return TJS_E_BADPARAMCOUNT;
@@ -359,18 +453,16 @@ TJS_BEGIN_NATIVE_METHOD_DECL(/*func. name*/_compile)
 	if(!exprstart) return TJS_E_FAIL;
 	exprstart ++;
 
-	tjs_uint32 flags = TJSGetRegExpFlagsFromString(p);
+	const tjs_uint32 flags = TJSGetRegExpFlagsFromString(p);
 
 	try
 	{
-		_this->RegEx.assign(exprstart, (wregex::flag_type)(flags& ~tjsflagsmask));
+		TJSAssignRegEx(_this, std::basic_string<tjs_char>(exprstart), flags);
 	}
 	catch(std::exception &e)
 	{
-		TJS_eTJSError(e.what());
+		TJSThrowRegExpError(e);
 	}
-
-	_this->Flags = flags;
 
 	return TJS_S_OK;
 }
@@ -389,8 +481,8 @@ TJS_BEGIN_NATIVE_METHOD_DECL(/*func. name*/test)
 	if(numparams < 1) return TJS_E_BADPARAMCOUNT;
 
 	ttstr target(*param[0]);
-	match_results<const tjs_char *> what;
-	bool matched = tTJSNC_RegExp::Exec(what, target, _this);
+	std::match_results<const tjs_char *> what;
+	const bool matched = tTJSNC_RegExp::Exec(what, target, _this);
 
 	tTJSNC_RegExp::LastRegExp = tTJSVariant(objthis, objthis);
 
@@ -421,8 +513,8 @@ TJS_BEGIN_NATIVE_METHOD_DECL(/*func. name*/match)
 	if(result)
 	{
 		ttstr target(*param[0]);
-		match_results<const tjs_char *> what;
-		bool matched = tTJSNC_RegExp::Match(what, target, _this);
+		std::match_results<const tjs_char *> what;
+		const bool matched = tTJSNC_RegExp::Match(what, target, _this);
 		iTJSDispatch2 *array = tTJSNC_RegExp::GetResultArray(matched, _this, what);
 		*result = tTJSVariant(array, array);
 		array->Release();
@@ -449,7 +541,7 @@ TJS_BEGIN_NATIVE_METHOD_DECL(/*func. name*/exec)
 	if(numparams < 1) return TJS_E_BADPARAMCOUNT;
 
 	ttstr target(*param[0]);
-	match_results<const tjs_char *> what;
+	std::match_results<const tjs_char *> what;
 	tTJSNC_RegExp::Exec(what, target, _this);
 
 	tTJSNC_RegExp::LastRegExp = tTJSVariant(objthis, objthis);
@@ -487,16 +579,11 @@ TJS_BEGIN_NATIVE_METHOD_DECL(/*func. name*/replace)
 
 	if(numparams < 2) return TJS_E_BADPARAMCOUNT;
 
-	tTJSReplacePredicator predicate(param, numparams, _this, objthis);
+	ttstr res;
+	TJSDoReplace(objthis, param, numparams, _this, res);
 
+	if(result) *result = res;
 
-	if(result) *result = predicate.GetRes();
-/*
-	if(numparams >= 3)
-	{
-		if(param[3]) *param[3] = matchcount; // for internal usage
-	}
-*/
 	return TJS_S_OK;
 }
 TJS_END_NATIVE_METHOD_DECL(/*func. name*/replace)
@@ -562,7 +649,7 @@ TJS_BEGIN_NATIVE_PROP_DECL(start)
 		*result = (tTVInteger)_this->Start;
 		return TJS_S_OK;
 	}
-    TJS_END_NATIVE_PROP_GETTER
+	TJS_END_NATIVE_PROP_GETTER
 
 	TJS_BEGIN_NATIVE_PROP_SETTER
 	{
@@ -676,7 +763,7 @@ TJS_BEGIN_NATIVE_PROP_DECL(last)
 {
 	TJS_BEGIN_NATIVE_PROP_GETTER
 	{
-		*result = tTJSNC_RegExp::LastRegExp;;
+		*result = tTJSNC_RegExp::LastRegExp;
 		return TJS_S_OK;
 	}
 	TJS_END_NATIVE_PROP_GETTER
@@ -708,56 +795,52 @@ void tTJSNC_RegExp::Compile(tjs_int numparams, tTJSVariant **param, tTJSNI_RegEx
 		flags = TJSRegExpFlagToValue(0, 0);
 	}
 
-	if(expr.IsEmpty()) expr = TJS_W("(?:)"); // generate empty regular expression
+	// 官方：空模式替换成 (?:) —— 让「空正则」仍然是一次合法的、能匹配空串的编译。
+	std::basic_string<tjs_char> pattern = expr.c_str();
+	if(pattern.empty()) pattern = TJS_W("(?:)");
 
 	try
 	{
-		_this->RegEx.assign(expr.c_str(), (wregex::flag_type)(flags& ~tjsflagsmask));
+		TJSAssignRegEx(_this, pattern, flags);
 	}
 	catch(std::exception &e)
 	{
-		TJS_eTJSError(e.what());
+		TJSThrowRegExpError(e);
 	}
-
-	_this->Flags = flags;
-
 }
 //---------------------------------------------------------------------------
-bool tTJSNC_RegExp::Match(match_results<const tjs_char *>& what,
+bool tTJSNC_RegExp::Match(std::match_results<const tjs_char *>& what,
 		ttstr target, tTJSNI_RegExp *_this)
 {
-	tjs_uint32 flags = match_default|match_not_dot_null;
+	const tjs_uint targlen = target.GetLen();
 
-	tjs_uint searchstart;
-
-	tjs_uint targlen = target.GetLen();
 	if(_this->Start == targlen)
 	{
 		// Start already reached at end
-		return _this->RegEx.empty();  // returns true if empty
+		return _this->EmptyPattern;  // returns true if empty
 	}
 	else if(_this->Start > targlen)
 	{
 		// Start exceeds target's length
 		return false;
 	}
-	searchstart = _this->Start;
 
-	return regex_search(target.c_str()+searchstart,
-		what, _this->RegEx, flags);
-
+	const tjs_char *begin = target.c_str() + _this->Start;
+	const tjs_char *end = target.c_str() + targlen;
+	return std::regex_search(begin, end, what, _this->RegEx);
 }
 //---------------------------------------------------------------------------
-bool tTJSNC_RegExp::Exec(boost::match_results<const tjs_char *>& what, ttstr target, tTJSNI_RegExp *_this)
+bool tTJSNC_RegExp::Exec(std::match_results<const tjs_char *>& what,
+		ttstr target, tTJSNI_RegExp *_this)
 {
-	bool matched = tTJSNC_RegExp::Match(what, target, _this);
+	const bool matched = tTJSNC_RegExp::Match(what, target, _this);
 	iTJSDispatch2 *array = tTJSNC_RegExp::GetResultArray(matched, _this, what);
 
 	_this->Array = tTJSVariant(array, array);
 	array->Release();
 
 	_this->Input = target;
-	if(!matched || _this->RegEx.empty())
+	if(!matched || _this->EmptyPattern)
 	{
 		_this->Index = _this->Start;
 		_this->LastIndex = _this->Start;
@@ -767,20 +850,21 @@ bool tTJSNC_RegExp::Exec(boost::match_results<const tjs_char *>& what, ttstr tar
 	}
 	else
 	{
-		_this->Index = _this->Start + what.position();
-		_this->LastIndex = _this->Start + what.position() + what.length();
+		_this->Index = _this->Start + (tjs_uint)what.position();
+		_this->LastIndex = _this->Start + (tjs_uint)what.position()
+			+ (tjs_uint)what.length();
 		_this->LastMatch = ttstr(what[0].first,
-			what[0].second - what[0].first);
-		tjs_uint last = what.size() -1;
-		_this->LastParen = ttstr(what[last].first,
-			what[last].second - what[last].first);
-		_this->LeftContext = ttstr(target, _this->Start + what.position());
+			(tjs_int)(what[0].second - what[0].first));
+		const std::size_t last = what.size() - 1;
+		_this->LastParen = what[last].matched ?
+			ttstr(what[last].first, (tjs_int)(what[last].second - what[last].first)) :
+			ttstr();
+		_this->LeftContext = ttstr(target, _this->Start + (tjs_int)what.position());
 		_this->RightContext = ttstr(target.c_str() + _this->LastIndex);
 		if(_this->Flags & globalsearch)
 		{
 			// global search flag changes the next search starting position.
-			tjs_uint match_end = _this->LastIndex;
-			_this->Start = match_end;
+			_this->Start = _this->LastIndex;
 		}
 	}
 
@@ -788,12 +872,12 @@ bool tTJSNC_RegExp::Exec(boost::match_results<const tjs_char *>& what, ttstr tar
 }
 //---------------------------------------------------------------------------
 iTJSDispatch2 * tTJSNC_RegExp::GetResultArray(bool matched, tTJSNI_RegExp *_this,
-		const match_results<const tjs_char *>& what)
+		const std::match_results<const tjs_char *>& what)
 {
 	iTJSDispatch2 *array = TJSCreateArrayObject();
 	if(matched)
 	{
-		if(_this->RegEx.empty())
+		if(_this->EmptyPattern)
 		{
 			tTJSVariant val(TJS_W(""));
 			array->PropSetByNum(TJS_MEMBERENSURE|TJS_IGNOREPROP,
@@ -801,15 +885,19 @@ iTJSDispatch2 * tTJSNC_RegExp::GetResultArray(bool matched, tTJSNI_RegExp *_this
 		}
 		else
 		{
-			tjs_uint size = what.size();
+			const std::size_t size = what.size();
 			try
 			{
-				for(tjs_uint i=0; i<size; i++)
+				for(std::size_t i=0; i<size; i++)
 				{
 					tTJSVariant val;
-					val = ttstr(what[i].first, what[i].second - what[i].first);
+					if(what[i].matched)
+						val = ttstr(what[i].first,
+							(tjs_int)(what[i].second - what[i].first));
+					else
+						val = tTJSVariant(TJS_W(""));
 					array->PropSetByNum(TJS_MEMBERENSURE|TJS_IGNOREPROP,
-						i, &val, array);
+						(tjs_int)i, &val, array);
 				}
 			}
 			catch(...)
@@ -829,4 +917,3 @@ iTJSDispatch2 * TJSCreateRegExpClass()
 //---------------------------------------------------------------------------
 
 } // namespace TJS
-

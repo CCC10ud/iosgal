@@ -8,7 +8,8 @@
 #
 # 与 M0 的区别：M0 用 macOS host clang 编译并运行自测（证明逻辑正确）；
 # 本脚本用 iphoneos SDK 交叉编译（证明 Apple 移动工具链能编、能链）。
-# 不修改官方源码，配置与 M0 一致（TJS_NO_REGEXP / compat / stub）。
+# M2d 起**不再**定义 TJS_NO_REGEXP：正则层已由 GalBox 用 std::regex 重写
+# （native/TJS2/src/tjsRegExp.{h,cpp}，见 PATCHES.md P7），tjsRegExp.cpp 正常编译。
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT/native/TJS2/src"
@@ -34,7 +35,7 @@ echo "[tjs2-ios] iPhoneOS SDK: $SDK"
 echo "[tjs2-ios] 编译 官方 TJS2 核心 -> arm64"
 
 CXXFLAGS=(-std=c++14 -O1 -fexceptions
-          -DTJS_NO_REGEXP -DTJS2_POSIX
+          -DTJS2_POSIX
           -arch arm64 -miphoneos-version-min=15.0 -isysroot "$SDK"
           -I"$STUB" -I"$SRC" -I"$HOST" -I"$ENGINE"
           -include "$COMPAT")
@@ -44,7 +45,6 @@ OBJS=()
 for f in "$SRC"/*.cpp; do
   [ -e "$f" ] || continue
   b="$(basename "$f")"
-  if [ "$b" = "tjsRegExp.cpp" ]; then continue; fi   # boost regex, 官方 TJS_NO_REGEXP 关闭
   o="$IOSOUT/${b%.cpp}.o"
   if ! xcrun --sdk iphoneos clang++ "${CXXFLAGS[@]}" -c "$f" -o "$o" 2>"$o.log"; then
     echo "[tjs2-ios] 编译失败: $b"; cat "$o.log"; ERR=1

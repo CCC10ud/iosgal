@@ -1,0 +1,94 @@
+// m2d_regex_probe.tjs — Milestone 2d 自测探针（GalBox 自写文件，**非官方**）
+//
+// 用途：在真 TJS2 引擎里逐条验证 RegExp 原生类的语义，任何一条不符就
+// fails++ 并打一条 Debug.message（JSON 的 lastDebug 会带上失败项名字）。
+// 最后把 fails 写进 global.m2dFails，由宿主 test_m2d.cpp 用 probeExpression
+// 读出来：0 == 全过。
+//
+// 覆盖点（对应官方 Initialize.tjs 真实用法 + 上游 tjsRegExp.cpp 的公开语义）：
+//   字面量 /_compile、g/i 标志、test/match/exec 的内部状态、replace 的字符串
+//   与函数形态、split 的 purgeempty 与子表达式展开、"." 吃换行（boost 语义）、
+//   非 ASCII 字面量、（文件本身是 UTF-8，顺带验证 UTF-8 解码链）。
+
+var fails = 0;
+var checks = 0;
+
+function check(cond, name)
+{
+	checks++;
+	if(!cond)
+	{
+		fails++;
+		Debug.message("M2D_FAIL: " + name);
+	}
+}
+
+// 1) 全局替换：官方 Initialize.tjs 第 164 行用的就是这一条
+check("/var/mobile/GalBox.app/GalBox".replace(/[^A-Za-z]/g, "_")
+	== "_var_mobile_GalBox_app_GalBox", "replace-global");
+
+// 2) 无 g 标志时只替换第一处
+check("aXaX".replace(/X/, "-") == "a-aX", "replace-first-only");
+
+// 3) test 必须改变内部状态（lastMatch / lastParen / leftContext / rightContext / index）
+var re = /a(b+)c/;
+check(re.test("xxabbbcyy") == true, "test-true");
+check(re.lastMatch == "abbbc", "lastMatch");
+check(re.lastParen == "bbb", "lastParen");
+check(re.leftContext == "xx", "leftContext");
+check(re.rightContext == "yy", "rightContext");
+check(re.index == 2, "index");
+
+// 4) g 标志下 exec 循环推进 lastIndex，捕获组可取
+var g = /([0-9]+)/g;
+var n = 0;
+var lastSeen = "";
+while(true)
+{
+	var ar = g.exec("a1b22c333");
+	if(!ar.count) break;
+	n++;
+	lastSeen = ar[1];
+	if(n > 10) break;
+}
+check(n == 3, "exec-global-count");
+check(lastSeen == "333", "exec-global-last");
+
+// 5) match 返回子表达式数组，未匹配的组给空串
+var m = /x(y)?/.match("zzx");
+check(m.count == 2, "match-array-count");
+check(m[0] == "x", "match-array-0");
+check(m[1] == "", "match-array-unmatched-group");
+
+// 6) 替换串可为函数，参数是本次匹配的结果数组
+check("a1b22".replace(/([0-9]+)/g, function(ar) { return "[" + ar[1] + "]"; })
+	== "a[1]b[22]", "replace-function");
+
+// 7) split：默认保留空元素；purgeempty 为真时丢弃
+var sp = "a,b;c".split(/[,;]/);
+check(sp.count == 3, "split-count");
+check(sp[2] == "c", "split-last");
+var sp2 = "a,,b".split(/,/, 0, true);
+check(sp2.count == 2, "split-purgeempty");
+
+// 8) boost 语义："." 匹配换行（ECMAScript 默认不匹配，重写版做了翻译）
+check(/a.b/.test("a\nb") == true, "dot-matches-newline");
+
+// 9) i 标志
+check(/ABC/i.test("xxabcxx") == true, "icase-on");
+check(/ABC/.test("xxabcxx") == false, "icase-off");
+
+// 10) 构造函数 + 标志字符串
+var nr = new RegExp("^x+", "i");
+check(nr.test("XXa") == true, "ctor-flags");
+
+// 11) 正则字面量走的内部表示 "//flags/body"
+var ic = new RegExp();
+ic._compile("//gi/abc");
+check(ic.test("ABC") == true, "internal-compile");
+
+// 12) 非 ASCII 字面量（本文件是 UTF-8 编码）
+check(/あ+/.test("xxああxx") == true, "non-ascii");
+
+global.m2dFails = fails;
+global.m2dChecks = checks;

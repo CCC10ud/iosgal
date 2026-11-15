@@ -18,11 +18,11 @@
 
 | 路径 | 内容 |
 |---|---|
-| `src/` | 官方 TJS2 核心 77 个文件（未改语义，仅 6 类 POSIX 编译补丁） |
+| `src/` | 官方 TJS2 核心 77 个文件（6 类 POSIX 编译补丁；`tjsRegExp.{h,cpp}` 见 P7 重写） |
 | `stub/malloc.h` | 拦截 macOS/iOS SDK 缺失的 `<malloc.h>` |
 | `tjs2_compat.h` | POSIX 兼容注入头（`-include`），Windows 调试输出置空 |
 | `apply_posix_patches.py` | 幂等补丁脚本，重放 vendor 后的 clang 编译修复 |
-| `PATCHES.md` | 6 类补丁逐条说明（改了官方源码哪些点、为什么） |
+| `PATCHES.md` | 6 类补丁 + P7 正则层重写，逐条说明（改了哪些点、为什么、差异如何覆盖） |
 | `test_m0.cpp` | M0：`eval("1+1") == 2` |
 | `test_m1.cpp` | M1a：宿主流读 XP3 内文件 + `Array.load` 真回调 |
 | `build/` | CI 生成的 `.o` / `libtjs2.a` / 可执行自测（不入库） |
@@ -32,13 +32,15 @@
 ## 编译配置（M0 实测可用）
 
 ```
-clang++ -std=c++14 -O1 -fexceptions -DTJS_NO_REGEXP -DTJS2_POSIX \
+clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
         -I stub -I src -include tjs2_compat.h -c src/*.cpp
 ar rcs libtjs2.a *.o
 ```
 
-- `TJS_NO_REGEXP` 是**官方原生开关**，定义后 `tjs.cpp` 不再引用 RegExp 类，
-  只需排除 `tjsRegExp.cpp`（boost regex 唯一入口）；正则功能留到 M3。
+- **M2d 起不再定义 `TJS_NO_REGEXP`**：正则层由 GalBox 用 `std::regex` 重写
+  （`src/tjsRegExp.{h,cpp}`，见 `PATCHES.md` P7），无第三方依赖，`tjsRegExp.cpp`
+  正常参与编译；`tjs.cpp` 会注册全局 `RegExp`，`tjsArray.cpp` 的 regexp-split
+  分支也恢复编译。
 - 不定义 `ENABLE_DEBUGGER` / `TJS_SUPPORT_VCL` / `__WIN32__`，Windows 代码自动跳过。
 - `tjs_char` 在 macOS/iOS clang 下是 `wchar_t`（4B），`TJS_W(X) = L##X`。
 
@@ -49,7 +51,9 @@ ar rcs libtjs2.a *.o
 | M0 | macOS clang 编出 `libtjs2.a` + `eval(1+1)==2` | run #11 全绿，`libtjs2.a` 1,229,824 B / 35 objs，TJS 2.4.28 |
 | M1a | TJS2 的 4 个流工厂桥到 XP3Archive，Mac runner 真跑 | 见 CI 日志 `M1_RESULT=OK` |
 | M1b | iOS arm64 编译链接进 app | run #15 ✅：`libtjs2_ios.a` 1,230,280 B / 35 objs（Mach-O arm64），`-force_load` 链进 app，`ARCHIVE SUCCEEDED` |
-| M2~M4 | KAG 插件 / 资源解码 / 产品化 | 见 `docs/TJS2_PORT_PLAN.md` |
+| M2c | `System`/`Debug` + 官方 `Initialize.tjs` 原文真跑 | run #28 ✅：停在 `Member "RegExp" does not exist` @164 行 |
+| M2d | 正则层（std::regex 重写）+ 官方脚本推过 `createAppLock` | 见 CI `M2D_RESULT=OK`；`appLockKey` 与独立实现逐字符比对 |
+| M2e~M4 | KAG Layer/Window + 事件队列 / 资源解码 / 产品化 | 见 `docs/TJS2_PORT_PLAN.md` |
 
 ⚠️ 本机（Windows 沙盒）**没有 C++ 编译器**，所有原生改动只能靠 GitHub macOS runner
 真编译验证。CI 步骤：`tools/build_tjs2_test.sh`（M0 + M1a），在 `xcodebuild` 之前执行。

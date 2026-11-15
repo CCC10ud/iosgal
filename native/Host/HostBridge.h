@@ -1,8 +1,8 @@
 // HostBridge.h — Milestone 1c：app 侧调用官方 TJS2 的纯 C 边界
 //
 // 为什么不直接在 GBEngineBridge.mm 里 include "tjs.h"：
-//   官方 TJS2 头依赖一整套构建开关（-DTJS_NO_REGEXP / -DTJS2_POSIX /
-//   -include tjs2_compat.h / stub/malloc.h），而 app target 是 ObjC++ + ARC。
+//   官方 TJS2 头依赖一整套构建开关（-DTJS2_POSIX / -include tjs2_compat.h /
+//   stub/malloc.h；M2d 起不再定义 TJS_NO_REGEXP），而 app target 是 ObjC++ + ARC。
 //   两边编译选项一旦不一致，tjs_char / 类布局就会错位。
 //   因此把「碰官方头」的代码全部关在 HostBridge.cpp 里，它由
 //   build_tjs2_*.sh 用与核心库完全相同的一套 flags 编译；app 只见纯 C 函数。

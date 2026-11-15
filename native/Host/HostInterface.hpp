@@ -73,6 +73,12 @@ std::string GetPlacedPath(const std::string& name);
 const char* LastTextEncoding();
 unsigned int ShiftJisReadCount();
 
+// ---- Milestone 2d：游戏根目录（官方 System.exePath 的语义） ----
+// 官方 Initialize.tjs 里 `System.exePath + "video/"`、「二重起動チェック」的
+// createAppLock 键值，都建立在「exePath 是游戏根目录（带尾部分隔符）」上。
+// 返回安装时传入的 storageRoot（不带尾部斜杠）；未安装返回空串。
+std::string StorageRootPath();
+
 // Milestone 2 待办（不在本契约内，先记边界）：
 //   - KAG 插件的 TP_STUB 平台层：TVPGetTickCount / TVPPrint /
 //     TVPThrowExceptionMessage / TVPPostEvent / TVPProcessEvents / TVPGetAppPath

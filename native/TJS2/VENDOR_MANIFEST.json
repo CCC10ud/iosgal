@@ -294,12 +294,16 @@
     {
       "name": "tjsRegExp.cpp",
       "sha": "0bea902829d1fd5ef42076fd31b3d5b133068985",
-      "bytes": 21869
+      "bytes": 21869,
+      "galbox_rewrite": true,
+      "note": "M2d 用 std::regex 整份重写（PATCHES.md P7）。sha/bytes 为**上游** blob 值与字节数；本地文件已不等于它。"
     },
     {
       "name": "tjsRegExp.h",
       "sha": "79594fee5bdc1b878921aac16394f6c75d33ca9d",
-      "bytes": 2936
+      "bytes": 2936,
+      "galbox_rewrite": true,
+      "note": "M2d 去掉 boost 依赖并改用 std::basic_regex（PATCHES.md P7）。sha/bytes 为**上游** blob 值。"
     },
     {
       "name": "tjsScriptBlock.cpp",

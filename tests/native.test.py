@@ -418,8 +418,12 @@ ok("ClearEngineScopedDiagnostics" in bridge_cpp,
 for tok in ("M2C_RESULT=OK", "m2c_game_cfg", "M2C_SYSTEM_DEBUG",
             "exceptionHandlerSet", "autoPathCount", "debugNotices",
             "tickCalls", "fatalBlock", "fatalLine", "fatalException",
-            "RegExp", "debugMessages", "execStorageAttempts"):
+            "debugMessages", "execStorageAttempts"):
     ok(tok in m2c_test, "M2c 自测含实质判据: " + tok)
+# M2d 补上正则后，M2c 的 B 场景判据从「失败原因含 RegExp」改成「推过 createAppLock」，
+# 否则「修好了」这件事本身会让 M2c 回归变红。
+ok('appLock\\":true' in m2c_test,
+   "M2c 自测随 M2d 更新：断言推过 createAppLock 而不是卡在 RegExp")
 ok('ok\\":false' in m2c_test,
    "M2c 自测明确断言 ok=false（本轮不假装 Initialize.tjs 跑通）")
 ok('global.config_version = "3.29-dev.20071022"' in m2c_cfg,
@@ -435,9 +439,79 @@ ok("test_m2c.cpp" in test_sh and "M2C_RESULT=OK" in test_sh
    "CI 用官方 7246B SJIS Initialize.tjs 原文真跑 M2c 自测")
 ok("M2C_SYSTEM_DEBUG" in wf, "CI 核验 System/Debug 原生类真的进 app 二进制")
 
-# 已知的最外层阻塞点必须写清楚，避免下一轮重复排查。
-for tok in ("TJS_NO_REGEXP", "RegExp"):
-    ok(tok in bridge_cpp, "注释里记录了下一个阻塞点: " + tok)
+# M2c 当轮的最外层阻塞点（正则）在 M2d 已解决；注释必须记录这件事，
+# 否则下一个人会以为 TJS_NO_REGEXP 还在用。
+ok("M2d" in bridge_cpp and "std::regex" in bridge_cpp,
+   "注释记录了 M2d 拆掉正则阻塞点（不再定义 TJS_NO_REGEXP）")
+
+print("\n[12] Milestone 2d — 正则层（std::regex 重写的 RegExp 原生类）")
+re_h = read("native/TJS2/src/tjsRegExp.h")
+re_cpp = read("native/TJS2/src/tjsRegExp.cpp")
+m2d_test = read("native/Host/test_m2d.cpp")
+m2d_probe = read("native/KAG/src/m2d_regex_probe.tjs")
+patches_md = read("native/TJS2/PATCHES.md")
+
+# 1) 不能再引 boost（否则 runner 要装依赖，iOS 侧还要能编）
+ok("boost/regex.hpp" not in re_h and "boost/regex.hpp" not in re_cpp,
+   "正则层不再 include boost/regex.hpp")
+ok("std::basic_regex" in re_h and "std::regex_search" in re_cpp,
+   "正则层后端是 std::basic_regex / std::regex_search")
+ok("<regex>" in re_h and "<regex>" in re_cpp, "显式包含 <regex>")
+
+# 2) 上游的接入点必须原样保留（否则 tjs.cpp / tjsArray.cpp 会链错）
+for tok, desc in (("tTJSNC_RegExp", "类名与上游一致"),
+                  ("tTJSNI_RegExp", "实例类名与上游一致"),
+                  ("TJSCreateRegExpClass", "工厂函数名与上游一致"),
+                  ("static tjs_uint32 ClassID", "ClassID 供 tjsArray.cpp 判定"),
+                  ("void Split(iTJSDispatch2 ** array, const ttstr &target, bool purgeempty)",
+                   "Split 签名兼容 Array.split 的 regexp 分支"),
+                  ("TJS_END_NATIVE_METHOD_DECL(/*func. name*/_compile)",
+                   "_compile 存在（正则字面量唯一入口）"),
+                  ("TJS_END_NATIVE_METHOD_DECL(/*func. name*/replace)", "replace 成员"),
+                  ("TJS_END_NATIVE_METHOD_DECL(/*func. name*/split)", "split 成员"),
+                  ("TJS_END_NATIVE_METHOD_DECL(/*func. name*/test)", "test 成员"),
+                  ("TJS_END_NATIVE_METHOD_DECL(/*func. name*/exec)", "exec 成员"),
+                  ("TJS_END_NATIVE_METHOD_DECL(/*func. name*/match)", "match 成员"),
+                  ("TJS_END_NATIVE_PROP_DECL(lastMatch)", "lastMatch 属性"),
+                  ("TJS_END_NATIVE_PROP_DECL(lastParen)", "lastParen 属性"),
+                  ("TJS_END_NATIVE_PROP_DECL(leftContext)", "leftContext 属性"),
+                  ("TJS_END_NATIVE_PROP_DECL(rightContext)", "rightContext 属性")):
+    ok(tok in re_cpp or tok in re_h, "正则层保留上游接口: " + desc)
+
+ok("regex_grep(" not in re_cpp and "bind1st(" not in re_cpp,
+   "不再调用 boost::regex_grep / std::bind1st（注释里提到型号不算）")
+
+# 3) 与 boost 的语义差异必须有处理 + 有判据
+ok("[\\s\\S]" in re_cpp, "把 boost 的「. 吃换行」翻成 [\\s\\S]")
+ok("dot-matches-newline" in m2d_probe, "探针覆盖「. 匹配换行」")
+ok("boost" in patches_md and "P7" in patches_md, "PATCHES.md 记录了 P7 正则层重写")
+
+# 4) 编译开关：不再定义 TJS_NO_REGEXP，且 tjsRegExp.cpp 必须参与编译
+ok("-DTJS_NO_REGEXP" not in test_sh and "-DTJS_NO_REGEXP" not in ios_sh,
+   "构建脚本不再定义 TJS_NO_REGEXP（否则全局 RegExp 不会被注册）")
+ok('if [ "$b" = "tjsRegExp.cpp" ]; then' not in test_sh
+   and 'if [ "$b" = "tjsRegExp.cpp" ]; then continue; fi' not in ios_sh,
+   "tjsRegExp.cpp 不再被排除出编译列表")
+
+# 5) 宿主侧证据：appLockKey 必须来自脚本侧正则，exePath 必须非空
+ok("appLockKey" in bridge_cpp and "M2D_REGEXP_STDREGEX" in bridge_cpp,
+   "HostBridge 记录 createAppLock 键值并带 M2d 固定标记")
+ok("StorageRootPath" in read("native/Host/HostInterface.hpp")
+   and "StorageRootPath" in read("native/Host/HostStreams.cpp")
+   and "StorageRootPath" in bridge_cpp,
+   "System.exePath 由宿主真实上报（正则才有非空输入）")
+
+# 6) 判据本身要防「0 失败靠没跑凑出来」
+ok("ExpectedLockKey" in m2d_test and "exePath.replace" in m2d_test,
+   "自测独立实现 exePath→键值 的逐字符换算（非循环校验）")
+ok("probe < 0" in m2d_test and "probe % 100" in m2d_test and "probe / 100 < 20" in m2d_test,
+   "自测能区分「探针没执行」「有失败」「断言太少」三种情况")
+ok("global.m2dFails" in m2d_probe and "global.m2dChecks" in m2d_probe,
+   "探针把失败数与检查数都写回 global（不被裸赋值坑）")
+ok("KAGLayer.tjs" in m2d_test, "自测断言「下一个缺口」是 KAGLayer.tjs 而非正则")
+ok("M2D_RESULT=OK" in test_sh and "test_m2d.cpp" in test_sh,
+   "CI 运行 M2d 自测")
+ok("M2D_REGEXP_STDREGEX" in wf, "CI 核验 std::regex 正则层真的进 app 二进制")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

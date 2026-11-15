@@ -529,5 +529,7 @@ const char* LastTextEncoding() { return gLastTextEncoding; }
 
 unsigned int ShiftJisReadCount() { return gShiftJisReads; }
 
+std::string StorageRootPath() { return gStorageRoot; }
+
 }  // namespace host
 }  // namespace galbox

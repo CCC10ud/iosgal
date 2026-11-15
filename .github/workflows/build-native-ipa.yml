@@ -80,7 +80,7 @@ jobs:
 
       # M1c：静态库链接成功 ≠ app 里真的有调用点。HostBridge.cpp 里的固定标记
       # 只有被 GBEngineBridge.mm 引用、且没被 dead_strip 掉时才会留在二进制里。
-      - name: M1c / M2a / M2b / M2c 核验 app 二进制含 TJS2 宿主调用点
+      - name: M1c / M2a / M2b / M2c / M2d 核验 app 二进制含 TJS2 宿主调用点
         run: |
           APP="build-native/GalBoxNative.xcarchive/Products/Applications/GalBoxNative.app/GalBoxNative"
           echo "binary: $APP ($(wc -c < "$APP" | tr -d ' ') bytes)"
@@ -100,10 +100,15 @@ jobs:
             echo "::error::app 里没有 System/Debug 原生类标记：M2c 未进包"
             exit 1
           fi
+          if ! strings "$APP" | grep -q "M2D_REGEXP_STDREGEX"; then
+            echo "::error::app 里没有 RegExp 正则层标记：M2d 未进包（或又被 TJS_NO_REGEXP 关掉了）"
+            exit 1
+          fi
           echo "[m1c] M1C_HOST_v1 present -> HostBridge_ios.o 真实进包"
           echo "[m2a] M2A_SCRIPTS_EXEC_STORAGE present -> Scripts 原生类真实进包"
           echo "[m2b] M2B_STORAGES_AUTOPATH present -> Storages 自动路径层真实进包"
           echo "[m2c] M2C_SYSTEM_DEBUG present -> System/Debug 原生类真实进包"
+          echo "[m2d] M2D_REGEXP_STDREGEX present -> std::regex 正则层真实进包"
           echo "[m1c] GalBoxTJS2 符号数: $(nm "$APP" 2>/dev/null | grep -c 'GalBoxTJS2' || true)"
           echo "[m1c] tTJS 符号数:       $(nm "$APP" 2>/dev/null | grep -c 'tTJS' || true)"
           nm "$APP" 2>/dev/null | grep -E "GalBoxTJS2(SmokeTest|Install)" | head -6 || true

@@ -48,7 +48,15 @@
   `System.createAppLock(System.exePath.replace(/[^A-Za-z]/g,'_'))`，
   在那里因全局 `RegExp` 缺失而停 —— `TJS_NO_REGEXP` 只影响类注册，不影响词法解析，
   所以是**运行期**失败而非编译期失败。下一个阻塞点因此是正则，不是 System/Debug。
-- **M2d**：正则（`RegExp` 原生类，boost 或 `std::regex` 背书）。
+- **M2d（已实现，待 CI 验证）**：正则。**不引 boost**，把官方 `tjsRegExp.cpp`
+  用 `std::regex` 整份重写（`native/TJS2/PATCHES.md` P7），并去掉官方
+  `TJS_NO_REGEXP` 开关 —— 于是 `tjs.cpp` 注册全局 `RegExp`、`tjsArray.cpp`
+  的 regexp-split 分支恢复编译，上游其它文件一行不用改。
+  判据：`m2d_regex_probe.tjs`（23 条语义检查）+ 官方 `Initialize.tjs` 原文
+  推过 `System.exePath.replace(/[^A-Za-z]/g,'_')`，`appLockKey` 与 C++ 独立
+  逐字符实现比对一致。执行继续推进到 `KAGLoadScript("KAGLayer.tjs")`（夹具里
+  故意没有该文件）——下一个缺口因此从「引擎缺正则」变成「M2e 需要 Layer/Window
+  等系统脚本与原生类」。
 - **M2e**：`Layer` / `Window` / `KAGParserEx` 原生类 + 渲染/音频回调面 +
   事件队列，把 `GameViewController` 接到官方 KAG 播放循环，取代手写 `KagEngine`。
 - **M3/M4**：TLG/TPP/WAV/OGG 解码、视频换 AVFoundation、产品化切换。

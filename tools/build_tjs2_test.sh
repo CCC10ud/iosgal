@@ -5,13 +5,15 @@
 #                      + 真跑官方 KAG3 系统脚本经 Scripts.execStorage（Milestone 2a）
 #                      + 真跑 Storages 自动路径 + 官方原始 Shift-JIS 字节（Milestone 2b）
 #                      + 真跑官方 Initialize.tjs 原文 + System/Debug 原生类（Milestone 2c）
+#                      + 真跑正则（RegExp 原生类，std::regex 背书）（Milestone 2d）
 #
 # 由 CI 在 xcodebuild 之前调用。设计原则：
 #   - 源码尚未 vendoring 时直接跳过（exit 0），绝不破坏现有出包链路。
 #   - 源码就位后：逐个 clang++ 编译 native/TJS2/src/*.cpp -> libtjs2.a，
 #     再编译 test_m0.cpp 链接，运行 eval("1+1") 自测。任何错误都让 CI 失败，
 #     把真实移植问题暴露出来。
-#   - 使用官方原生开关 TJS_NO_REGEXP 规避 boost regex 依赖（M3 再补真正则）。
+#   - 正则：M2d 起**不再**定义官方 TJS_NO_REGEXP。tjsRegExp.cpp 已由 GalBox 用
+#     std::regex 重写（见 native/TJS2/PATCHES.md P7），无需再排除该文件。
 #   - ENABLE_DEBUGGER 未定义 => Windows Debugger 代码自动跳过。
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -26,19 +28,14 @@ if [ ! -d "$SRC" ] || [ -z "$(ls -A "$SRC" 2>/dev/null | grep -E '\.(cpp|c)$')" 
 fi
 
 mkdir -p "$OUT"
-echo "[tjs2] M0: 编译官方 TJS2 核心 (TJS_NO_REGEXP) -> $OUT/libtjs2.a"
+echo "[tjs2] M0: 编译官方 TJS2 核心（含 GalBox 正则层）-> $OUT/libtjs2.a"
 ERR=0
 OBJS=()
 for f in "$SRC"/*.cpp; do
   [ -e "$f" ] || continue
   b="$(basename "$f")"
-  # tjsRegExp.cpp 是 boost regex 唯一入口；官方 TJS_NO_REGEXP 模式下不需要它。
-  if [ "$b" = "tjsRegExp.cpp" ]; then
-    echo "[tjs2]   skip  $b (boost regex, disabled via TJS_NO_REGEXP)"
-    continue
-  fi
   o="$OUT/${b%.cpp}.o"
-  if ! clang++ -std=c++14 -O1 -fexceptions -DTJS_NO_REGEXP -DTJS2_POSIX \
+  if ! clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -include "$COMPAT" \
         -c "$f" -o "$o" 2>"$o.log"; then
     echo "[tjs2] 编译失败: $b"; cat "$o.log"; ERR=1
@@ -54,7 +51,7 @@ echo "[tjs2] libtjs2.a 构建成功 ($(wc -c < "$OUT/libtjs2.a" | tr -d ' ') byt
 # eval 自测
 if [ -f "$ROOT/native/TJS2/test_m0.cpp" ]; then
   echo "[tjs2] 编译并运行 eval 自测"
-  if clang++ -std=c++14 -O1 -fexceptions -DTJS_NO_REGEXP -DTJS2_POSIX \
+  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -include "$COMPAT" \
         "$ROOT/native/TJS2/test_m0.cpp" "$OUT/libtjs2.a" -lpthread -o "$OUT/tjs2test" 2>"$OUT/link.log"; then
     OUTPUT=$("$OUT/tjs2test" 2>&1)
@@ -73,7 +70,7 @@ fi
 HOST="$ROOT/native/Host"
 if [ -f "$HOST/HostStreams.cpp" ] && [ -f "$ROOT/native/TJS2/test_m1.cpp" ]; then
   echo "[tjs2] M1: 编译 GalBox 宿主流实现"
-  if ! clang++ -std=c++14 -O1 -fexceptions -DTJS_NO_REGEXP -DTJS2_POSIX \
+  if ! clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         -c "$HOST/HostStreams.cpp" -o "$OUT/HostStreams.o" 2>"$OUT/host_m1.log"; then
     echo "[tjs2] M1 宿主编译失败:"; cat "$OUT/host_m1.log"; exit 1
@@ -87,7 +84,7 @@ if [ -f "$HOST/HostStreams.cpp" ] && [ -f "$ROOT/native/TJS2/test_m1.cpp" ]; the
   fi
 
   echo "[tjs2] M1: 编译并运行宿主自测（读 XP3 内文件 / Array.load）"
-  if clang++ -std=c++14 -O1 -fexceptions -DTJS_NO_REGEXP -DTJS2_POSIX \
+  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$ROOT/native/TJS2/test_m1.cpp" "$OUT/HostStreams.o" "$OUT/XP3Archive.o" \
         "$OUT/libtjs2.a" -lz -liconv -lpthread -o "$OUT/tjs2test_m1" 2>"$OUT/link_m1.log"; then
@@ -108,7 +105,7 @@ fi
 # iOS 侧只负责「用同一套 flags 编译 + 链接进 app」。
 if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m1c.cpp" ]; then
   echo "[tjs2] M1c: 编译 app 侧适配层 HostBridge.cpp"
-  if ! clang++ -std=c++14 -O1 -fexceptions -DTJS_NO_REGEXP -DTJS2_POSIX \
+  if ! clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         -c "$HOST/HostBridge.cpp" -o "$OUT/HostBridge.o" 2>"$OUT/host_m1c.log"; then
     echo "[tjs2] M1c HostBridge 编译失败:"; cat "$OUT/host_m1c.log"; exit 1
@@ -116,7 +113,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m1c.cpp" ]; then
   echo "[tjs2] HostBridge.o OK"
 
   echo "[tjs2] M1c: 编译并运行冒烟自测（eval / Array.load / Array.save / 卸载）"
-  if clang++ -std=c++14 -O1 -fexceptions -DTJS_NO_REGEXP -DTJS2_POSIX \
+  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m1c.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
@@ -145,7 +142,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2a.cpp" ] \
   cp "$KAG/src/system/Utils.tjs" "$M2A_GAME/system/Utils.tjs"
 
   echo "[tjs2] M2a: 编译并运行官方 KAG3 脚本自测（Scripts.execStorage）"
-  if clang++ -std=c++14 -O1 -fexceptions -DTJS_NO_REGEXP -DTJS2_POSIX \
+  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m2a.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
@@ -185,7 +182,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2b.cpp" ] \
   echo "[tjs2] M2b fixture: ${M2B_BYTES}B 官方原始 Shift-JIS blob"
 
   echo "[tjs2] M2b: 编译并运行 Storages autoPath / Shift-JIS 自测"
-  if clang++ -std=c++14 -O1 -fexceptions -DTJS_NO_REGEXP -DTJS2_POSIX \
+  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m2b.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
@@ -230,7 +227,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2c.cpp" ] \
   echo "[tjs2] M2c fixture: 官方 startup.tjs + Initialize.tjs (${INIT_BYTES}B SJIS) + Utils.tjs"
 
   echo "[tjs2] M2c: 编译并运行官方 Initialize.tjs 原文自测（System / Debug）"
-  if clang++ -std=c++14 -O1 -fexceptions -DTJS_NO_REGEXP -DTJS2_POSIX \
+  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m2c.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
@@ -238,12 +235,64 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2c.cpp" ] \
     OUTPUT_M2C=$("$OUT/tjs2test_m2c" "$M2C_A" "$M2C_B" "$OUT" 2>&1)
     echo "$OUTPUT_M2C" | sed 's/^/[tjs2]   /'
     if echo "$OUTPUT_M2C" | grep -q "M2C_RESULT=OK"; then
-      echo "[tjs2] M2c 自测通过（官方 Initialize.tjs 真跑，停在 Config 检查 / RegExp 阻塞点）"
+      echo "[tjs2] M2c 自测通过（官方 Initialize.tjs 真跑，推过 Config 检查与 createAppLock）"
     else
       echo "[tjs2] M2c 自测未通过"; exit 1
     fi
   else
     echo "[tjs2] M2c 自测链接失败:"; cat "$OUT/link_m2c.log"; exit 1
+  fi
+fi
+
+# ---- Milestone 2d: 正则（RegExp 原生类，std::regex 重写） ----------------
+# M2c 停在 `Member "RegExp" does not exist` @ Initialize.tjs:164。本轮不再定义
+# TJS_NO_REGEXP，正则层由 GalBox 重写（native/TJS2/src/tjsRegExp.cpp）。
+# 两个夹具：A 正则语义探针（自写）；B 官方 startup/Initialize/Utils 原文 +
+# 探针 Config.tjs（必须推过 createAppLock 那一行正则）。
+if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2d.cpp" ] \
+   && [ -f "$KAG/src/m2d_regex_probe.tjs" ] \
+   && [ -f "$KAG/src/original/startup.tjs" ] \
+   && [ -f "$KAG/src/original/system/Initialize.tjs" ] \
+   && [ -f "$KAG/src/original/system/Utils.tjs" ] \
+   && [ -f "$KAG/src/m2c_probe_config.tjs" ]; then
+  M2D_A="$OUT/m2d_regex"
+  M2D_B="$OUT/m2d_init"
+  rm -rf "$M2D_A" "$M2D_B"
+  mkdir -p "$M2D_A" "$M2D_B/system"
+  cp "$KAG/src/m2d_regex_probe.tjs"            "$M2D_A/regex_probe.tjs"
+  cp "$KAG/src/original/startup.tjs"           "$M2D_B/startup.tjs"
+  cp "$KAG/src/original/system/Initialize.tjs" "$M2D_B/system/Initialize.tjs"
+  cp "$KAG/src/original/system/Utils.tjs"      "$M2D_B/system/Utils.tjs"
+  cp "$KAG/src/m2c_probe_config.tjs"           "$M2D_B/system/Config.tjs"
+
+  # 探针里有日文字面量（/あ+/），文件必须是 UTF-8 多字节 —— 顺带验证 UTF-8 解码链。
+  if ! LC_ALL=C grep -q $'\xe3\x81\x82' "$M2D_A/regex_probe.tjs"; then
+    echo "[tjs2] M2d fixture 里没有 UTF-8 日文字面量（非 ASCII 用例等于没测）"
+    exit 1
+  fi
+  # Initialize.tjs 必须仍是官方 7246B SJIS 原文，不能被顺手转码。
+  INIT_BYTES_M2D=$(wc -c < "$M2D_B/system/Initialize.tjs" | tr -d ' ')
+  if [ "$INIT_BYTES_M2D" != "7246" ]; then
+    echo "[tjs2] M2d fixture 的 Initialize.tjs 不是官方原始字节: ${INIT_BYTES_M2D}B"
+    exit 1
+  fi
+  echo "[tjs2] M2d fixture: 正则探针(UTF-8) + 官方 startup/Initialize(${INIT_BYTES_M2D}B SJIS)/Utils + 探针 Config"
+
+  echo "[tjs2] M2d: 编译并运行正则自测（RegExp 语义 + 官方 createAppLock 正则）"
+  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
+        -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
+        "$HOST/test_m2d.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
+        "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
+        -lz -liconv -lpthread -o "$OUT/tjs2test_m2d" 2>"$OUT/link_m2d.log"; then
+    OUTPUT_M2D=$("$OUT/tjs2test_m2d" "$M2D_A" "$M2D_B" "$OUT" 2>&1)
+    echo "$OUTPUT_M2D" | sed 's/^/[tjs2]   /'
+    if echo "$OUTPUT_M2D" | grep -q "M2D_RESULT=OK"; then
+      echo "[tjs2] M2d 自测通过（RegExp 语义 + 官方脚本推过正则阻塞点）"
+    else
+      echo "[tjs2] M2d 自测未通过"; exit 1
+    fi
+  else
+    echo "[tjs2] M2d 自测链接失败:"; cat "$OUT/link_m2d.log"; exit 1
   fi
 fi
 exit 0

@@ -4,7 +4,9 @@
 // clang 下消掉 tjs2 核心里少量 Windows 专属符号，使其能在 POSIX 下编译。
 //
 // M0 规避策略（不改官方源码）：
-//   - boost regex  : 定义 TJS_NO_REGEXP，排除 tjsRegExp.cpp（官方原生开关）
+//   - boost regex  : M0–M2c 定义 TJS_NO_REGEXP 并排除 tjsRegExp.cpp；
+//                    **M2d 起已改为 std::regex 重写版**（PATCHES.md P7），
+//                    该开关不再使用，tjsRegExp.cpp 正常编译。
 //   - Windows Dbg  : 不定义 ENABLE_DEBUGGER，debugger.h 代码自动跳过
 //   - vcl.h        : 不定义 TJS_SUPPORT_VCL
 //   - windows.h    : 不定义 __WIN32__

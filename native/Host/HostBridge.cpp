@@ -21,10 +21,16 @@
 // 按文档猜。这一轮的目标不是"跑通 KAG"，而是让**官方 Initialize.tjs 原文**
 // 真正执行起来，并把执行停在哪一句、因为什么停下来如实报出来。
 //
-// 关键发现（决定了本轮边界）：官方 `TJS_NO_REGEXP` 只影响 tjs.cpp:183 是否注册
+// 关键发现（决定了 M2c 的边界）：官方 `TJS_NO_REGEXP` 只影响 tjs.cpp:183 是否注册
 // 全局 `RegExp` 类，词法器照常把 /[^A-Za-z]/g 解析成 REGEXP token，编译期不报错，
-// 只有**执行到那一行**才会因找不到全局 RegExp 而失败。因此 Initialize.tjs 在
-// 触到 createAppLock（第 159 行附近的正则）之前的所有语句都可以真跑。
+// 只有**执行到那一行**才会因找不到全局 RegExp 而失败。
+//
+// M2d 拆掉这个阻塞点：不再定义 TJS_NO_REGEXP，改用 GalBox 用 std::regex 重写的
+// 正则层（native/TJS2/src/tjsRegExp.{h,cpp}，见 PATCHES.md P7）。于是
+//   ① tjs.cpp 把全局 RegExp 类注册进 Global（`new RegExp()`、正则字面量都活）；
+//   ② tjsArray.cpp 的「regexp 参与 split」分支恢复编译（`"a,b".split(/,/)`）；
+//   ③ 官方 Initialize.tjs 那句 `System.exePath.replace(/[^A-Za-z]/g,'_')`
+//      能真正算出键值 —— 本轮把它记进 JSON 的 appLockKey 当硬判据。
 //
 // 由 build_tjs2_test.sh（macOS host，真跑自测）与 build_tjs2_ios.sh
 // （iphoneos arm64，编 .o 供 app 链接）用同一套 flags 编译。
@@ -160,10 +166,11 @@ std::string MakeResult(bool ok, const char *reason, long long evalValue,
 // 在开始前清零，结束后写进返回的 JSON。放在 MakeExecResult 之前定义，
 // 是因为结果拼装要直接读它们（避免再加一堆函数参数）。
 struct SystemState {
-    std::string exePath;      // 官方语义：可执行文件所在目录（归档模式为 ""）
+    std::string exePath;      // 官方语义：游戏根目录（带尾部斜杠）
     std::string title;
     std::string lastInform;
     std::string lastArgument;
+    std::string appLockKey;   // createAppLock 收到的键值（M2d：由脚本侧正则算出）
     bool eventDisabled;
     bool exitRequested;
     bool appLockGranted;
@@ -202,6 +209,9 @@ std::string gFatalMessage;    // TJS 侧描述信息
 std::string gFatalBlock;      // 出错的脚本名
 long long gFatalLine = -1;    // 出错行号（1 起）
 std::string gFatalException;  // throw new Exception("...") 里的正文
+// 宿主侧记录的最内层失败原因（例："Storages: script not found via autoPath: X"）。
+// 必须声明在 MakeExecResult 之前 —— 结果拼装要直接读它。
+std::string gLastScriptError;
 
 // execStorage 的两种计数：Attempts = 被脚本调用（进入方法即计），
 // Calls = 内层脚本成功跑完。必须分开 —— 只有 Calls 的话，
@@ -210,6 +220,12 @@ unsigned gExecStorageAttempts = 0;
 
 void ResetDiagnostics() {
     gSys = SystemState();
+    // M2d：System.exePath 不再是空串，而是真实的游戏根目录（带尾部分隔符）。
+    // 官方 Initialize.tjs 用它拼 autoPath（`System.exePath + "video/"`），
+    // 也用它算二重起動锁的键值 —— 空串会让那句正则变成空操作的假验证。
+    gSys.exePath = galbox::host::StorageRootPath();
+    if (!gSys.exePath.empty() && gSys.exePath[gSys.exePath.size() - 1] != '/')
+        gSys.exePath += '/';
     gDbg = DebugState();
     gFatalMessage.clear();
     gFatalBlock.clear();
@@ -296,6 +312,8 @@ std::string MakeExecResult(bool ok, const char *reason, const char *entry,
     s += ",\"kag\":\"M2C_SYSTEM_DEBUG\"";
     s += ",\"storages\":\"M2B_STORAGES_AUTOPATH\"";
     s += ",\"scripts\":\"M2A_SCRIPTS_EXEC_STORAGE\"";
+    // M2d：正则层换成 std::regex 重写版的固定标记
+    s += ",\"regexp\":\"M2D_REGEXP_STDREGEX\"";
     s += ",\"stage\":\"M2B_STORAGES_AUTOPATH\"";
     // 诊断必须能区分「真的按 autoPath 找到」与「碰巧被 basename 宽松回退命中」，
     // 也要能区分「Shift-JIS 正确解码」与「逐字节 latin-1 兜底但语法没报错」。
@@ -311,6 +329,7 @@ std::string MakeExecResult(bool ok, const char *reason, const char *entry,
     s += ",\"tickCalls\":" + std::to_string(gSys.tickCalls);
     s += ",\"informCalls\":" + std::to_string(gSys.informCalls);
     s += ",\"appLock\":" + std::string(gSys.appLockGranted ? "true" : "false");
+    s += ",\"appLockKey\":\"" + JsonEscape(gSys.appLockKey.c_str()) + "\"";
     s += ",\"exitRequested\":" + std::string(gSys.exitRequested ? "true" : "false");
     s += ",\"continuousHandlers\":" + std::to_string(gSys.continuousHandlers);
     s += ",\"exceptionHandlerSet\":"
@@ -326,6 +345,9 @@ std::string MakeExecResult(bool ok, const char *reason, const char *entry,
     s += ",\"fatalBlock\":\"" + JsonEscape(gFatalBlock.c_str()) + "\"";
     s += ",\"fatalLine\":" + std::to_string(gFatalLine);
     s += ",\"fatalException\":\"" + JsonEscape(gFatalException.c_str()) + "\"";
+    // 宿主侧（最内层）失败原因单独一个字段：脚本自己 try/catch 吞掉的失败
+    // 不该被当成整体失败，但也不能让它消失在诊断里。
+    s += ",\"lastScriptError\":\"" + JsonEscape(gLastScriptError.c_str()) + "\"";
 
     s += ",\"error\":\"" + JsonEscape(reason ? reason : "") + "\"";
     s += "}";
@@ -338,7 +360,7 @@ std::string MakeExecResult(bool ok, const char *reason, const char *entry,
 // 官方实现在 kirikiri2/src/core/base/ScriptMgnIntf.cpp（绑 tp_stub / Windows）。
 // 这里给最小 iOS 实现：从宿主读脚本 → 交给同一个 tTJS 递归执行。
 tTJS *gActiveEngine = nullptr;
-std::string gLastScriptError;
+// gLastScriptError 已上移到诊断状态区（MakeExecResult 要读它）。
 unsigned gExecStorageCalls = 0;      // 成功执行完的次数（gExecStorageAttempts 见上方）
 
 class tTJSNC_Scripts : public tTJSNativeClass {
@@ -397,8 +419,12 @@ public:
                 // （脚本名/行号/Exception 正文）永久丢掉 —— Initialize.tjs 的
                 // 失败点正是靠这些字段才能定位。
                 CaptureCurrentException();
-                gLastScriptError = "exception in execStorage(" +
-                                   WideToUtf8(name.c_str()) + ")";
+                // 同样按「不覆盖更具体信息」处理：最内层（真正的根因）先写，
+                // 外层 execStorage 只补空。否则 upstream 一层层回卷时，
+                // 「哪个文件没找到」会被覆盖成一句 "exception in execStorage(...)"。
+                if (gLastScriptError.empty())
+                    gLastScriptError = "exception in execStorage(" +
+                                       WideToUtf8(name.c_str()) + ")";
                 return TJS_E_FAIL;
             }
             return TJS_S_OK;
@@ -773,6 +799,10 @@ public:
         TJS_BEGIN_NATIVE_METHOD_DECL(createAppLock)
         {
             // 二重起動チェック：iOS 应用天然单实例，直接放行。
+            // 但键值必须原样记下来 —— 官方传的是
+            // System.exePath.replace(/[^A-Za-z]/g, '_')，
+            // 这个串是「脚本侧正则真的算对了」的唯一直接证据（M2d）。
+            gSys.appLockKey = JoinParams(numparams, param);
             gSys.appLockGranted = true;
             if (result) *result = static_cast<tjs_int>(1);
             return TJS_S_OK;
@@ -1058,8 +1088,9 @@ extern "C" char *GalBoxTJS2ExecScript(const char *entryName,
                     else if (!gFatalMessage.empty()) reason = gFatalMessage;
                     else reason = "exception while executing entry script";
                 }
-                if (reason.empty() && !gLastScriptError.empty())
-                    reason = gLastScriptError;
+                // 注意：执行成功时**不要**再用 gLastScriptError 兜底。脚本自己
+                // try/catch 吞掉的失败会把它留在那里，拿它当 reason 会把「脚本
+                // 主动容错」误报成「整体失败」。它单独走 JSON 的 lastScriptError。
             }
         }
 

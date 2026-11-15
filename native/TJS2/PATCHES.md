@@ -11,7 +11,7 @@
 
 | 开关 | 作用 |
 |------|------|
-| `TJS_NO_REGEXP` | 官方原生开关。定义后 `tjs.cpp` / `tjsArray.cpp` 不再引用 RegExp 类，从而避开唯一的 `boost/regex.hpp` 依赖；`tjsRegExp.cpp` 从编译列表排除。M3 补真正则时去掉。 |
+| `TJS_NO_REGEXP` | 官方原生开关。**M0–M2c 用过**（定义后 `tjs.cpp` / `tjsArray.cpp` 不再引用 RegExp 类，从而避开唯一的 `boost/regex.hpp` 依赖）。**M2d 起已去掉**，改为 P7 的 std::regex 重写版。 |
 | 不定义 `ENABLE_DEBUGGER` | `debugger.h` / `Debugger.h` 及所有 Windows `SendMessage`/`COPYDATASTRUCT` 代码自动跳过。 |
 | 不定义 `__WIN32__` / `TJS_SUPPORT_VCL` | `windows.h` / `vcl.h` 分支跳过，走 POSIX 空实现。 |
 | `stub/malloc.h` | macOS SDK 无 `<malloc.h>`；用 `-I stub` 拦截，映射到 `<stdlib.h>`。 |
@@ -41,6 +41,40 @@
 
 - **P6 `tjsArray.cpp:917`** — `i - ni->Items.begin()` 得到 `ptrdiff_t`(long)，
   赋给 `tTJSVariant` 时多个 `operator=` 重载歧义。显式 `(tjs_int)` 转换。
+
+## P7 正则层整体重写（M2d，`tjsRegExp.h` / `tjsRegExp.cpp`）
+
+这两个文件**已不是上游原文**，是 GalBox 用标准库 `std::basic_regex` 重写的整份
+替代实现（上游 blob sha 仍在 `VENDOR_MANIFEST.json` 的 `upstream_sha` 字段里，
+随时可取回对比）。原因：
+
+- 上游 832 行全部绑在 `boost::reg_expression` / `boost::match_results` /
+  `regex_grep` / `std::bind1st(std::mem_fun(...))`，最后一项在 C++11 起已废弃，
+  现代 boost 上要改的比写一遍还多；
+- 引 boost 意味着 runner 装依赖 + iOS 侧也要能编（`ARCHIVE` 才出的 ipa 里真跑），
+  失败面比"自己实现一层"大得多；
+- 官方接入点只有三处，都靠**类名/类 ID** 而不是 boost 类型：
+  `tjs.cpp:185`（`TJSCreateRegExpClass()` 注册全局 `RegExp`）、
+  `tjsArray.cpp:482`（`tTJSNC_RegExp::ClassID` + `tTJSNI_RegExp::Split`）、
+  `tjsInterCodeGen.cpp:2476`（正则字面量生成 `new RegExp(); _compile("//flag/body")`）。
+  因此**上游其它文件一行不用改**，只是不再定义 `TJS_NO_REGEXP`。
+
+保持一致的对外语义：成员/属性名、`g`（下一轮从上次结束继续）/`i`/`l` 标志、
+`lastMatch`/`lastParen`/`leftContext`/`rightContext`/`index`/`lastIndex`/`input`、
+`replace` 的「替换串不展开 `$1`」、`split` 的 purgeempty 与子表达式展开顺序。
+
+已知差异（有判据覆盖，见 `native/Host/test_m2d.cpp`）：
+
+| 差异 | 处理 |
+|---|---|
+| boost 的 `.` 默认**吃换行**，ECMAScript 不吃 | 编译前把字符类外的裸 `.` 翻成 `[\s\S]`，还原上游行为 |
+| boost 支持 `\Q...\E` | 未实现（KAG3 系统脚本里未出现） |
+| 上游 replace 回调失败时静默截断 | 改为抛 TJS 异常（静默丢字符更难查） |
+| 旧 C++ 的 `std::bind1st` | 换成显式循环，`g` 语义与上游回调返回值一致 |
+
+性能/健壮性注意：`std::regex` 是回溯实现，无匹配步数上限；灾难性回溯的正则
+（如 `(a+)+$` 打长串）会长时间占 CPU。KAG3 系统脚本全是简单模式，暂不处理；
+真遇到再上 `match_step_limit` 或换 RE2 风格引擎。
 
 ## 备注
 

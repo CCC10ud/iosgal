@@ -20,8 +20,10 @@
 //   B) 包里有（探针版）Config.tjs
 //      版本核对通过、跳过 UpdateConfig.tjs，执行推进到
 //          System.createAppLock(System.exePath.replace(/[^A-Za-z]/g,'_'))
-//      该行的正则字面量在 TJS_NO_REGEXP 下找不到全局 RegExp → 失败。
-//      断言失败原因里出现 RegExp，即给出「下一个阻塞点」的硬证据；
+//      M2c 当时该行的正则字面量在 TJS_NO_REGEXP 下找不到全局 RegExp → 失败，
+//      这就是「下一个阻塞点」的硬证据。**M2d 已把正则补上**，所以本文件里
+//      那条「失败原因必须含 RegExp」的判据换成了「必须走到 createAppLock」
+//      （appLock=true）——否则 M2c 的回归会因为「修好了」反而变红。
 //      同时断言 dm(...)（`var dm = Debug.message` 取函数值再调用）确实生效。
 //
 // 两个场景都期望 ok=false —— 本轮**不假装** Initialize.tjs 跑通了。
@@ -150,8 +152,10 @@ int main(int argc, char **argv) {
             return Fail("System.getTickCount was never called", j);
         if (!Has(j, "\"exceptionHandlerSet\":true"))
             return Fail("System.exceptionHandler setter did not accept a function", j);
-        if (!Has(j, "\"exePath\":\"\""))
-            return Fail("System.exePath is not the archive root", j);
+        // exePath 的语义是「游戏根目录 + 分隔符」（M2d 起由宿主真实上报，
+        // 因为官方那句 createAppLock 正则需要一个有内容的输入）。
+        if (StrField(j, "exePath") != std::string(storage) + "/")
+            return Fail("System.exePath is not the game root", j);
         // 停在 Config 检查处 = 还没走到 createAppLock
         if (!Has(j, "\"appLock\":false"))
             return Fail("execution advanced past the Config check unexpectedly", j);
@@ -188,9 +192,10 @@ int main(int argc, char **argv) {
 
         if (!Has(j, "\"ok\":false"))
             return Fail("Initialize.tjs unexpectedly reported success", j);
-        // startup.tjs + Initialize.tjs + Config.tjs -> 2 次调用；
-        // Config.tjs 跑完（1 次成功），Initialize.tjs 在 createAppLock 处失败。
-        if (IntField(j, "execStorageAttempts") != 2)
+        // startup.tjs + Initialize.tjs + Config.tjs -> 至少 2 次调用；
+        // M2d 起还会继续加载 Utils.tjs，所以这里用下界而不是定值。
+        // （原本写死 ==2，正则补上后必然变成 4 —— 断言比事实更脆弱就该改断言。）
+        if (IntField(j, "execStorageAttempts") < 2)
             return Fail("Config.tjs was not attempted via Scripts.execStorage", j);
         if (IntField(j, "execStorageCalls") < 1)
             return Fail("the probe Config.tjs did not execute successfully", j);
@@ -200,18 +205,11 @@ int main(int argc, char **argv) {
         // 取原生方法作为函数值再调用，这条路径 M2a/M2b 都没覆盖过。
         if (IntField(j, "debugMessages") < 1)
             return Fail("native method used as a function value (dm) did not run", j);
-        // 真正想证明的结论：卡在正则，不是卡在 System/Debug
-        const std::string fatal = StrField(j, "fatal");
-        const std::string fatalExc = StrField(j, "fatalException");
-        if (fatal.find("RegExp") == std::string::npos &&
-            fatalExc.find("RegExp") == std::string::npos) {
-            std::printf("[m2c] fatal=\"%s\" fatalException=\"%s\"\n",
-                        fatal.c_str(), fatalExc.c_str());
-            return Fail("failure is not the RegExp blocker (unexpected next obstacle)", j);
-        }
-        // 走到 createAppLock 之前的 appLock 仍是 false
-        if (!Has(j, "\"appLock\":false"))
-            return Fail("createAppLock unexpectedly succeeded despite no RegExp", j);
+        // M2c 结束时这里曾断言「失败原因含 RegExp」——那是当轮的阻塞点。
+        // M2d 补上正则后，正确的回归判据变成：**推过** createAppLock。
+        // 若这里又变回 false，说明正则层回归了（M2d 的 test_m2d 会指出具体哪条）。
+        if (!Has(j, "\"appLock\":true"))
+            return Fail("execution did not get past createAppLock (regex regression?)", j);
 
         GalBoxTJS2Free(j);
         GalBoxTJS2Uninstall();
