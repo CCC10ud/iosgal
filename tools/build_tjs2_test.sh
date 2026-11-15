@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # build_tjs2_test.sh — 编译官方 TJS2 核心为静态库并运行 eval 自测（Milestone 0）
 #                      + 编译 GalBox 宿主层并真跑 XP3 文件读取自测（Milestone 1a）
+#                      + 真跑 app 侧纯 C 边界 HostBridge（Milestone 1c）
 #
 # 由 CI 在 xcodebuild 之前调用。设计原则：
 #   - 源码尚未 vendoring 时直接跳过（exit 0），绝不破坏现有出包链路。
@@ -96,6 +97,36 @@ if [ -f "$HOST/HostStreams.cpp" ] && [ -f "$ROOT/native/TJS2/test_m1.cpp" ]; the
     fi
   else
     echo "[tjs2] M1 自测链接失败:"; cat "$OUT/link_m1.log"; exit 1
+  fi
+fi
+
+# ---- Milestone 1c: app 侧纯 C 边界在 macOS host 上真跑一遍 ---------------
+# CI 不能运行 iOS app，所以 HostBridge.cpp 的逻辑必须先在 host 上证明正确；
+# iOS 侧只负责「用同一套 flags 编译 + 链接进 app」。
+if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m1c.cpp" ]; then
+  echo "[tjs2] M1c: 编译 app 侧适配层 HostBridge.cpp"
+  if ! clang++ -std=c++14 -O1 -fexceptions -DTJS_NO_REGEXP -DTJS2_POSIX \
+        -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
+        -c "$HOST/HostBridge.cpp" -o "$OUT/HostBridge.o" 2>"$OUT/host_m1c.log"; then
+    echo "[tjs2] M1c HostBridge 编译失败:"; cat "$OUT/host_m1c.log"; exit 1
+  fi
+  echo "[tjs2] HostBridge.o OK"
+
+  echo "[tjs2] M1c: 编译并运行冒烟自测（eval / Array.load / Array.save / 卸载）"
+  if clang++ -std=c++14 -O1 -fexceptions -DTJS_NO_REGEXP -DTJS2_POSIX \
+        -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
+        "$HOST/test_m1c.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
+        "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
+        -lz -liconv -lpthread -o "$OUT/tjs2test_m1c" 2>"$OUT/link_m1c.log"; then
+    OUTPUT_M1C=$("$OUT/tjs2test_m1c" "$ROOT/dist/fixtures/demo-game.xp3" "$OUT" 2>&1)
+    echo "$OUTPUT_M1C" | sed 's/^/[tjs2]   /'
+    if echo "$OUTPUT_M1C" | grep -q "M1C_RESULT=OK"; then
+      echo "[tjs2] M1c 自测通过（app 侧 C 边界真跑 TJS2 + 宿主读写）"
+    else
+      echo "[tjs2] M1c 自测未通过"; exit 1
+    fi
+  else
+    echo "[tjs2] M1c 自测链接失败:"; cat "$OUT/link_m1c.log"; exit 1
   fi
 fi
 exit 0

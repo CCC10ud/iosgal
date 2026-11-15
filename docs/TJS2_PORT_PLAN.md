@@ -1,7 +1,8 @@
 # GalBox → 完整 Kirikiri 运行时：移植方案与架构
 
 > 状态（2026-11-15 更新）：**路线 A 已确认（完整移植官方 TJS2 + KAG）**。
-> M0 ✅ 已达成（run #11 全绿）、M1a ✅ 已实现（宿主流桥到 XP3Archive，CI 真跑验证中）。
+> M0 ✅（run #11）、M1a ✅（run #13）、M1b ✅（run #15）、
+> **M1c 已实现，待 macOS runner 真编译验证**（app 内第一次真的调用 TJS2）。
 > 早期"网络被代理拦截"的判断**已推翻**：沙盒默认无代理变量，是我手动 `export`
 > 了失效的 `127.0.0.1:54662` 才导致 `http=000`；直连即可。上游仓库也从
 > `kikikracle/kirikiri2`（404）更正为 `jeeb/kirikiri2`。
@@ -111,24 +112,38 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
 
 **已完成**
 - **M0** ✅（run #11）：官方 TJS2 核心 vendoring + 6 类 POSIX 补丁 + `libtjs2.a` / `eval` 自测。
+- **M1b 校正**：run #15 的 `OTHER_LDFLAGS` **只 `-force_load` 了 `libtjs2_ios.a`**，
+  `HostStreams_ios.o` 并没有进包；app 二进制里也没有任何 TJS2 调用点。
+  也就是说 M1b 只证明「iOS 链接器能解析核心符号」，**不等于 app 会跑 TJS2**。
+  M1c 才把宿主层与调用点补齐，并以二进制固定标记 `M1C_HOST_v1` 硬校验。
+- **M1c**（本轮实现）：`native/Host/HostBridge.{h,cpp}` 用纯 C 边界把官方 `tjs.h`
+  隔离在 C++ 侧（编译开关必须与静态库一致，不能让 ObjC++ target 直接 include）；
+  `GBEngineBridge` 打开包时 `Install(&gArchive, Documents, bundle)`、关闭时 `Uninstall`，
+  新增 `+tjs2SmokeTest` 真跑 `tTJS` → `eval(1+2*3)` → `Array.load/save` 回调宿主读写；
+  UI 打开包后显示 `TJS2 2.4.28 ✓ eval=7 · 宿主读1/写1`。
+  CI 侧因为**无法运行 iOS app**，同一份 `HostBridge.cpp` 在 macOS host 上由
+  `test_m1c.cpp` 真跑（含未安装/已卸载的失败路径），iOS 侧只负责编译 + 链接 +
+  `strings` 检查 `M1C_HOST_v1` 标记。
 - **M1a** ✅（run #13）：宿主契约对齐官方 + 4 个流工厂桥到 XP3Archive；
   实测 `Array.load via TJS2: host read calls 2 -> 3`，`M1_RESULT=OK`。
 - **M1b** ✅（run #15）：`xcrun --sdk iphoneos clang++ -arch arm64` 编出
   `libtjs2_ios.a`（1,230,280 B / 35 objs，Mach-O arm64）+ `HostStreams_ios.o`；
-  `build_native.sh` 以 `-liconv -force_load` 注入 `OTHER_LDFLAGS`，Ld 目标
-  `arm64-apple-ios15.0`，`ARCHIVE SUCCEEDED`，app 二进制含 TJS2 符号。
+  `build_native.sh` 以 `-liconv -force_load` 注入 `OTHER_LDFLAGS`（只链核心库），
+  Ld 目标 `arm64-apple-ios15.0`，`ARCHIVE SUCCEEDED`，app 二进制含 TJS2 符号。
 
 **无阻塞项**：网络直连可用；`push_via_api.py` 走 Git Data API 原子提交（git 协议仍被墙）。
 
 **下一步（按序）**
-1. **M1c**：在 app 内加一个真实的 TJS2 冒烟入口 —— `GBEngineBridge` 暴露
-   `+tjs2SmokeTest`，打开游戏包时 `Install(&gArchive, Documents, bundle)`，
-   跑 `eval` + `Array.load` 并把结果送到 UI/日志。需要给 Xcode target 加
-   `HEADER_SEARCH_PATHS`（指向 `native/TJS2/src` 与 `native/Host`）。
-   ⚠️ app 已编译 `XP3Archive.cpp`，宿主层**只能链 `HostStreams_ios.o`**，勿重复打包 XP3Archive.o。
-2. **M2**：vendoring `src/plugins/win32/kag/`，实现 KAG 宿主回调面 + 事件队列
+1. **M2**：vendoring `src/plugins/win32/kag/`，实现 KAG 宿主回调面 + 事件队列
    （iOS run loop / CADisplayLink），这是工作量最高的里程碑，需再拆细。
-3. **M3/M4**：TLG/TPP/WAV/OGG 解码、视频换 AVFoundation、产品化切换。
+   M2 的宿主回调面建议继续走 `HostBridge` 这种「纯 C 边界 + C++ 适配层」结构，
+   不要把官方 `tp_stub` 头直接暴露给 ObjC++/Swift。
+   ⚠️ app 已编译 `XP3Archive.cpp`，宿主层**只能链 `HostStreams_ios.o` /
+   `HostBridge_ios.o`**，勿重复打包 XP3Archive.o。
+2. **M3/M4**：TLG/TPP/WAV/OGG 解码、视频换 AVFoundation、产品化切换。
+3. **M1c 之后仍需验证的边界**：`startup.tjs` 依然不会被执行 —— TJS2 引擎能跑，
+   但商业游戏的系统脚本依赖 KAG 插件层（M2）；此时界面文案已改为准确表述，
+   不再说「内核未实现 TJS2」。
 
 **踩坑记录**：Windows 工作区的 `.sh` 易带 CRLF，macOS bash 3.2 会把
 `set -euo pipefail\r` 判为 `invalid option name`（run #14 失败根因）。

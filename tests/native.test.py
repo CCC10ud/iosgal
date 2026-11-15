@@ -211,6 +211,54 @@ ok("--selftest" in ver and "manifest.json" in ver,
    "真编译验证覆盖引擎自检与夹具交叉比对")
 ok("readErrors" in cli, "C++ CLI 把段解压失败也算作坏包")
 
+print("\n[8] Milestone 1c — app 内 TJS2 真调用点")
+bridge_h = read("native/Host/HostBridge.h")
+bridge_cpp = read("native/Host/HostBridge.cpp")
+m1c_test = read("native/Host/test_m1c.cpp")
+objc_h = read("ios-native/GalBoxNative/GBEngineBridge.h")
+objc_mm = read("ios-native/GalBoxNative/GBEngineBridge.mm")
+swift_vc = read("ios-native/GalBoxNative/GameViewController.swift")
+pbx = read("ios-native/GalBoxNative.xcodeproj/project.pbxproj")
+ios_sh = read("tools/build_tjs2_ios.sh")
+test_sh = read("tools/build_tjs2_test.sh")
+wf = read(".github/workflows/build-native-ipa.yml")
+
+ok("extern \"C\"" in bridge_h and "GalBoxTJS2SmokeTest" in bridge_h,
+   "纯 C 边界头隔离官方 tjs.h")
+ok("tjs.h" in bridge_cpp and "HostInterface.hpp" in bridge_cpp
+   and "new tTJS()" in bridge_cpp,
+   "HostBridge.cpp 真正构造 TJS2 引擎并安装宿主")
+ok("a.load" in bridge_cpp and "b.save" in bridge_cpp,
+   "冒烟脚本经 TJS2 触发宿主读/写回调")
+ok("M1C_HOST_v1" in bridge_cpp, "二进制里带 M1c 链接标记")
+ok("hostReadDelta" in bridge_cpp and "hostWriteDelta" in bridge_cpp,
+   "冒烟结果回报宿主读/写计数")
+ok("host not installed" in m1c_test
+   and "Uninstall did not take effect" in m1c_test
+   and "GalBoxTJS2Uninstall()" in m1c_test,
+   "自测覆盖未安装/已卸载失败路径（不假装通过）")
+ok("M1C_RESULT=OK" in m1c_test, "M1c 自测有明确通过标记")
+ok("tjs2SmokeTest" in objc_h and "tjs2SmokeTest" in objc_mm,
+   "GBEngineBridge 暴露 Swift 可见的冒烟入口")
+ok("#if defined(GALBOX_HAS_TJS2)" in objc_mm
+   and "GalBoxTJS2Install(&gArchive" in objc_mm
+   and "GalBoxTJS2Uninstall()" in objc_mm,
+   "打开/关闭包时安装与卸载宿主，且有降级编译守卫")
+ok("GBEngineBridge.tjs2SmokeTest()" in swift_vc,
+   "打开游戏包时 UI 真的触发冒烟并显示结果")
+ok("$(SRCROOT)/../native/Host" in pbx and pbx.count("$(SRCROOT)/../native/Host") == 2,
+   "Debug/Release 两个配置都能找到 HostBridge.h")
+ok("HostBridge_ios.o" in ios_sh and "HostBridge.cpp" in ios_sh,
+   "iOS 交叉编译产出 app 侧适配层 .o")
+ok("test_m1c.cpp" in test_sh and "M1C_RESULT=OK" in test_sh,
+   "macOS host 真跑同一份 HostBridge.cpp（CI 无法运行 iOS app）")
+for tok, desc in [("HostStreams_ios.o", "宿主流 .o 进 app 链接"),
+                  ("HostBridge_ios.o", "适配层 .o 进 app 链接"),
+                  ("GCC_PREPROCESSOR_DEFINITIONS", "按产物齐备与否切换编译宏"),
+                  ("GALBOX_HAS_TJS2", "M1c 调用点开关")]:
+    ok(tok in sh, "build_native.sh: " + desc)
+ok("M1C_HOST_v1" in wf, "CI 核验 app 二进制含 M1c 标记（不只是链接成功）")
+
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
 sys.exit(0 if F == 0 else 1)

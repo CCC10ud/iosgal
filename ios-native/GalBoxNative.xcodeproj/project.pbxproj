@@ -241,6 +241,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(SRCROOT)/../native/Engine",
+					"$(SRCROOT)/../native/Host",
 					"$(SRCROOT)/GalBoxNative",
 				);
 				INFOPLIST_FILE = GalBoxNative/Info.plist;
@@ -271,6 +272,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(SRCROOT)/../native/Engine",
+					"$(SRCROOT)/../native/Host",
 					"$(SRCROOT)/GalBoxNative",
 				);
 				INFOPLIST_FILE = GalBoxNative/Info.plist;

@@ -29,14 +29,23 @@ ARCHIVE="$BUILD/GalBoxNative.xcarchive"
 rm -rf "$BUILD"
 mkdir -p "$BUILD"
 
-# Milestone 1b: 若 tools/build_tjs2_ios.sh 已生成 iPhoneOS arm64 版 TJS2 静态库，
-# 用 -force_load 把它完整链接进 app，验证 iOS 链接器能解析全部 TJS2 符号。
-# 库不存在时降级为原配置出包 —— 本地直接跑本脚本不应被 TJS2 阻塞。
+# Milestone 1b/1c: 若 tools/build_tjs2_ios.sh 已生成 iPhoneOS arm64 产物，
+# 用 -force_load 把 TJS2 核心完整链接进 app，并追加宿主层两个 .o。
+# XP3Archive.cpp 由 app target 自己编译，绝不在 .o 里重复打包。
+# 只有三者齐备才定义 GALBOX_HAS_TJS2，让 GBEngineBridge.mm 生成真实调用点；
+# 否则降级为原配置出包 —— 本地直接跑本脚本不应被 TJS2 阻塞。
 TJS2_IOS_LIB="$ROOT/native/TJS2/build/libtjs2_ios.a"
+TJS2_HOST_OBJ="$ROOT/native/TJS2/build/HostStreams_ios.o"
+TJS2_BRIDGE_OBJ="$ROOT/native/TJS2/build/HostBridge_ios.o"
 OTHER_LDFLAGS_VALUE="-lz"
-if [ -f "$TJS2_IOS_LIB" ]; then
+TJS2_DEFS="GALBOX_M1C_DISABLED=1"
+if [ -f "$TJS2_IOS_LIB" ] && [ -f "$TJS2_HOST_OBJ" ] && [ -f "$TJS2_BRIDGE_OBJ" ]; then
+  OTHER_LDFLAGS_VALUE="-lz -liconv -force_load $TJS2_IOS_LIB $TJS2_HOST_OBJ $TJS2_BRIDGE_OBJ"
+  TJS2_DEFS="GALBOX_HAS_TJS2=1"
+  echo "已启用 TJS2 iOS arm64 + 宿主层 (M1c): lib + HostStreams + HostBridge"
+elif [ -f "$TJS2_IOS_LIB" ]; then
   OTHER_LDFLAGS_VALUE="-lz -liconv -force_load $TJS2_IOS_LIB"
-  echo "已启用 TJS2 iOS arm64 链接 (M1b): $TJS2_IOS_LIB"
+  echo "提示: 缺 M1c 宿主 .o，按 M1b 配置只链核心（跑 tools/build_tjs2_ios.sh 可升级）"
 else
   echo "提示: 未找到 libtjs2_ios.a，按原配置出包（跑 tools/build_tjs2_ios.sh 可启用）"
 fi
@@ -56,6 +65,7 @@ xcodebuild \
   PROVISIONING_PROFILE_SPECIFIER="" \
   IPHONEOS_DEPLOYMENT_TARGET=15.0 \
   OTHER_LDFLAGS="$OTHER_LDFLAGS_VALUE" \
+  GCC_PREPROCESSOR_DEFINITIONS="$TJS2_DEFS" \
   clean archive 2>&1 | tee "$BUILD/xcodebuild.log"
 
 APP="$ARCHIVE/Products/Applications/GalBoxNative.app"

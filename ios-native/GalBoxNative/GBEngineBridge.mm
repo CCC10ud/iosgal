@@ -4,6 +4,13 @@
 #include <vector>
 #include <string>
 
+// M1c: 只有 build_native.sh 检测到 iOS 静态库并定义 GALBOX_HAS_TJS2 时，
+// app 才引用 HostBridge 的 C 符号；否则仍可按原配置降级出包。
+// 官方 tjs.h 一律不进 ObjC++ 编译单元（编译开关必须与静态库完全一致）。
+#if defined(GALBOX_HAS_TJS2)
+#include "HostBridge.h"
+#endif
+
 static galbox::XP3Archive gArchive;
 static galbox::KagRuntime gRuntime;
 static BOOL gPackageOpen = NO;
@@ -56,12 +63,26 @@ static NSDictionary<NSString *, id> *StepToDict(const galbox::Step &s) {
     if (!gArchive.open(ToStd(path), &err)) { SetError(err); return NO; }
     gPackageOpen = YES;
     gLastError = @"";
+#if defined(GALBOX_HAS_TJS2)
+    // 把 4 个 TJS2 流工厂指向刚打开的游戏包 + 可写的 Documents。
+    NSArray<NSString *> *dirs = NSSearchPathForDirectoriesInDomains(
+        NSDocumentDirectory, NSUserDomainMask, YES);
+    NSString *storage = dirs.firstObject ?: NSTemporaryDirectory();
+    NSString *bundle = [[NSBundle mainBundle] bundlePath] ?: @"";
+    if (!GalBoxTJS2Install(&gArchive, [storage UTF8String], [bundle UTF8String])) {
+        // 宿主装不上不影响旧的 .ks 路径，但要在 UI 可查。
+        SetError("TJS2 宿主安装失败（.ks 路径仍可用）");
+    }
+#endif
     return YES;
 }
 
 + (BOOL)isPackageOpen { return gPackageOpen; }
 
 + (void)closePackage {
+#if defined(GALBOX_HAS_TJS2)
+    GalBoxTJS2Uninstall();
+#endif
     gArchive.close();
     gPackageOpen = NO;
     [self closeScript];
@@ -186,6 +207,44 @@ static NSDictionary<NSString *, id> *StepToDict(const galbox::Step &s) {
         }
     }
     return NO;
+}
+
++ (NSDictionary<NSString *, id> *)tjs2SmokeTest {
+#if defined(GALBOX_HAS_TJS2)
+    if (!gPackageOpen)
+        return @{@"ok": @NO, @"reason": @"尚未打开游戏包"};
+
+    // 挑一个包内的 ASCII 脚本名作为 Array.load 探针；找不到就传空串，
+    // 冒烟仍然会跑 eval + Array.save（宿主写）。
+    NSString *probe = @"";
+    for (const auto &e : gArchive.entries()) {
+        NSString *n = ToNS(e.name);
+        NSString *low = [n lowercaseString];
+        if (![low hasSuffix:@".ks"] && ![low hasSuffix:@".tjs"]) continue;
+        BOOL ascii = YES;
+        for (NSUInteger i = 0; i < n.length; ++i) {
+            if ([n characterAtIndex:i] > 127) { ascii = NO; break; }
+        }
+        if (ascii) { probe = n; break; }
+    }
+
+    char *json = GalBoxTJS2SmokeTest([probe UTF8String]);
+    if (!json) return @{@"ok": @NO, @"reason": @"TJS2 冒烟返回空结果"};
+    NSString *text = [NSString stringWithUTF8String:json] ?: @"";
+    GalBoxTJS2Free(json);
+
+    NSData *data = [text dataUsingEncoding:NSUTF8StringEncoding];
+    id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (![parsed isKindOfClass:[NSDictionary class]]) {
+        return @{@"ok": @NO, @"reason": @"冒烟结果解析失败", @"raw": text};
+    }
+    NSMutableDictionary *out = [NSMutableDictionary dictionaryWithDictionary:parsed];
+    out[@"probeFile"] = probe;
+    out[@"tjs2Linked"] = @(GalBoxTJS2Available() != 0);
+    return out;
+#else
+    return @{@"ok": @NO, @"reason": @"本包未链接 iOS TJS2（GALBOX_HAS_TJS2 未定义）"};
+#endif
 }
 
 @end

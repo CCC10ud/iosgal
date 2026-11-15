@@ -27,9 +27,15 @@ NS_ASSUME_NONNULL_BEGIN
 // Kirikiroid2-style signature detection: returns the engine id for a folder.
 + (NSString *)detectEngineAtPath:(NSString *)path NS_SWIFT_NAME(detectEngine(atPath:));
 
-// YES when the currently open package contains a TJS2 entry point (startup.tjs),
-// which this engine does not execute yet. Lets the UI warn instead of failing.
+// YES when the currently open package contains a TJS2 entry point (startup.tjs).
+// The TJS2 engine itself runs since M1c; the KAG layer on top of it is M2.
 + (BOOL)hasTJS2Startup NS_SWIFT_NAME(hasTJS2Startup());
+
+// Milestone 1c: really run the vendored TJS2 engine inside the app.
+// Returns a dictionary with ok / version / eval / hostReadDelta /
+// hostWriteDelta / build / reason. When the app was built without the
+// iOS TJS2 library it returns ok=false with a reason instead of crashing.
++ (NSDictionary<NSString *, id> *)tjs2SmokeTest NS_SWIFT_NAME(tjs2SmokeTest());
 
 @end
 

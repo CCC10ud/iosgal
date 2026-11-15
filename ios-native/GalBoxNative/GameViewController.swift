@@ -216,6 +216,26 @@ final class GameViewController: UIViewController {
         let isTJS2 = GBEngineBridge.hasTJS2Startup()
         toast("包内 \(files.count) 个文件 · Kirikiri XP3")
 
+        // M1c：真跑一次 vendored TJS2，把结果直接显示在界面上。
+        // 完整字典进设备日志，toast 只放关键指标（label 是单行定高的）。
+        let smoke = GBEngineBridge.tjs2SmokeTest()
+        NSLog("[GalBox][TJS2] %@", smoke)
+        let smokeOK = (smoke["ok"] as? Bool) ?? false
+        let diag: String
+        if smokeOK {
+            let ver = smoke["version"] as? String ?? "?"
+            let evalValue = smoke["eval"] as? Int ?? -1
+            let rd = smoke["hostReadDelta"] as? Int ?? 0
+            let wr = smoke["hostWriteDelta"] as? Int ?? 0
+            diag = "TJS2 \(ver) ✓ eval=\(evalValue) · 宿主读\(rd)/写\(wr)"
+                 + (isTJS2 ? " · startup.tjs 待 M2" : "")
+        } else {
+            diag = "TJS2 未就绪：" + ((smoke["reason"] as? String) ?? "未知原因")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.9) { [weak self] in
+            self?.toast(diag)
+        }
+
         var scriptName: String?
         for f in files {
             let n = f["name"] as? String ?? ""
@@ -233,7 +253,7 @@ final class GameViewController: UIViewController {
         guard let name = scriptName, let data = GBEngineBridge.data(forFile: name),
               let text = String(data: data, encoding: .utf8) else {
             if isTJS2 {
-                showError("检测到 TJS2 启动脚本（startup.tjs），但当前内核未实现 TJS2，且包内没有可直接运行的 .ks 剧本。这款游戏暂时无法运行。")
+                showError("检测到 TJS2 启动脚本（startup.tjs）。TJS2 引擎已可启动，但 KAG 层（Milestone 2）尚未移植，暂不能执行 startup.tjs；包内也没有可直接播放的 .ks 剧本。")
             } else {
                 showError("包内没有可运行的 .ks 剧本")
             }
@@ -244,9 +264,7 @@ final class GameViewController: UIViewController {
             return
         }
         render(GBEngineBridge.currentStep())
-        if isTJS2 {
-            toast("⚠️ 该游戏使用 TJS2 启动，部分初始化未执行，可能显示异常")
-        }
+        // isTJS2 的提示已并入上方 TJS2 冒烟 toast，避免连续两条互相覆盖。
     }
 
     private func render(_ raw: [String: Any]) {

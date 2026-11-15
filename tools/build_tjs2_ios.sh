@@ -4,6 +4,7 @@
 # 产物：
 #   native/TJS2/build/libtjs2_ios.a        （iphoneos arm64，供 app 链接）
 #   native/TJS2/build/HostStreams_ios.o   （宿主层，app 已有 XP3Archive.o，勿重复）
+#   native/TJS2/build/HostBridge_ios.o    （M1c：app 侧纯 C 适配层）
 #
 # 与 M0 的区别：M0 用 macOS host clang 编译并运行自测（证明逻辑正确）；
 # 本脚本用 iphoneos SDK 交叉编译（证明 Apple 移动工具链能编、能链）。
@@ -61,6 +62,14 @@ if ! xcrun --sdk iphoneos clang++ "${CXXFLAGS[@]}" \
   echo "[tjs2-ios] HostStreams.cpp iOS 编译失败:"; cat "$OUT/host_ios.log"; exit 1
 fi
 echo "[tjs2-ios] HostStreams_ios.o OK"
+
+# Milestone 1c：app 侧纯 C 适配层，与 HostStreams.cpp 用完全相同的 flags，
+# 避免 ObjC++ target 直接 include 官方 tjs.h 时编译开关不一致。
+if ! xcrun --sdk iphoneos clang++ "${CXXFLAGS[@]}" \
+      -c "$HOST/HostBridge.cpp" -o "$OUT/HostBridge_ios.o" 2>"$OUT/bridge_ios.log"; then
+  echo "[tjs2-ios] HostBridge.cpp iOS 编译失败:"; cat "$OUT/bridge_ios.log"; exit 1
+fi
+echo "[tjs2-ios] HostBridge_ios.o OK (M1c)"
 
 # 架构硬校验：必须是 Mach-O arm64，杜绝"编出来却是 x86_64"的假通过。
 ARCHINFO="$(file "${OBJS[0]}")"
