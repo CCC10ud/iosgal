@@ -5,6 +5,8 @@
 > **M1c ✅（run #18 全绿）**：app 内第一次真的调用 TJS2。
 > **M2a ✅（run #20 全绿）**：vendoring 官方 KAG3 系统脚本 + 补齐
 > `Scripts.execStorage` 原生类，TJS2 已能执行包内 `.tjs` 脚本（官方启动链第一段）。
+> **M2b 已实现，待 macOS runner 验证**：`Storages` 自动路径 + 官方原始
+> Shift-JIS 字节真解码 + `Scripts.eval`，并更正 M2a 的 vendoring 编码误判。
 > 交付包 `dist/GalBoxNative-adhoc-M2a-afe0d29a.ipa`（Mach-O arm64）。
 > 早期"网络被代理拦截"的判断**已推翻**：沙盒默认无代理变量，是我手动 `export`
 > 了失效的 `127.0.0.1:54662` 才导致 `http=000`；直连即可。上游仓库也从
@@ -133,8 +135,25 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
 ## 7. 当前状态与下一步
 
 **已完成**
+- **M2b（已实现，待 CI 验证）**：官方启动链第二段。
+  - **编码纠错**：M2a 说「逐字节 vendoring 官方 UTF-8 原文」是错的 —— 上游 git blob
+    实际是 **Shift-JIS + CRLF**（`Utils.tjs` 3,658 B / `Initialize.tjs` 7,246 B），
+    GitHub **contents API 会静默转码成 UTF-8**（3,940 B / 8,182 B），M2a 拿到的是转码副本。
+    本轮按 `/git/blobs/<sha>` 取原始字节落到 `native/KAG/src/original/`，
+    `VENDOR_MANIFEST.json` 分开记录两套副本。转码还把 `〜`/`−` 映射成 CP932 的
+    `～`/`－`，故解码必须先试 `CP932` 再 `SHIFT_JIS`。
+  - **能力**：`HostStreams.cpp` 实现官方 `Storages.addAutoPath` 语义（后加优先、
+    严格精确匹配，不用 `XP3Archive::find()` 的 basename 宽松回退）；
+    `HostBridge.cpp` 注册原生静态类 `Storages`（`addAutoPath` /
+    `isExistentStorage` / `getPlacedPath` / `chopStorageExt`）并补官方高频的 `Scripts.eval`。
+    `execStorage` 增加存在性检查：此前缺失 `.tjs` 会被「空流」静默当空脚本执行。
+  - **判据**：`test_m2b.cpp` 用目录归档装**官方原始 SJIS 字节**，探针
+    `intrandom(5,5)==5`（脚本真执行）、`str2num("１２３")==123`（脚本内全角字面量
+    解码正确，latin-1 兜底必失配）、`lastEncoding` / `shiftJisReads`（解码链走 SJIS）、
+    `autoPathHits` / `lastResolvedPath`（短名经 `system/` 展开）、错误 autoPath 必须失败。
+    静态 224 PASS / 0 FAIL。
 - **M2a** ✅（run #20 一次全绿）：官方 `kag3/template/startup.tjs` + `system/Utils.tjs`
-  逐字节 vendoring（UTF-8 + CRLF，SHA-256 见 `native/KAG/VENDOR_MANIFEST.json`）；
+  的 **UTF-8 转码副本**（非官方原始字节，见上条更正；SHA-256 见 `VENDOR_MANIFEST.json`）；
   `HostBridge.cpp` 注册 TJS2 原生静态类 `Scripts` 实现 `execStorage`，
   让 TJS2 经宿主读流加载并递归执行包内 `.tjs`。
   **实测**：目录模式归档 `entries=2, dirMode=1`；
@@ -174,22 +193,33 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
 **无阻塞项**：网络直连可用；`push_via_api.py` 走 Git Data API 原子提交（git 协议仍被墙）。
 
 **下一步（按序）**
-1. **M2b**：vendoring `Initialize.tjs` 及其依赖链、补 `Storages` / `System` 原生类、
-   接 iOS 事件队列（run loop / CADisplayLink）。宿主回调面继续走
-   `HostBridge` 这种「纯 C 边界 + C++ 适配层」结构，不要把官方 `tp_stub` 头
-   直接暴露给 ObjC++/Swift。
+1. **M2c（KAG 系统层，工作量最高）**：按 20 个官方系统脚本的调用面补齐
+   `System`（`getTickCount` 24 次 / `exePath` 12 / `inform` 9 / `createAppLock` 等）、
+   `Debug`（`notice` / `message` / `logAsError`）、`Layer` / `Window` 原生类，
+   再接 iOS 事件队列（run loop / CADisplayLink）与渲染/音频回调面。
+   `Initialize.tjs` 最后会 `new KAGWindow()` 并 `kag.process("first.ks")`，
+   这一步还需要 `KAGParserEx`。宿主回调面继续走
+   `HostBridge` 的「纯 C 边界 + C++ 适配层」，不要把官方 `tp_stub` 头暴露给 ObjC++/Swift。
    ⚠️ app 已编译 `XP3Archive.cpp`，宿主层**只能链 `HostStreams_ios.o` /
    `HostBridge_ios.o`**，勿重复打包 XP3Archive.o。
    ⚠️ 商业 `startup.tjs` 的执行必须放后台队列（Initialize.tjs 可能长循环/等待），
-   且 M2b 前会在缺原生类处抛异常，切勿在主线程同步调用。
-2. **M2c**：`KAGParserEx` / `KAGParser` 原生类 + 渲染/音频回调面，取代手写 `KagEngine`。
-3. **M3/M4**：TLG/TPP/WAV/OGG 解码、视频换 AVFoundation、产品化切换。
+   且缺原生类时会抛异常，切勿在主线程同步调用。
+2. **M3/M4**：TLG/TPP/WAV/OGG 解码、视频换 AVFoundation、产品化切换。
 
 **当前边界**：`startup.tjs` 在 app 里仍**不会自动执行** —— 引擎已具备
-`Scripts.execStorage`（M2a），但商业游戏系统脚本依赖 KAG 插件层（M2b/M2c）。
+`Scripts.execStorage`（M2a）+ `Storages` 自动路径与 Shift-JIS 解码（M2b），
+但商业游戏系统脚本依赖 `System` / `Debug` / `Layer` / `Window` / KAG 插件层（M2c）。
 界面文案已改为准确表述，不再说「内核未实现 TJS2」。
 
 **踩坑记录**：
+- **GitHub contents API 会静默转码**（M2b 发现）：`/repos/.../contents/<path>`
+  对非 UTF-8 文本返回的是**转码后的 UTF-8**，不是 git blob 原始字节。
+  用它做「逐字节 vendoring」必然失真。取原文必须用
+  `/git/blobs/<sha>` + `git/trees/master?recursive=1` 的 sha 校验。
+  官方 KAG3 脚本是 Shift-JIS，商业游戏同理 —— 只测 UTF-8 副本等于没测编码链。
+- **「没抛异常」不等于「解码正确」**：文本流对未知编码的逐字节 latin-1 兜底
+  同样能让注释/字符串语法过关。必须记录实际采用的编码，并用脚本内的
+  日文字符串字面量（如 `str2num("１２３")`）做实质判据。
 - Windows 工作区的 `.sh` 易带 CRLF，macOS bash 3.2 会把
   `set -euo pipefail\r` 判为 `invalid option name`（run #14 失败根因）。
   `push_via_api.py` 已加自动 LF 守卫；所有 `.sh`/`.yml` 推送前统一 LF。

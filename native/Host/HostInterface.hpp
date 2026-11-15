@@ -50,6 +50,29 @@ bool IsInstalled();
 unsigned int ReadCallCount();
 unsigned int WriteCallCount();
 
+// ---- Milestone 2b：Storages 自动路径（官方 StorageIntf 的最小实现） ----
+// 官方 Initialize.tjs 开头连调 13 次 Storages.addAutoPath("system/") 等，
+// 之后所有 Scripts.execStorage / Storages.isExistentStorage 都只传短文件名
+// （例："Utils.tjs"），必须由 autoPath 展开成 "system/Utils.tjs"。
+// 官方注释明确写「後に指定した物が、より優先されて使用される」：后加的优先，
+// 所以解析时逆序遍历。Install()/Uninstall() 会清空该列表。
+void ClearAutoPaths();
+void AddAutoPath(const std::string& path);
+unsigned int AutoPathCount();
+unsigned int AutoPathHitCount();
+std::string LastResolvedPath();
+bool IsExistentStorage(const std::string& name);
+std::string GetPlacedPath(const std::string& name);
+
+// ---- Milestone 2b：文本解码诊断 ----
+// 官方 KAG3 与商业游戏的 system/*.tjs 是 Shift-JIS（无 BOM）。
+// 「脚本没抛异常」不足以证明解码正确：逐字节 latin-1 兜底也能让注释/字符串
+// 语法过关。因此暴露实际采用的编码与 Shift-JIS 命中次数作为硬判据。
+// 取值："none" / "empty" / "utf-8-bom" / "utf-16le" / "utf-8" /
+//       "cp932" / "shift_jis" / "latin1-fallback"（静态字符串，勿 free）。
+const char* LastTextEncoding();
+unsigned int ShiftJisReadCount();
+
 // Milestone 2 待办（不在本契约内，先记边界）：
 //   - KAG 插件的 TP_STUB 平台层：TVPGetTickCount / TVPPrint /
 //     TVPThrowExceptionMessage / TVPPostEvent / TVPProcessEvents / TVPGetAppPath

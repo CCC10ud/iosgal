@@ -280,7 +280,9 @@ for item in kag_man["files"]:
     rel = "native/KAG/src/" + item["path"]
     b = raw(rel)
     ok(len(b) == item["bytes"] and hashlib.sha256(b).hexdigest() == item["sha256"],
-       "官方 KAG3 脚本逐字节保真: " + item["path"])
+       "M2a UTF-8 归一化副本校验值一致: " + item["path"])
+    ok(item.get("normalized") is True,
+       "清单明确标注该副本不是官方原始字节: " + item["path"])
 ok("jeeb/kirikiri2" in kag_readme and "KAGParserEx" in kag_readme
    and "kag3/template/system" in kag_readme and "404" in kag_readme,
    "KAG README 已更正上游仓库名与真实目录结构")
@@ -310,6 +312,65 @@ ok("tjs2ExecStartup" in objc_h and "tjs2ExecStartup" in objc_mm,
    "app 暴露官方 startup.tjs 诊断入口")
 ok("GBEngineBridge.tjs2ExecStartup()" not in swift_vc,
    "不自动执行商业 startup.tjs（避免主线程长循环 / 缺类异常崩溃）")
+
+print("\n[10] Milestone 2b — Storages 自动路径 + 官方原始 Shift-JIS 字节")
+host_hpp = read("native/Host/HostInterface.hpp")
+host_streams = read("native/Host/HostStreams.cpp")
+m2b_test = read("native/Host/test_m2b.cpp")
+m2b_probe = read("native/KAG/src/m2b_probe_startup.tjs")
+m2b_bad = read("native/KAG/src/m2b_bad_autopath.tjs")
+
+# 官方原始字节必须逐字节保真，且确实不是 UTF-8（否则 SJIS 路径根本没被测）
+for item in kag_man["upstream_raw"]:
+    b = raw("native/KAG/" + item["path"])
+    ok(len(b) == item["bytes"] and hashlib.sha256(b).hexdigest() == item["sha256"],
+       "官方 git blob 原始字节保真: " + item["path"])
+    try:
+        b.decode("utf-8")
+        is_utf8 = True
+    except UnicodeDecodeError:
+        is_utf8 = False
+    ok(not is_utf8, "官方原始字节确实不是 UTF-8（是 Shift-JIS）: " + item["path"])
+ok("Shift-JIS" in kag_readme and "contents API" in kag_readme,
+   "README 已更正 M2a 的「逐字节 UTF-8」误判")
+ok("contents API" in kag_man["encoding_finding"]["correction"]
+   and "CP932" in kag_man["encoding_finding"]["mapping_difference"],
+   "VENDOR_MANIFEST 记录了转码与 CP932 映射差异")
+ok("function intrandom" in raw("native/KAG/src/original/system/Utils.tjs").decode("shift_jis"),
+   "原始 SJIS 文件解码后确为官方 Utils.tjs")
+
+for tok in ("AddAutoPath", "ClearAutoPaths", "IsExistentStorage", "GetPlacedPath",
+            "AutoPathHitCount", "LastResolvedPath", "LastTextEncoding",
+            "ShiftJisReadCount"):
+    ok(tok in host_hpp and tok in host_streams,
+       "宿主层暴露并实现 M2b 接口: " + tok)
+ok("CP932" in host_streams and "SHIFT_JIS" in host_streams
+   and "latin1-fallback" in host_streams,
+   "解码优先 CP932、失败有兜底且兜底被诊断出来")
+ok("rbegin()" in host_streams and "ExistsRaw" in host_streams,
+   "autoPath 后加优先且不靠 find() 的 basename 宽松回退")
+ok("ResolveStorage(logical, true)" in host_streams,
+   "真正的读操作才计入 autoPath 命中（探测不伪造命中）")
+for tok in ("tTJSNC_Storages", "TJS_END_NATIVE_STATIC_METHOD_DECL(addAutoPath)",
+            "isExistentStorage", "getPlacedPath", "chopStorageExt",
+            "TJS_END_NATIVE_STATIC_METHOD_DECL(eval)",
+            "script not found via autoPath", "M2B_STORAGES_AUTOPATH",
+            "RegisterStoragesClass(engine)"):
+    ok(tok in bridge_cpp, "HostBridge 注册 M2b 能力: " + tok)
+ok('Storages.addAutoPath("system/")' in m2b_probe
+   and 'Scripts.execStorage("Utils.tjs")' in m2b_probe,
+   "M2b 探针用短文件名强制走 autoPath 解析")
+ok('addAutoPath("missing_dir/")' in m2b_bad,
+   "M2b 有故意写错 autoPath 的失败路径")
+for tok in ("M2B_RESULT=OK", 'probeValue\\":123', "shiftJisReads", "autoPathHits",
+            "lastResolvedPath", "bad_startup.tjs", "str2num"):
+    ok(tok in m2b_test, "M2b 自测含实质判据: " + tok)
+ok("test_m2b.cpp" in test_sh and "M2B_RESULT=OK" in test_sh
+   and '3658' in test_sh and "src/original/system/Utils.tjs" in test_sh,
+   "CI 用官方原始 3658B SJIS blob 真跑 M2b 自测")
+ok("M2B_STORAGES_AUTOPATH" in wf, "CI 核验 M2b 适配层真的进 app 二进制")
+ok("GBEngineBridge.tjs2ExecStartup()" not in swift_vc,
+   "M2b 仍不自动执行商业 startup.tjs")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

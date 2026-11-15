@@ -1,4 +1,4 @@
-// HostBridge.cpp — Milestone 1c / 2a：把官方 TJS2 引擎接进 iOS app 的适配层
+// HostBridge.cpp — Milestone 1c / 2a / 2b：把官方 TJS2 引擎接进 iOS app 的适配层
 //
 // M1b 只证明 iOS 链接器能解析 TJS2 符号；M1c 要求：
 //   1) 打开游戏包时安装宿主（4 个流工厂桥到 XP3Archive/Documents/bundle）；
@@ -9,6 +9,12 @@
 // M2a 再往前一步：注册官方启动链的第一个原生静态类 `Scripts`，实现
 // `Scripts.execStorage(path)` —— 官方 startup.tjs 唯一做的事就是调它。
 // 这让 TJS2 能从游戏包读 .tjs 脚本并递归执行，而不只是 eval 表达式。
+//
+// M2b 补官方启动链的第二个原生类 `Storages`：Initialize.tjs 开头连调 13 次
+// addAutoPath("system/") 等，之后所有 execStorage 都传短文件名。没有 autoPath
+// 解析就找不到任何系统脚本。同时给 execStorage 加存在性检查 —— 宿主流工厂
+// 对缺失文件返回「空流」（为兼容官方 Array.load），若不检查，缺失脚本会被
+// 静默当空脚本执行，把「加载失败」伪装成「加载成功」。
 //
 // 由 build_tjs2_test.sh（macOS host，真跑自测）与 build_tjs2_ios.sh
 // （iphoneos arm64，编 .o 供 app 链接）用同一套 flags 编译。
@@ -148,6 +154,15 @@ std::string MakeExecResult(bool ok, const char *reason, const char *entry,
     s += ",\"execStorageCalls\":" + std::to_string(execCalls);
     s += ",\"build\":\"" + std::string(kBuildTag) + "\"";
     s += ",\"kag\":\"M2A_SCRIPTS_EXEC_STORAGE\"";
+    s += ",\"stage\":\"M2B_STORAGES_AUTOPATH\"";
+    // 诊断必须能区分「真的按 autoPath 找到」与「碰巧被 basename 宽松回退命中」，
+    // 也要能区分「Shift-JIS 正确解码」与「逐字节 latin-1 兜底但语法没报错」。
+    s += ",\"autoPathCount\":" + std::to_string(galbox::host::AutoPathCount());
+    s += ",\"autoPathHits\":" + std::to_string(galbox::host::AutoPathHitCount());
+    s += ",\"shiftJisReads\":" + std::to_string(galbox::host::ShiftJisReadCount());
+    s += ",\"lastEncoding\":\"" + JsonEscape(galbox::host::LastTextEncoding()) + "\"";
+    s += ",\"lastResolvedPath\":\""
+       + JsonEscape(galbox::host::LastResolvedPath().c_str()) + "\"";
     s += ",\"error\":\"" + JsonEscape(reason ? reason : "") + "\"";
     s += "}";
     return s;
@@ -175,6 +190,15 @@ public:
             ttstr mode;
             if (numparams >= 2 && param[1]->Type() != tvtVoid)
                 mode = *param[1];
+
+            // 宿主读流工厂对缺失文件返回「空流」（官方 Array.load 不做空指针
+            // 检查）。execStorage 若不先判存在，缺失的 .tjs 会被当成空脚本
+            // 静默执行，把加载失败伪装成成功。
+            std::string nameU8 = WideToUtf8(name.c_str());
+            if (!galbox::host::IsExistentStorage(nameU8)) {
+                gLastScriptError = "Storages: script not found via autoPath: " + nameU8;
+                return TJS_E_FAIL;
+            }
 
             iTJSTextReadStream *stream = TJSCreateTextStreamForRead(name, mode);
             if (!stream) {
@@ -207,12 +231,95 @@ public:
             return TJS_S_OK;
         }
         TJS_END_NATIVE_STATIC_METHOD_DECL(execStorage)
+
+        // 官方 20 个系统脚本里 Scripts.eval 出现 31 次，是最常用的动态求值入口。
+        TJS_BEGIN_NATIVE_METHOD_DECL(eval)
+        {
+            if (numparams < 1) return TJS_E_BADPARAMCOUNT;
+            if (!gActiveEngine) {
+                gLastScriptError = "no active TJS2 engine for Scripts.eval";
+                return TJS_E_FAIL;
+            }
+            ttstr expr(*param[0]);
+            tTJSVariant local;
+            tTJSVariant *out = result ? result : &local;
+            try {
+                gActiveEngine->EvalExpression(expr.c_str(), out, NULL,
+                                             TJS_W("Scripts.eval"), 0);
+            } catch (...) {
+                gLastScriptError = "Scripts.eval threw";
+                return TJS_E_FAIL;
+            }
+            return TJS_S_OK;
+        }
+        TJS_END_NATIVE_STATIC_METHOD_DECL(eval)
         TJS_END_NATIVE_MEMBERS
     }
 private:
     static tjs_uint32 ClassID;
 };
 tjs_uint32 tTJSNC_Scripts::ClassID = (tjs_uint32)-1;
+
+// ---- M2b：官方启动链第二个原生类 Storages -------------------------------
+// 官方 kag3/template/system/Initialize.tjs 的前 30 行就调用了 13 次
+// addAutoPath；之后所有系统脚本都用短文件名取文件。这里实现最小可用子集：
+//   addAutoPath / isExistentStorage / getPlacedPath / chopStorageExt
+// 其余 selectFile / searchCD / extractStorage* 属文件对话框与 CD 搜索，iOS 无对应物。
+class tTJSNC_Storages : public tTJSNativeClass {
+public:
+    tTJSNC_Storages() : tTJSNativeClass(TJS_W("Storages")) {
+        TJS_BEGIN_NATIVE_MEMBERS(Storages)
+        TJS_DECL_EMPTY_FINALIZE_METHOD
+
+        TJS_BEGIN_NATIVE_METHOD_DECL(addAutoPath)
+        {
+            if (numparams < 1) return TJS_E_BADPARAMCOUNT;
+            ttstr path(*param[0]);
+            galbox::host::AddAutoPath(WideToUtf8(path.c_str()));
+            return TJS_S_OK;
+        }
+        TJS_END_NATIVE_STATIC_METHOD_DECL(addAutoPath)
+
+        TJS_BEGIN_NATIVE_METHOD_DECL(isExistentStorage)
+        {
+            if (numparams < 1) return TJS_E_BADPARAMCOUNT;
+            ttstr name(*param[0]);
+            bool found = galbox::host::IsExistentStorage(WideToUtf8(name.c_str()));
+            if (result) *result = static_cast<tjs_int>(found ? 1 : 0);
+            return TJS_S_OK;
+        }
+        TJS_END_NATIVE_STATIC_METHOD_DECL(isExistentStorage)
+
+        TJS_BEGIN_NATIVE_METHOD_DECL(getPlacedPath)
+        {
+            if (numparams < 1) return TJS_E_BADPARAMCOUNT;
+            ttstr name(*param[0]);
+            std::string placed = galbox::host::GetPlacedPath(WideToUtf8(name.c_str()));
+            if (result) *result = ttstr(Utf8ToWide(placed.c_str()).c_str());
+            return TJS_S_OK;
+        }
+        TJS_END_NATIVE_STATIC_METHOD_DECL(getPlacedPath)
+
+        TJS_BEGIN_NATIVE_METHOD_DECL(chopStorageExt)
+        {
+            if (numparams < 1) return TJS_E_BADPARAMCOUNT;
+            ttstr name(*param[0]);
+            std::string p = WideToUtf8(name.c_str());
+            size_t slash = p.find_last_of("/\\");
+            size_t dot = p.find_last_of('.');
+            if (dot != std::string::npos &&
+                (slash == std::string::npos || dot > slash))
+                p.erase(dot);
+            if (result) *result = ttstr(Utf8ToWide(p.c_str()).c_str());
+            return TJS_S_OK;
+        }
+        TJS_END_NATIVE_STATIC_METHOD_DECL(chopStorageExt)
+        TJS_END_NATIVE_MEMBERS
+    }
+private:
+    static tjs_uint32 ClassID;
+};
+tjs_uint32 tTJSNC_Storages::ClassID = (tjs_uint32)-1;
 
 void RegisterScriptsClass(tTJS *engine) {
     iTJSDispatch2 *global = engine->GetGlobalNoAddRef();
@@ -222,6 +329,16 @@ void RegisterScriptsClass(tTJS *engine) {
     val = tTJSVariant(dsp, NULL);
     dsp->Release();
     global->PropSet(TJS_MEMBERENSURE, TJS_W("Scripts"), NULL, &val, global);
+}
+
+void RegisterStoragesClass(tTJS *engine) {
+    iTJSDispatch2 *global = engine->GetGlobalNoAddRef();
+    if (!global) return;
+    iTJSDispatch2 *dsp = new tTJSNC_Storages();
+    tTJSVariant val;
+    val = tTJSVariant(dsp, NULL);
+    dsp->Release();
+    global->PropSet(TJS_MEMBERENSURE, TJS_W("Storages"), NULL, &val, global);
 }
 
 }  // namespace
@@ -341,6 +458,9 @@ extern "C" char *GalBoxTJS2ExecScript(const char *entryName,
                                         "", probeExpression, -1, 0, 0));
 
     const unsigned readsBefore = galbox::host::ReadCallCount();
+    // 每次执行入口脚本都视为一次全新启动：官方 Initialize.tjs 会重新
+    // addAutoPath，不沿用上一次诊断运行的路径表。
+    galbox::host::ClearAutoPaths();
     gActiveEngine = nullptr;
     gLastScriptError.clear();
     gExecStorageCalls = 0;
@@ -353,6 +473,7 @@ extern "C" char *GalBoxTJS2ExecScript(const char *entryName,
         engine = new tTJS();
         gActiveEngine = engine;
         RegisterScriptsClass(engine);
+        RegisterStoragesClass(engine);
 
         std::wstring entryW = Utf8ToWide(entryName);
         ttstr entry(entryW.c_str());

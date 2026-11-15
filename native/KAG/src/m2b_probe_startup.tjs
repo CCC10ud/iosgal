@@ -1,0 +1,24 @@
+// GalBox-authored M2b probe (NOT from upstream).
+// Mirrors the first actions of the official system/Initialize.tjs:
+// register autoPath once, then address every system script by SHORT name.
+// The loaded system/Utils.tjs here is the ORIGINAL upstream Shift-JIS blob,
+// not the UTF-8 transcode that M2a used.
+Storages.addAutoPath("system/");
+
+if(!Storages.isExistentStorage("Utils.tjs"))
+	throw new Exception("Storages autoPath lookup failed");
+
+if(Storages.getPlacedPath("Utils.tjs") != "system/Utils.tjs")
+	throw new Exception("Storages.getPlacedPath did not resolve via autoPath");
+
+if(!Storages.isExistentStorage("NoSuchScript.tjs"))
+{
+	// expected: a missing script must NOT be found by basename fallback
+}
+else
+	throw new Exception("isExistentStorage returned true for a missing script");
+
+if(Scripts.eval("1+1") != 2)
+	throw new Exception("Scripts.eval is broken");
+
+Scripts.execStorage("Utils.tjs");

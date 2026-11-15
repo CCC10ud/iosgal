@@ -1,4 +1,4 @@
-// HostStreams.cpp — Milestone 1a：官方 TJS2 四个流工厂的 GalBox 实现
+// HostStreams.cpp — Milestone 1a / 2b：官方 TJS2 四个流工厂的 GalBox 实现
 //
 // 把 TJS::TJSCreate{Text,Binary}StreamFor{Read,Write} 接到
 //   galbox::XP3Archive（游戏包内文件，含目录/分卷模式）
@@ -7,8 +7,13 @@
 //
 // 设计要点：
 //  - 不修改官方源码，只在 Install() 时覆盖 tjs.h:192-199 的 4 个全局函数指针。
-//  - 文本流做编码探测（UTF-8 / UTF-16LE BOM / SHIFT_JIS via iconv），
+//  - 文本流做编码探测（UTF-8 / UTF-16LE BOM / Shift-JIS via iconv），
 //    统一转成 tjs_char(wchar_t, 4B) 交给 TJS2；写回流统一 UTF-8。
+//    M2b：优先 CP932 再 SHIFT_JIS —— 官方 KAG3 用了 0x8160(～)/0x817C(－)
+//    等 CP932 扩展码位，严格 SHIFT_JIS 会映射成不同的 Unicode 码点。
+//  - M2b：实现 Storages 自动路径（后加优先）。官方系统脚本用短文件名取文件，
+//    没有 autoPath 就根本找不到。解析不到时不再依赖 XP3Archive::read() 的
+//    basename 宽松回退，否则「autoPath 生效」是假象。
 //  - 文件不存在时返回"空流"而不是 NULL：官方 Array.load 不做空指针检查。
 //  - 纯 C++14 / POSIX，不依赖 Foundation，因此同一个 .o 可同时用于
 //    macOS 自测和 iOS arm64 app（app 侧已有 XP3Archive.o，勿重复打包）。
@@ -18,6 +23,7 @@
 #include "tjsCommHead.h"   // 已包含 tjs.h，并提供官方平台配置
 #include "XP3Archive.hpp"
 
+#include <cctype>
 #include <cstdint>
 #include <cstring>
 #include <cstdlib>
@@ -42,6 +48,14 @@ std::string gBundleRoot;
 bool gInstalled = false;
 unsigned int gReadCount = 0;
 unsigned int gWriteCount = 0;
+
+// M2b：Storages.addAutoPath 的路径表（后加优先）与解析诊断。
+std::vector<std::string> gAutoPaths;
+unsigned int gAutoPathHits = 0;
+std::string gLastResolvedPath;
+// 文本解码诊断：字符串字面量都是静态存储期，可直接经纯 C 边界返回。
+const char* gLastTextEncoding = "none";
+unsigned int gShiftJisReads = 0;
 
 typedef TJS::iTJSTextReadStream*  (*TextReadFactory)(const ttstr&, const ttstr&);
 typedef TJS::iTJSTextWriteStream* (*TextWriteFactory)(const ttstr&, const ttstr&);
@@ -139,19 +153,52 @@ bool IconvToWide(const char* encoding, const std::vector<uint8_t>& data, std::ws
     return true;
 }
 
+// 官方 KAG3 与商业游戏脚本是 Shift-JIS（CP932 超集）。不同平台的 libiconv
+// 对编码名支持不一，且严格 SHIFT_JIS 会把 0x8160 映射成 U+301C 而不是
+// 官方文本实际使用的 U+FF5E。因此按 CP932 → SHIFT_JIS → SHIFT-JIS → SJIS
+// 依次尝试，第一个能完整消费输入（inleft==0）的即为结果。
+bool DecodeShiftJis(const std::vector<uint8_t>& d, std::wstring& out,
+                    const char** usedName) {
+    static const char* const kNames[] = {"CP932", "SHIFT_JIS", "SHIFT-JIS", "SJIS"};
+    for (size_t i = 0; i < sizeof(kNames) / sizeof(kNames[0]); ++i) {
+        std::wstring w;
+        if (IconvToWide(kNames[i], d, w) && !w.empty()) {
+            out.swap(w);
+            *usedName = kNames[i];
+            return true;
+        }
+    }
+    return false;
+}
+
 std::wstring DecodeText(const std::vector<uint8_t>& d) {
-    if (d.empty()) return std::wstring();
+    if (d.empty()) { gLastTextEncoding = "empty"; return std::wstring(); }
     if (d.size() >= 3 && d[0] == 0xEF && d[1] == 0xBB && d[2] == 0xBF) {
         std::wstring w;
-        if (ScanUtf8(d.data() + 3, d.size() - 3, &w)) return w;
+        if (ScanUtf8(d.data() + 3, d.size() - 3, &w)) {
+            gLastTextEncoding = "utf-8-bom";
+            return w;
+        }
     }
     if (d.size() >= 2 && d[0] == 0xFF && d[1] == 0xFE) {
+        gLastTextEncoding = "utf-16le";
         return Utf16LEToWide(d.data() + 2, d.size() - 2);
     }
     std::wstring w;
-    if (ScanUtf8(d.data(), d.size(), &w)) return w;
-    // Kirikiri 的日文脚本多数是 Shift-JIS（无 BOM）。
-    if (IconvToWide("SHIFT_JIS", d, w)) return w;
+    if (ScanUtf8(d.data(), d.size(), &w)) {
+        gLastTextEncoding = "utf-8";
+        return w;
+    }
+    const char* used = nullptr;
+    if (DecodeShiftJis(d, w, &used)) {
+        gLastTextEncoding = (used && std::strcmp(used, "CP932") == 0)
+                          ? "cp932" : "shift_jis";
+        ++gShiftJisReads;
+        return w;
+    }
+    // 兜底必须被诊断出来：逐字节 latin-1 也能让注释/字符串语法过关，
+    // 但日文全变成乱码，不能算「解码成功」。
+    gLastTextEncoding = "latin1-fallback";
     w.clear();
     for (uint8_t b : d) w.push_back(static_cast<wchar_t>(b));
     return w;
@@ -168,11 +215,80 @@ std::string Normalize(const std::string& s) {
     return r;
 }
 
+// ---------------------------------------------------------------------------
+// M2b：Storages 自动路径（官方 kag3/template/system/Initialize.tjs 的第一批动作）
+// ---------------------------------------------------------------------------
+std::string AsciiLower(const std::string& s) {
+    std::string r = s;
+    for (char& c : r) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return r;
+}
+
+// 官方 addAutoPath 既传普通目录 "system/"，也传 "data.xp3>" 这种归档前缀。
+// GalBox 暂不支持在 .xp3 内部再套一层路径，只去掉结尾的 '>'，其余照常当作
+// 目录前缀处理（找不到就是找不到，绝不静默改成别的路径）。
+std::string NormalizeAutoPath(const std::string& p) {
+    std::string s = Normalize(p);
+    while (!s.empty() && s[s.size() - 1] == '>') s.erase(s.size() - 1);
+    while (!s.empty() && s[s.size() - 1] == '/') s.erase(s.size() - 1);
+    if (s.empty()) return s;
+    s += "/";
+    return s;
+}
+
+// 严格精确匹配：故意不用 XP3Archive::find()，它带 basename 宽松回退，
+// 会把 "bogus/Utils.tjs" 也判成存在，使 autoPath 看起来生效其实是假象。
+bool ExistsRaw(const std::string& n) {
+    if (n.empty()) return false;
+    const std::string key = AsciiLower(n);
+    if (gArchive && gArchive->isOpen()) {
+        for (const auto& e : gArchive->entries()) {
+            if (e.lowerName == key) return true;
+        }
+    }
+    const std::string* roots[2] = { &gStorageRoot, &gBundleRoot };
+    for (const std::string* root : roots) {
+        if (root->empty()) continue;
+        struct stat st;
+        if (stat((*root + "/" + n).c_str(), &st) == 0 && S_ISREG(st.st_mode))
+            return true;
+    }
+    return false;
+}
+
+// 返回解析后的实际路径；找不到返回空串。countHit 只给真正的「读」计数，
+// isExistentStorage / getPlacedPath 的探测不应伪造命中次数。
+std::string ResolveStorage(const std::string& logical, bool countHit) {
+    std::string n = Normalize(logical);
+    if (n.empty()) return std::string();
+    if (ExistsRaw(n)) return n;
+    // 官方语义：后加入的 autoPath 优先，所以逆序遍历。
+    for (auto it = gAutoPaths.rbegin(); it != gAutoPaths.rend(); ++it) {
+        std::string cand = *it + n;
+        if (ExistsRaw(cand)) {
+            if (countHit) {
+                ++gAutoPathHits;
+                gLastResolvedPath = cand;
+            }
+            return cand;
+        }
+    }
+    return std::string();
+}
+
 bool ReadAll(const std::string& logical, std::vector<uint8_t>& out) {
     ++gReadCount;
     std::string n = Normalize(logical);
     out.clear();
     if (n.empty()) return false;
+    // Storages 一旦介入就严格按官方 autoPath 规则解析：解析不到就是找不到，
+    // 不再退回 XP3Archive::read() 的 basename 宽松回退。
+    // autoPaths 为空时保留 M0/M1a/M1c/M2a 的旧行为，避免破坏既有自测。
+    if (!gAutoPaths.empty()) {
+        std::string resolved = ResolveStorage(logical, true);
+        if (resolved.empty()) return false;
+        n = resolved;
+    }
     if (gArchive && gArchive->isOpen()) {
         std::string err;
         if (gArchive->read(n, out, &err)) return true;
@@ -357,6 +473,8 @@ void Install(XP3Archive* archive,
     gStorageRoot = storageRoot;
     gBundleRoot = bundleRoot;
     gInstalled = true;
+    // 每个游戏包都是一次全新的启动：官方 Initialize.tjs 会重新 addAutoPath。
+    ClearAutoPaths();
 
     TJS::TJSCreateTextStreamForRead   = &CreateTextRead;
     TJS::TJSCreateTextStreamForWrite  = &CreateTextWrite;
@@ -373,11 +491,43 @@ void Uninstall() {
     gStorageRoot.clear();
     gBundleRoot.clear();
     gInstalled = false;
+    ClearAutoPaths();
 }
 
 bool IsInstalled() { return gInstalled; }
 unsigned int ReadCallCount()  { return gReadCount; }
 unsigned int WriteCallCount() { return gWriteCount; }
+
+void ClearAutoPaths() {
+    gAutoPaths.clear();
+    gAutoPathHits = 0;
+    gLastResolvedPath.clear();
+}
+
+void AddAutoPath(const std::string& path) {
+    std::string p = NormalizeAutoPath(path);
+    if (p.empty()) return;
+    // 官方允许重复 add，后面的优先；这里不去重，保持插入顺序即优先级。
+    gAutoPaths.push_back(p);
+}
+
+unsigned int AutoPathCount() { return static_cast<unsigned int>(gAutoPaths.size()); }
+
+unsigned int AutoPathHitCount() { return gAutoPathHits; }
+
+std::string LastResolvedPath() { return gLastResolvedPath; }
+
+bool IsExistentStorage(const std::string& name) {
+    return !ResolveStorage(name, false).empty();
+}
+
+std::string GetPlacedPath(const std::string& name) {
+    return ResolveStorage(name, false);
+}
+
+const char* LastTextEncoding() { return gLastTextEncoding; }
+
+unsigned int ShiftJisReadCount() { return gShiftJisReads; }
 
 }  // namespace host
 }  // namespace galbox

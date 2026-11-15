@@ -1,0 +1,8 @@
+// GalBox-authored M2b negative probe (NOT from upstream).
+// A deliberately wrong autoPath must make the short name unresolvable.
+// If the host silently falls back to the loose basename lookup, this script
+// would "succeed" and test_m2b.cpp would fail -- which is the point:
+// Storages resolution must be strict, and execStorage must not treat a
+// missing .tjs as an empty script that executed cleanly.
+Storages.addAutoPath("missing_dir/");
+Scripts.execStorage("Utils.tjs");

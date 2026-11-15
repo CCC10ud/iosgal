@@ -4,6 +4,12 @@
 > 正确仓库是 **`jeeb/kirikiri2` @ master**。另外「KAG 系统脚本随游戏提供、
 > 不入库」也不准确 —— 官方仓库自带 `kag3/template/system/` 的 28 个 `.tjs`
 > （448,729 B），可以直接 vendoring。
+>
+> 2026-11-15 二次更正（M2b）：**官方 git blob 里的脚本是 Shift-JIS + CRLF，不是 UTF-8**。
+> GitHub contents API 会静默转码成 UTF-8，M2a 说「逐字节 vendoring 官方原文」是错的。
+> 现在 `src/` 下是「M2a 用到的 UTF-8 归一化副本」，`src/original/` 下才是
+> 按 `/git/blobs/<sha>` 取的**官方原始字节**（sha/大小见 `VENDOR_MANIFEST.json`）。
+> 商业游戏的 `system/` 恰恰是 Shift-JIS，所以 M2b 的自测改用原始字节跑。
 
 ## 官方 KAG 的真实结构（按仓库文件树核对）
 
@@ -27,18 +33,40 @@
   让 TJS2 能从游戏包读 `.tjs` 并递归执行。自测用目录模式归档真跑官方 `Utils.tjs`
   （含 `property` 块、`<->` 交换运算符、日文注释），探针 `intrandom(5,5) == 5`。
   这是**官方启动链第一段**，不是完整 KAG。
-- **M2b**：补 `Storages` / `System` 等原生类 + vendoring `Initialize.tjs` 及其依赖链，
-  让官方 `startup.tjs` 能一路执行到 KAG 初始化；需要事件队列（iOS run loop / CADisplayLink）。
+- **M2b（本轮）**：官方启动链第二段 —— `Storages` 自动路径（官方
+  `Initialize.tjs` 开头连调 13 次 `addAutoPath`，后面所有 `Scripts.execStorage`
+  都用短文件名，必须靠 autoPath 展开）+ **Shift-JIS 原始字节真解码**。
+  同时 vendoring `Initialize.tjs` 原文作为依赖分析依据（不执行）。
+  `System` / `Debug` / `Layer` / `Window` 与事件队列仍在 M2c。
 - **M2c**：`KAGParserEx` / `KAGParser` 原生类 + 渲染/音频回调面（文本、层、图像、转场），
   把 `GameViewController` 接到官方 KAG 播放循环，取代手写 `KagEngine`。
 - **M3/M4**：TLG/TPP/WAV/OGG 解码、视频换 AVFoundation、产品化切换。
 
 ## 当前目录
 
-- `src/startup.tjs`、`src/system/Utils.tjs`：官方原文，逐字节（含 CRLF、版权头）。
-- `src/m2a_probe_startup.tjs`：GalBox 自写探针，仿官方调用形态但指向 `Utils.tjs`，
-  避开尚未移植的 `Initialize.tjs` 依赖链。
-- `VENDOR_MANIFEST.json`：来源、字节数、SHA-256、编码、未 vendoring 清单。
+- `src/startup.tjs`、`src/system/Utils.tjs`：M2a 使用的 **UTF-8 归一化副本**
+  （GitHub contents API 转码版，含 CRLF、版权头；**不是**官方原始字节）。
+- `src/original/{startup.tjs,system/Utils.tjs,system/Initialize.tjs}`：
+  按 git blob sha 取的**官方原始 Shift-JIS 字节**，与上游字节完全一致。
+  `Initialize.tjs` 仅用于依赖分析，M2c 之前不执行。
+- `src/m2a_probe_startup.tjs`、`src/m2b_probe_startup.tjs`：GalBox 自写探针。
+- `VENDOR_MANIFEST.json`：两套副本的来源、字节数、SHA-256、blob sha、
+  编码差异说明、未 vendoring 清单。
+
+## M2b 依赖分析（`Initialize.tjs` 原文）
+
+按 20 个官方系统脚本统计，启动链需要的原生类调用面（次数）：
+
+| 类 | 主要成员 |
+|---|---|
+| `Scripts` | `eval` 31、`exec` 4、`evalStorage` 4、`execStorage` 1、`dump` 1 |
+| `Storages` | `isExistentStorage` 25、`addAutoPath` 13、`chopStorageExt` 6、`getPlacedPath` 3、`getLocalName` 2、`selectFile` 2 等 |
+| `System` | `getTickCount` 24、`exePath` 12、`inform` 9、`title` 7、`screenWidth/Height` 8、`createAppLock` 1、`exceptionHandler` 1 等 |
+| `Debug` | `notice` 5、`message` 3、`logAsError` 2 等 |
+
+`Initialize.tjs` 会依次 `KAGLoadScript` 加载 14 个系统脚本，最后
+`global.kag = new KAGWindow()` 并 `kag.process("first.ks")` —— 这一步需要
+`Layer` / `Window` / `KAGParserEx` 与渲染回调面，属于 M2c，本轮**没有**跑。
 
 ## 授权
 
@@ -50,7 +78,9 @@ KAG3 模板脚本的文件头是「Copyright (C) 2001-2009, W.Dee **改変・配
 
 - 宿主边界继续走 `../Host/HostBridge.{h,cpp}` 的「纯 C 接口 + C++ 适配层」，
   官方 `tp_stub.h` 一律不暴露给 ObjC++ / Swift。
-- 文本流已支持 UTF-8 / UTF-16LE BOM / SHIFT_JIS，官方 KAG3 脚本是 UTF-8，
-  但商业游戏自带的 `system/` 常是 Shift-JIS，M2b 要实测覆盖。
+- 文本流支持 UTF-8 / UTF-16LE BOM / Shift-JIS（libiconv，优先 CP932）。
+  **官方 KAG3 与商业游戏的 `system/` 都是 Shift-JIS**；M2b 的自测已用官方
+  原始字节真跑过这条解码链，`HostStreams.cpp` 会记录实际采用的编码，
+  不准靠「没抛异常」自证解码成功。
 - `startup.tjs` 的执行**不要放在 UI 主线程**（Initialize.tjs 可能长循环/等待），
   M2b 接线时必须走后台队列。

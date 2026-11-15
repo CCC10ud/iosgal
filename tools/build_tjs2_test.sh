@@ -3,6 +3,7 @@
 #                      + 编译 GalBox 宿主层并真跑 XP3 文件读取自测（Milestone 1a）
 #                      + 真跑 app 侧纯 C 边界 HostBridge（Milestone 1c）
 #                      + 真跑官方 KAG3 系统脚本经 Scripts.execStorage（Milestone 2a）
+#                      + 真跑 Storages 自动路径 + 官方原始 Shift-JIS 字节（Milestone 2b）
 #
 # 由 CI 在 xcodebuild 之前调用。设计原则：
 #   - 源码尚未 vendoring 时直接跳过（exit 0），绝不破坏现有出包链路。
@@ -157,6 +158,46 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2a.cpp" ] \
     fi
   else
     echo "[tjs2] M2a 自测链接失败:"; cat "$OUT/link_m2a.log"; exit 1
+  fi
+fi
+
+# ---- Milestone 2b: Storages autoPath + 官方原始 Shift-JIS 字节 ------------
+# M2a 用的是 GitHub contents API 转码后的 UTF-8 副本，SJIS 解码链从未真跑。
+# 本轮把按 git blob sha 取的官方原始字节塞进目录归档，经 autoPath 短名加载。
+if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2b.cpp" ] \
+   && [ -f "$KAG/src/original/system/Utils.tjs" ] \
+   && [ -f "$KAG/src/m2b_probe_startup.tjs" ] \
+   && [ -f "$KAG/src/m2b_bad_autopath.tjs" ]; then
+  M2B_GAME="$OUT/m2b_game"
+  mkdir -p "$M2B_GAME/system"
+  cp "$KAG/src/m2b_probe_startup.tjs" "$M2B_GAME/startup.tjs"
+  cp "$KAG/src/m2b_bad_autopath.tjs" "$M2B_GAME/bad_startup.tjs"
+  cp "$KAG/src/original/system/Utils.tjs" "$M2B_GAME/system/Utils.tjs"
+
+  # 硬校验：必须真的是官方原始 3658 B Shift-JIS blob，而不是 M2a 的
+  # 3940 B UTF-8 转码副本。否则本轮等于什么都没验证。
+  M2B_BYTES=$(wc -c < "$M2B_GAME/system/Utils.tjs" | tr -d ' ')
+  if [ "$M2B_BYTES" != "3658" ]; then
+    echo "[tjs2] M2b fixture 不是官方原始字节: ${M2B_BYTES}B (期望 3658B)"
+    exit 1
+  fi
+  echo "[tjs2] M2b fixture: ${M2B_BYTES}B 官方原始 Shift-JIS blob"
+
+  echo "[tjs2] M2b: 编译并运行 Storages autoPath / Shift-JIS 自测"
+  if clang++ -std=c++14 -O1 -fexceptions -DTJS_NO_REGEXP -DTJS2_POSIX \
+        -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
+        "$HOST/test_m2b.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
+        "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
+        -lz -liconv -lpthread -o "$OUT/tjs2test_m2b" 2>"$OUT/link_m2b.log"; then
+    OUTPUT_M2B=$("$OUT/tjs2test_m2b" "$M2B_GAME" "$OUT" 2>&1)
+    echo "$OUTPUT_M2B" | sed 's/^/[tjs2]   /'
+    if echo "$OUTPUT_M2B" | grep -q "M2B_RESULT=OK"; then
+      echo "[tjs2] M2b 自测通过（Storages autoPath + 官方 SJIS Utils.tjs 真跑）"
+    else
+      echo "[tjs2] M2b 自测未通过"; exit 1
+    fi
+  else
+    echo "[tjs2] M2b 自测链接失败:"; cat "$OUT/link_m2b.log"; exit 1
   fi
 fi
 exit 0
