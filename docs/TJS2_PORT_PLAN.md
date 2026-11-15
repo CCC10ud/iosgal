@@ -7,9 +7,11 @@
 > `Scripts.execStorage` 原生类，TJS2 已能执行包内 `.tjs` 脚本（官方启动链第一段）。
 > **M2b ✅（run #22 一次全绿）**：`Storages` 自动路径 + 官方原始
 > Shift-JIS 字节真解码 + `Scripts.eval`，并更正 M2a 的 vendoring 编码误判。
-> **M2c 已实现，待 macOS runner 验证**：`System` / `Debug` 原生类 +
+> **M2c ✅（run #28 全绿）**：`System` / `Debug` 原生类 +
 > **官方 `Initialize.tjs` 原文真跑**（第一次跑官方脚本，不再只跑自写探针）。
-> 交付包 `dist/GalBoxNative-adhoc-M2b-9dbbef2a.ipa`（654,875 B，Mach-O arm64）。
+> 实测已把下一个阻塞点钉死在**正则**：`Member "RegExp" does not exist`
+> @`system/Initialize.tjs:164`。
+> 交付包 `dist/GalBoxNative-adhoc-M2c-e53d1c66.ipa`（662,319 B，Mach-O arm64）。
 > 早期"网络被代理拦截"的判断**已推翻**：沙盒默认无代理变量，是我手动 `export`
 > 了失效的 `127.0.0.1:54662` 才导致 `http=000`；直连即可。上游仓库也从
 > `kikikracle/kirikiri2`（404）更正为 `jeeb/kirikiri2`。
@@ -137,7 +139,7 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
 ## 7. 当前状态与下一步
 
 **已完成**
-- **M2c（已实现，待 CI 验证）**：官方启动链第三段 —— `System` / `Debug` 原生类，
+- **M2c** ✅（run #28 一次全绿）：官方启动链第三段 —— `System` / `Debug` 原生类，
   并且第一次真跑**官方 `Initialize.tjs` 原文**（一个字不改）。
   - 决定性发现：`TJS_NO_REGEXP` **只**影响 `tjs.cpp:183` 是否把全局 `RegExp`
     类注册进 Global（`tjs.cpp:36` 的另一处只是省掉 include）。词法器
@@ -192,6 +194,27 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
   - app 侧：`GameViewController` 打开含 `startup.tjs` 的包后，**在后台队列**
     跑一次 `tjs2ExecStartup`，把「autoPath / notice / tick 次数 + 停在哪一句」
     做成第 4 秒的 toast 显示出来（主线程同步执行曾导致导入卡死，不重犯）。
+  - **run #28 实测（macOS host 真跑）**：
+    A) `{"ok":false,"execStorageAttempts":1,"execStorageCalls":0,
+       "autoPathCount":11,"debugNotices":3,"tickCalls":1,
+       "exceptionHandlerSet":true,"appLock":false,"exePath":"",
+       "lastEncoding":"cp932",
+       "lastDebug":"Kirikiri : TJS2 2.4.28 (GalBox)",
+       "fatal":"script exception : Config.tjs が見つかりません。",
+       "fatalBlock":"system/Initialize.tjs","fatalLine":280,
+       "fatalException":"Config.tjs が見つかりません。"}`
+    B) `{"ok":false,"execStorageAttempts":2,"execStorageCalls":1,
+       "autoPathHits":1,"lastResolvedPath":"system/Config.tjs",
+       "debugMessages":1,"lastDebug":"Config.tjs を読み込みました(0ms)",
+       "fatal":"Member \"RegExp\" does not exist",
+       "fatalBlock":"system/Initialize.tjs","fatalLine":164}`
+    `execStorageCalls=1` + `lastDebug="Config.tjs を読み込みました"` 两件事同时成立，
+    才真正证明「取原生方法当函数值调用」（`var dm = Debug.message; dm(...)`）可用 ——
+    这是本轮唯一没法靠静态断言确认、必须真跑的语义。
+    回归 `M0/M1/M1a/M1c/M2a/M2b` 全绿；静态 274 PASS / 0 FAIL；
+    `ARCHIVE SUCCEEDED`，app 二进制 849,040 B，四个标记
+    （`M1C_HOST_v1` / `M2A_SCRIPTS_EXEC_STORAGE` / `M2B_STORAGES_AUTOPATH` /
+    `M2C_SYSTEM_DEBUG`）全部命中。
 - **M2b** ✅（run #22 一次全绿）：官方启动链第二段。
   **实测**（macOS host 自测，非推断）：
   `{"ok":true,"probeValue":5,"hostReadDelta":2,"execStorageCalls":1,
