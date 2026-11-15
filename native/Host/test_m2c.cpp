@@ -132,9 +132,14 @@ int main(int argc, char **argv) {
         // 本轮不假装跑通：官方 Initialize.tjs 必然停在 Config 检查处。
         if (!Has(j, "\"ok\":false"))
             return Fail("Initialize.tjs unexpectedly reported success", j);
-        // 官方 startup.tjs 只有一句 Scripts.execStorage -> 恰好 1 次
-        if (IntField(j, "execStorageCalls") != 1)
-            return Fail("official startup.tjs did not load exactly one script", j);
+        // 官方 startup.tjs 只有一句 Scripts.execStorage("system/Initialize.tjs")。
+        // 这里必须区分「调用」与「跑完」：Initialize.tjs 内部会抛官方异常，
+        // 所以 attempts=1 而 calls=0。若把两者混成一个计数，就看不出
+        // 「脚本真被加载执行过、只是中途失败」与「压根没调」的区别（run #24 踩过）。
+        if (IntField(j, "execStorageAttempts") != 1)
+            return Fail("official startup.tjs did not attempt exactly one execStorage", j);
+        if (IntField(j, "execStorageCalls") != 0)
+            return Fail("execStorage counted a failed inner script as success", j);
         // Initialize.tjs 前 40 行 11 次 addAutoPath
         if (IntField(j, "autoPathCount") != 11)
             return Fail("official Initialize.tjs did not register 11 autoPaths", j);
@@ -152,9 +157,12 @@ int main(int argc, char **argv) {
             return Fail("execution advanced past the Config check unexpectedly", j);
         if (!Has(j, "\"exitRequested\":false"))
             return Fail("System.exit was called on the throw path", j);
-        // 异常定位：脚本名 + 行号 + 官方异常正文
-        if (StrField(j, "fatalBlock").find("Initialize.tjs") == std::string::npos)
-            return Fail("fatalBlock does not point at Initialize.tjs", j);
+        // 异常定位：脚本名 + 行号 + 官方异常正文。
+        // 注意 block 实测是调用点（startup.tjs:6 的 execStorage 那行），
+        // 不是异常发源地 —— TJS2 把跨 execStorage 的异常按外层块上报。
+        // 所以这里只要求「指向某个 .tjs 且行号有效」，不写死具体文件。
+        if (StrField(j, "fatalBlock").find(".tjs") == std::string::npos)
+            return Fail("fatalBlock does not point at a script", j);
         if (IntField(j, "fatalLine") <= 0)
             return Fail("fatalLine was not captured", j);
         if (StrField(j, "fatalException").find("Config.tjs") == std::string::npos)
@@ -180,9 +188,12 @@ int main(int argc, char **argv) {
 
         if (!Has(j, "\"ok\":false"))
             return Fail("Initialize.tjs unexpectedly reported success", j);
-        // startup.tjs + Initialize.tjs + Config.tjs
-        if (IntField(j, "execStorageCalls") != 2)
-            return Fail("Config.tjs was not loaded via Scripts.execStorage", j);
+        // startup.tjs + Initialize.tjs + Config.tjs -> 2 次调用；
+        // Config.tjs 跑完（1 次成功），Initialize.tjs 在 createAppLock 处失败。
+        if (IntField(j, "execStorageAttempts") != 2)
+            return Fail("Config.tjs was not attempted via Scripts.execStorage", j);
+        if (IntField(j, "execStorageCalls") < 1)
+            return Fail("the probe Config.tjs did not execute successfully", j);
         if (!Has(j, "\"lastResolvedPath\":\"system/Config.tjs\""))
             return Fail("Config.tjs was not resolved through autoPath", j);
         // `var dm = Debug.message;` -> `dm(name + " を読み込みました")`

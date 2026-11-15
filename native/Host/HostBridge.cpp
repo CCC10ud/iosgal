@@ -248,7 +248,11 @@ void CaptureCurrentException() {
         if (e.GetBlockName()) gFatalBlock = WideToUtf8(e.GetBlockName());
         gFatalLine = static_cast<long long>(e.GetSourceLine());
     } catch (const TJS::eTJS &e) {
-        gFatalMessage = WideToUtf8(e.GetMessage().c_str());
+        // 这条分支拿到的常常是原生方法返回 TJS_E_FAIL 之后被 TJS2 转成的
+        // 笼统消息（"Unknown failure : FFFFFFFF"）。内层已经捕获过更具体的
+        // 内容时不要用它覆盖掉。
+        if (gFatalMessage.empty())
+            gFatalMessage = WideToUtf8(e.GetMessage().c_str());
     } catch (const TJS::eTJSSilent &) {
         gFatalMessage = "silent exception unwind";
     } catch (...) {
@@ -268,6 +272,7 @@ std::string MakeExecResult(bool ok, const char *reason, const char *entry,
     s += ",\"probeValue\":" + std::to_string(probeValue);
     s += ",\"hostReadDelta\":" + std::to_string(readDelta);
     s += ",\"execStorageCalls\":" + std::to_string(execCalls);
+    s += ",\"execStorageAttempts\":" + std::to_string(gExecStorageAttempts);
     s += ",\"build\":\"" + std::string(kBuildTag) + "\"";
     // 这三个固定标记都会被编进 app 二进制，CI 用 strings 逐个硬断言。
     // 历史标记不能因为升级而被替换掉 —— 否则「M2a/M2b 能力是否还在包里」
@@ -318,7 +323,8 @@ std::string MakeExecResult(bool ok, const char *reason, const char *entry,
 // 这里给最小 iOS 实现：从宿主读脚本 → 交给同一个 tTJS 递归执行。
 tTJS *gActiveEngine = nullptr;
 std::string gLastScriptError;
-unsigned gExecStorageCalls = 0;
+unsigned gExecStorageCalls = 0;      // 成功执行完的次数
+unsigned gExecStorageAttempts = 0;   // 被脚本调用的次数（含失败）
 
 class tTJSNC_Scripts : public tTJSNativeClass {
 public:
@@ -342,6 +348,10 @@ public:
                 gLastScriptError = "Storages: script not found via autoPath: " + nameU8;
                 return TJS_E_FAIL;
             }
+            // 尝试与成功要分开计数：内层脚本抛异常时 execStorage 会返回
+            // TJS_E_FAIL，execStorageCalls 不加 —— 若只有这一个计数，
+            // 「调用了但内层失败」和「根本没调用」就分不开（run #24 踩过）。
+            ++gExecStorageAttempts;
 
             iTJSTextReadStream *stream = TJSCreateTextStreamForRead(name, mode);
             if (!stream) {
@@ -991,6 +1001,7 @@ extern "C" char *GalBoxTJS2ExecScript(const char *entryName,
     gActiveEngine = nullptr;
     gLastScriptError.clear();
     gExecStorageCalls = 0;
+    gExecStorageAttempts = 0;
     ResetDiagnostics();
     long long probeValue = -1;
     bool probeRan = false;

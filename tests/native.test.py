@@ -418,7 +418,7 @@ ok("ClearEngineScopedDiagnostics" in bridge_cpp,
 for tok in ("M2C_RESULT=OK", "m2c_game_cfg", "M2C_SYSTEM_DEBUG",
             "exceptionHandlerSet", "autoPathCount", "debugNotices",
             "tickCalls", "fatalBlock", "fatalLine", "fatalException",
-            "RegExp", "debugMessages"):
+            "RegExp", "debugMessages", "execStorageAttempts"):
     ok(tok in m2c_test, "M2c 自测含实质判据: " + tok)
 ok('ok\\":false' in m2c_test,
    "M2c 自测明确断言 ok=false（本轮不假装 Initialize.tjs 跑通）")

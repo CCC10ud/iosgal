@@ -162,14 +162,19 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
   - 两个场景（都**期望 ok=false**，本轮不假装跑通）：
     A) 无 `Config.tjs` → 一路执行到官方自己那句
        `throw new Exception("Config.tjs が見つかりません。")`；
-       断言 `execStorageCalls=1`、`autoPathCount=11`、`debugNotices=3`、
-       `tickCalls≥1`、`exceptionHandlerSet=true`、`appLock=false`、
-       `fatalBlock` 指向 `Initialize.tjs`、`fatalLine>0`、`fatalException` 含 `Config.tjs`。
+       断言 `execStorageAttempts=1` 且 `execStorageCalls=0`（调用过但内层抛异常 ——
+       两个计数必须分开，否则「跑了没跑」分不清，run #24 就是踩了这个）、
+       `autoPathCount=11`、`debugNotices=3`、`tickCalls≥1`、
+       `exceptionHandlerSet=true`、`appLock=false`、`fatalLine>0`、
+       `fatalException` 含 `Config.tjs`、`lastEncoding=cp932`。
+       ⚠️ 实测 `fatalBlock` 是 **`startup.tjs:6`**（execStorage 调用点）而非
+       `Initialize.tjs` —— TJS2 把跨 execStorage 的异常按外层块上报。
+       所以断言只要求指向某个 `.tjs` 且行号有效，不写死文件。
     B) 加一个**探针版** `Config.tjs`（只写 `config_version = kagVersion`，明确标注非官方）
        → 版本核对通过、跳过 `UpdateConfig.tjs`，执行推进到
        `System.createAppLock(System.exePath.replace(/[^A-Za-z]/g,'_'))`，
-       因全局 `RegExp` 缺失而失败。断言 `execStorageCalls=2`、
-       `lastResolvedPath=system/Config.tjs`、`debugMessages≥1`
+       因全局 `RegExp` 缺失而失败。断言 `execStorageAttempts=2` /
+       `execStorageCalls≥1`、`lastResolvedPath=system/Config.tjs`、`debugMessages≥1`
        （证明原生方法当函数值调用 `dm(...)` 真的生效），且失败原因含 `RegExp`
        —— 这就是**下一个阻塞点的硬证据**。
   - app 侧：`GameViewController` 打开含 `startup.tjs` 的包后，**在后台队列**
