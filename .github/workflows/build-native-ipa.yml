@@ -64,6 +64,11 @@ jobs:
       - name: TJS2 内核 + 宿主层编译与运行验证（M0 / M1a）
         run: bash tools/build_tjs2_test.sh
 
+      # M1b：用 iphoneos SDK 交叉编译 arm64 静态库；build_native.sh 会用
+      # -force_load 把它链接进 app，验证 iOS 链接器能解析全部 TJS2 符号。
+      - name: TJS2 iOS arm64 交叉编译（Milestone 1b）
+        run: bash tools/build_tjs2_ios.sh
+
       - name: 原生工程静态校验
         run: python3 tests/native.test.py
 

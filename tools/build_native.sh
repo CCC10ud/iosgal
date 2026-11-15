@@ -29,6 +29,18 @@ ARCHIVE="$BUILD/GalBoxNative.xcarchive"
 rm -rf "$BUILD"
 mkdir -p "$BUILD"
 
+# Milestone 1b: 若 tools/build_tjs2_ios.sh 已生成 iPhoneOS arm64 版 TJS2 静态库，
+# 用 -force_load 把它完整链接进 app，验证 iOS 链接器能解析全部 TJS2 符号。
+# 库不存在时降级为原配置出包 —— 本地直接跑本脚本不应被 TJS2 阻塞。
+TJS2_IOS_LIB="$ROOT/native/TJS2/build/libtjs2_ios.a"
+OTHER_LDFLAGS_VALUE="-lz"
+if [ -f "$TJS2_IOS_LIB" ]; then
+  OTHER_LDFLAGS_VALUE="-lz -liconv -force_load $TJS2_IOS_LIB"
+  echo "已启用 TJS2 iOS arm64 链接 (M1b): $TJS2_IOS_LIB"
+else
+  echo "提示: 未找到 libtjs2_ios.a，按原配置出包（跑 tools/build_tjs2_ios.sh 可启用）"
+fi
+
 echo "--- xcodebuild archive (无 Apple 开发者签名) ---"
 xcodebuild \
   -project ios-native/GalBoxNative.xcodeproj \
@@ -43,6 +55,7 @@ xcodebuild \
   DEVELOPMENT_TEAM="" \
   PROVISIONING_PROFILE_SPECIFIER="" \
   IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+  OTHER_LDFLAGS="$OTHER_LDFLAGS_VALUE" \
   clean archive 2>&1 | tee "$BUILD/xcodebuild.log"
 
 APP="$ARCHIVE/Products/Applications/GalBoxNative.app"
