@@ -1,9 +1,9 @@
 # GalBox → 完整 Kirikiri 运行时：移植方案与架构
 
 > 状态（2026-11-15 更新）：**路线 A 已确认（完整移植官方 TJS2 + KAG）**。
-> M0 ✅（run #11）、M1a ✅（run #13）、M1b ✅（run #15）。
-> **M1c 已实现**：run #17 的 macOS host 自测抓出冒烟脚本的 Array 构造写法错误，
-> 已修正并补强落盘闭环，待 run #18 复验（app 内第一次真的调用 TJS2）。
+> M0 ✅（run #11）、M1a ✅（run #13）、M1b ✅（run #15）、
+> **M1c ✅（run #18 全绿）**：app 内第一次真的调用 TJS2。
+> 交付包 `dist/GalBoxNative-adhoc-M1c-773cf357.ipa`（Mach-O arm64）。
 > 早期"网络被代理拦截"的判断**已推翻**：沙盒默认无代理变量，是我手动 `export`
 > 了失效的 `127.0.0.1:54662` 才导致 `http=000`；直连即可。上游仓库也从
 > `kikikracle/kirikiri2`（404）更正为 `jeeb/kirikiri2`。
@@ -125,6 +125,12 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
   CI 侧因为**无法运行 iOS app**，同一份 `HostBridge.cpp` 在 macOS host 上由
   `test_m1c.cpp` 真跑（含未安装/已卸载的失败路径），iOS 侧只负责编译 + 链接 +
   `strings` 检查 `M1C_HOST_v1` 标记。
+  **run #18 实测**：`M1C_RESULT=OK`；
+  `{"ok":true,"version":"2.4.28","eval":7,"hostReadDelta":1,"hostWriteDelta":1}`；
+  写盘文件 `m1c_smoke.txt` 7 B = `galbox`；`OTHER_LDFLAGS` 三个产物齐备；
+  `** ARCHIVE SUCCEEDED **`，app 二进制 790,680 B，`M1C_HOST_v1` 进包。
+  ⚠️ Release 会 strip 符号表，`nm` 显示 `GalBoxTJS2`/`tTJS` 符号数 0 属预期，
+  因此 CI 用 `strings` 固定标记作硬断言，不用 `nm` 计数当判据。
 - **M1a** ✅（run #13）：宿主契约对齐官方 + 4 个流工厂桥到 XP3Archive；
   实测 `Array.load via TJS2: host read calls 2 -> 3`，`M1_RESULT=OK`。
 - **M1b** ✅（run #15）：`xcrun --sdk iphoneos clang++ -arch arm64` 编出
