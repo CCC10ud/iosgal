@@ -207,8 +207,11 @@ int main(int argc, char **argv) {
             return Fail("did not stop at the next missing system script", j);
         }
 
-        // 走到这里说明至少加载了 startup / Initialize / Config / Utils 四次。
-        if (IntField(j, "execStorageAttempts") < 4)
+        // 走到这里说明脚本真的在被加载：startup(1) → Initialize(1) → Config(1)
+        // → Utils(1)，其中 KAGLayer.tjs 因存在性检查失败，**不计入** attempts
+        // （计数在检查之后才加，故意的：缺失文件不该算「尝试执行」）。
+        // run #31 实测 attempts=3 / calls=2 —— 别再按「4 个文件就该是 4」去写。
+        if (IntField(j, "execStorageAttempts") < 3)
             return Fail("Initialize.tjs did not keep loading system scripts", j);
         if (IntField(j, "execStorageCalls") < 2)
             return Fail("too few system scripts actually executed", j);
