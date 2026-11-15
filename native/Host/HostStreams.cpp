@@ -36,7 +36,7 @@ using TJS::tjs_int64;
 using TJS::tjs_int;
 using TJS::ttstr;
 
-const galbox::XP3Archive* gArchive = nullptr;
+galbox::XP3Archive* gArchive = nullptr;
 std::string gStorageRoot;
 std::string gBundleRoot;
 bool gInstalled = false;
@@ -345,7 +345,7 @@ TJS::tTJSBinaryStream* CreateBinaryWrite(const ttstr& name, const ttstr&) {
 namespace galbox {
 namespace host {
 
-void Install(const XP3Archive* archive,
+void Install(XP3Archive* archive,
              const std::string& storageRoot,
              const std::string& bundleRoot) {
     if (!gOrigTextRead)   gOrigTextRead   = TJS::TJSCreateTextStreamForRead;

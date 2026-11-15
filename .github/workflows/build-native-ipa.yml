@@ -59,9 +59,9 @@ jobs:
         if: inputs.skip_selfcheck != true
         run: python3 tools/verify_native.py
 
-      # Milestone 0：官方 TJS2 核心移植验证。源码未 vendoring 时脚本自动跳过(exit 0)，
-      # 不破坏现有出包；源码就位后会真编译 libtjs2.a 并把移植错误暴露为 CI 失败。
-      - name: TJS2 核心移植编译验证（Milestone 0，源码就位后生效）
+      # M0：官方 TJS2 核心真编译 + eval 自测；M1a：宿主流桥到 XP3Archive 并真跑。
+      # 源码未 vendoring 时脚本自动跳过(exit 0)，不破坏现有出包。
+      - name: TJS2 内核 + 宿主层编译与运行验证（M0 / M1a）
         run: bash tools/build_tjs2_test.sh
 
       - name: 原生工程静态校验

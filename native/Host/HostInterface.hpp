@@ -34,7 +34,10 @@ namespace host {
 // 安装宿主：archive 为当前打开的游戏包（可为 nullptr，表示只有散文件）；
 // storageRoot = Documents（可写，存档落点）；bundleRoot = app bundle（只读资源）。
 // 调用后 TJS::TJSCreate* 四个函数指针全部指向 GalBox 实现。
-void Install(const XP3Archive* archive,
+//
+// archive 故意是非 const 指针：XP3Archive::read() 会移动内部 std::ifstream
+// 游标，不是 const 方法（宿主逻辑上只读，不修改归档内容）。
+void Install(XP3Archive* archive,
              const std::string& storageRoot,
              const std::string& bundleRoot);
 
