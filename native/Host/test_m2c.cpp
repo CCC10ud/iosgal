@@ -199,8 +199,17 @@ int main(int argc, char **argv) {
             return Fail("Config.tjs was not attempted via Scripts.execStorage", j);
         if (IntField(j, "execStorageCalls") < 1)
             return Fail("the probe Config.tjs did not execute successfully", j);
-        if (!Has(j, "\"lastResolvedPath\":\"system/Config.tjs\""))
-            return Fail("Config.tjs was not resolved through autoPath", j);
+        // ⚠️ 不能用 lastResolvedPath 判「Config.tjs 是否被解析」：它是**最后一次**
+        // 解析结果。M2d 起 Initialize.tjs 会继续加载 Utils.tjs，于是它变成
+        // system/Utils.tjs（run #30 实测，本断言因此红了一轮）。
+        // 真正能证明 Config.tjs 被执行的是下面这条因果链：
+        //   global.config_version 未定义 → KAGLoadScript("UpdateConfig.tjs")
+        //   → 夹具里没有该文件 → 在 createAppLock 之前就失败。
+        // 既然 appLock 变成了 true，就说明版本核对通过 = Config.tjs 真的执行了。
+        if (IntField(j, "autoPathHits") < 2)
+            return Fail("Config.tjs/Utils.tjs were not resolved through autoPath", j);
+        if (StrField(j, "lastResolvedPath").find("system/") != 0)
+            return Fail("lastResolvedPath is not a system/ script", j);
         // `var dm = Debug.message;` -> `dm(name + " を読み込みました")`
         // 取原生方法作为函数值再调用，这条路径 M2a/M2b 都没覆盖过。
         if (IntField(j, "debugMessages") < 1)
