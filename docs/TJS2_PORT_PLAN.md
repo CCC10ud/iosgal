@@ -11,7 +11,14 @@
 > **官方 `Initialize.tjs` 原文真跑**（第一次跑官方脚本，不再只跑自写探针）。
 > 实测已把下一个阻塞点钉死在**正则**：`Member "RegExp" does not exist`
 > @`system/Initialize.tjs:164`。
-> 交付包 `dist/GalBoxNative-adhoc-M2c-e53d1c66.ipa`（662,319 B，Mach-O arm64）。
+> **M2d ✅（run #32 全绿）**：正则层——**不引 boost**，把官方 `tjsRegExp.cpp`
+> 用 `std::regex` 整份重写（`native/TJS2/PATCHES.md` P7），并去掉官方
+> `TJS_NO_REGEXP` 开关。官方 `Initialize.tjs` 已能推过
+> `System.exePath.replace(/[^A-Za-z]/g,'_')`（`appLock=true`，键值与独立实现一致），
+> 继续执行到 `KAGLoadScript("KAGLayer.tjs")` 才停 —— 阻塞点正式从「引擎缺正则」
+> 推进到「M2e 缺 KAG 层的 Layer/Window 与系统脚本」。
+> 交付包 `dist/GalBoxNative-adhoc-M2d-a3916cac.ipa`（691,692 B，Mach-O arm64）。
+> 上一轮交付 `dist/GalBoxNative-adhoc-M2c-e53d1c66.ipa`（662,319 B）。
 > 早期"网络被代理拦截"的判断**已推翻**：沙盒默认无代理变量，是我手动 `export`
 > 了失效的 `127.0.0.1:54662` 才导致 `http=000`；直连即可。上游仓库也从
 > `kikikracle/kirikiri2`（404）更正为 `jeeb/kirikiri2`。
@@ -77,7 +84,11 @@ GalBox 缺的是"程序语言那一半"。手写补 TJS2 等于从零造一门�
 - **M2b**：补 `Storages` / `System` 等原生类 + `Initialize.tjs` 依赖链，
   让官方 `startup.tjs` 一路执行到 KAG 初始化；接 iOS 事件队列
   （run loop / CADisplayLink）。⚠️ 执行必须放后台队列，不能占主线程。
-- **M2c**：`KAGParserEx` / `KAGParser` 原生类 + KAG→渲染/音频宿主回调面，
+- **M2c**（已按实际执行顺序调整）：`System` / `Debug` 原生类，让官方
+  `Initialize.tjs` 原文能真跑（原计划里的 KAGParser 挪到 M2e 之后）。
+- **M2d**（实际执行顺序）：正则层 `RegExp`（`std::regex` 重写），拆掉
+  `createAppLock` 那一行的阻塞点。
+- **M2e**：`Layer` / `Window` / `KAGParserEx` 原生类 + KAG→渲染/音频宿主回调面，
   把 `GameViewController` 接到官方 KAG 播放循环，取代手写 `KagEngine`。
   ✅ 出口：一个真实 KAG 游戏能从头播到尾；`[iscript]` 块不再被丢弃。
 
@@ -139,6 +150,59 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
 ## 7. 当前状态与下一步
 
 **已完成**
+- **M2d** ✅（run #32 一次全绿）：**正则层**。M2c 停下的那句
+  `System.createAppLock(System.exePath.replace(/[^A-Za-z]/g,'_'))` 现在通了。
+  - 路线选 **(b)**：不引 boost、不上 runner 依赖，把上游 `tjsRegExp.{h,cpp}`
+    **整份重写**为标准库 `std::basic_regex` 实现（`PATCHES.md` P7）。
+    可行原因：官方接入点只有三处，且都只依赖**类名/类 ID**，不依赖 boost 类型 ——
+    `tjs.cpp:185`（`TJSCreateRegExpClass()`）、`tjsArray.cpp:482`
+    （`tTJSNC_RegExp::ClassID` + `tTJSNI_RegExp::Split`）、
+    `tjsInterCodeGen.cpp:2476`（字面量生成 `new RegExp(); _compile("//flag/body")`）。
+    ⇒ 上游其它文件**一行没改**，只是不再定义 `TJS_NO_REGEXP`。
+  - 语义逐条对齐上游：`g`/`i`/`l` 标志、`lastMatch`/`lastParen`/`leftContext`/
+    `rightContext`/`index`/`lastIndex`/`input`/`matches`/静态 `last`、
+    `replace` **不展开 `$1`**（上游就是如此，不是 JS 语义）、`split` 的
+    purgeempty 与子表达式展开顺序、`Compile` 对空模式替换成 `(?:)`。
+  - 已知差异与处理（都有判据）：boost 的 `.` 默认**吃换行** ⇒ 编译前把字符类外
+    的裸 `.` 翻成 `[\s\S]`；`\Q...\E` 未实现（KAG3 系统脚本未出现）；
+    replace 回调失败改为抛错（上游静默截断，静默丢字符更难查）。
+  - 自测 `native/Host/test_m2d.cpp` 两个场景，**都真跑**：
+    A) `m2d_regex_probe.tjs` 23 条语义检查（replace/test/match/exec/split/
+       标志/`_compile` 内部表示/`.` 吃换行/非 ASCII）。判据是
+       `probeValue = checks*100 + fails`，能区分「探针压根没执行」(-1)、
+       「有 check 失败」(余数≠0)、「断言太少」(checks<20) —— 不是「没报错就算过」。
+    B) 官方 `startup.tjs` → `Initialize.tjs` 原文 + 探针 `Config.tjs`。
+  - **run #32 实测（macOS host 真跑）**：
+    A) `{"ok":true,"probeValue":2300,...,"lastEncoding":"utf-8"}`
+       → `regex checks ran=23, fails=0`。
+    B) `{"ok":false,"appLock":true,
+       "appLockKey":"_Users_runner_work_iosgal_iosgal_native_TJS__build_",
+       "exePath":".../native/TJS2/build/","execStorageAttempts":3,
+       "execStorageCalls":2,"debugMessages":3,
+       "lastDebug":"Utils.tjs を読み込みました(0ms)",
+       "lastScriptError":"Storages: script not found via autoPath: KAGLayer.tjs",
+       "error":"Storages: script not found via autoPath: KAGLayer.tjs"}`
+       → ① 正则真的算出了键值（`appLockKey` 与 C++ 独立逐字符实现完全一致）；
+         ② 官方脚本继续加载了 `Config.tjs` 与 `Utils.tjs`；
+         ③ 停在 `KAGLayer.tjs` —— **下一个缺口已经不是引擎能力，是 M2e 的 KAG 系统脚本/原生类**。
+  - 顺带修正两处**会让判据说谎**的地方：
+    * `System.exePath` 之前恒为空串，那句正则等于空操作的假验证 ⇒ 改为宿主
+      真实上报游戏根目录（带尾斜杠），与官方 `System.exePath + "video/"` 语义一致。
+    * `execStorage` 的 catch 会把内层原因覆盖成一句
+      `exception in execStorage(...)` ⇒ 改为「只补空、不覆盖更具体信息」，
+      并把最内层原因单独走 JSON 的 `lastScriptError`（脚本自己 try/catch 吞掉的
+      失败不该被当成整体失败，但也不能从诊断里消失）。
+  - 回归 M0/M1/M1a/M1c/M2a/M2b/M2c 全绿；静态 305 PASS / 0 FAIL；
+    `libtjs2_ios.a` 1,387,328 B / **36 objs**（+1 = tjsRegExp.o）；
+    `ARCHIVE SUCCEEDED`，app 二进制 893,184 B，五个标记
+    （`M1C_HOST_v1` / `M2A…` / `M2B…` / `M2C…` / `M2D_REGEXP_STDREGEX`）全命中。
+  - ⚠️ 踩坑（run #30/#31，供下一轮直接用）：
+    * `lastResolvedPath` 是**最后一次**解析结果，不能用它判「某个脚本是否被解析」——
+      M2d 让 `Initialize.tjs` 继续加载 `Utils.tjs` 后它就变成了 `Utils.tjs`。
+      判「Config.tjs 真执行过」要走因果链：`global.config_version` 未定义时会先去
+      加载 `UpdateConfig.tjs`，那一步就失败了，根本走不到 `createAppLock`。
+    * `execStorageAttempts` 计在**存在性检查之后**，缺失的 `KAGLayer.tjs` 不计入，
+      所以 startup+Config+Utils = 3 而不是 4。
 - **M2c** ✅（run #28 一次全绿）：官方启动链第三段 —— `System` / `Debug` 原生类，
   并且第一次真跑**官方 `Initialize.tjs` 原文**（一个字不改）。
   - 决定性发现：`TJS_NO_REGEXP` **只**影响 `tjs.cpp:183` 是否把全局 `RegExp`
@@ -283,15 +347,17 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
 **无阻塞项**：网络直连可用；`push_via_api.py` 走 Git Data API 原子提交（git 协议仍被墙）。
 
 **下一步（按序）**
-1. **M2d（正则）**：官方 `Initialize.tjs` 的下一句就是
-   `System.exePath.replace(/[^A-Za-z]/g, '_')`，全局 `RegExp` 缺失即失败。
-   两条路：**(a)** 让 `tjsRegExp.cpp` 复活 —— 它 832 行全部绑定
-   `boost::reg_expression` / `boost::match_results` 的 C++ API，需要 runner
-   装 boost（`brew install boost`）并解决这一版老代码与现代 boost 的编译差异；
-   **(b)** 自己写一个 `std::regex` 背书的 `RegExp` 原生类，接口对齐
-   `tjsRegExp.h`（`compile/test/match/exec/replace/split` + `lastMatch` 等属性）。
-   (b) 不引外部依赖、可控性更好，但要自己保证 `replace/split` 语义与官方一致。
-2. **M2e（Layer / Window + 事件队列）**：`new KAGWindow()` 与
+1. **M2e（Layer / Window + 事件队列）** —— 现在唯一的阻塞点：
+   官方 `Initialize.tjs` 在 `createAppLock` 之后依次 `KAGLoadScript` 二十来个系统
+   脚本（`KAGLayer.tjs` / `HistoryLayer.tjs` / `BGM.tjs` / `Conductor.tjs` /
+   `GraphicLayer.tjs` / `MessageLayer.tjs` / `MainWindow.tjs` …），每个都依赖
+   `Layer` / `Window` / `AsyncTrigger` 等原生类；最后 `new KAGWindow()` +
+   `kag.process("first.ks")` 还要事件循环与渲染/音频回调面。建议顺序：
+   ① 先把 `kag3/template/system/*.tjs` 全量 vendoring（28 个 / 448,729 B），
+   让「缺哪个文件」变成「缺哪个原生类」，把缺口一条条逼出来；
+   ② 再补最小 `Layer` 子集（文字/图片/位置/可见性）+ `Window` 骨架；
+   ③ 最后接 iOS run loop / `CADisplayLink` 推进 `@wait`。
+2. **M2e 之后的接口约束**：`new KAGWindow()` 与
    `kag.process("first.ks")` 需要的原生类，接 iOS run loop / CADisplayLink
    与渲染/音频回调面。宿主回调面继续走「纯 C 边界 + C++ 适配层」，
    不要把官方 `tp_stub` 头暴露给 ObjC++/Swift。
@@ -300,9 +366,11 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
    ⚠️ 商业 `startup.tjs` 的执行必须放后台队列，切勿在主线程同步调用。
 3. **M3/M4**：TLG/TPP/WAV/OGG 解码、视频换 AVFoundation、产品化切换。
 
-**当前边界**：`System` / `Debug` 已就位，官方 `Initialize.tjs` 原文能真跑并被
-精确停在 `createAppLock`（缺 `RegExp`）或配置检查处；`Layer` / `Window` /
-`KAGParserEx` 与事件循环仍是 M2e。界面文案已随本轮更新，不再说「System 未移植」。
+**当前边界**：`Scripts` / `Storages` / `System` / `Debug` / `RegExp` 五个原生类就位，
+官方 `Initialize.tjs` 原文已能推过配置检查、跳过 `UpdateConfig.tjs`、算完二重起動
+键值，并继续加载 `Config.tjs` / `Utils.tjs`；停在 `KAGLayer.tjs` 是因为**该文件与它
+依赖的 `Layer` / `Window` 等原生类属于 M2e**，不是引擎还缺语言能力。
+界面文案已随本轮更新（正则✓ / 停在哪个脚本），商业游戏仍不可运行。
 
 **踩坑记录**：
 - **GitHub contents API 会静默转码**（M2b 发现）：`/repos/.../contents/<path>`
