@@ -5,9 +5,9 @@
 > **M1c ✅（run #18 全绿）**：app 内第一次真的调用 TJS2。
 > **M2a ✅（run #20 全绿）**：vendoring 官方 KAG3 系统脚本 + 补齐
 > `Scripts.execStorage` 原生类，TJS2 已能执行包内 `.tjs` 脚本（官方启动链第一段）。
-> **M2b 已实现，待 macOS runner 验证**：`Storages` 自动路径 + 官方原始
+> **M2b ✅（run #22 一次全绿）**：`Storages` 自动路径 + 官方原始
 > Shift-JIS 字节真解码 + `Scripts.eval`，并更正 M2a 的 vendoring 编码误判。
-> 交付包 `dist/GalBoxNative-adhoc-M2a-afe0d29a.ipa`（Mach-O arm64）。
+> 交付包 `dist/GalBoxNative-adhoc-M2b-9dbbef2a.ipa`（654,875 B，Mach-O arm64）。
 > 早期"网络被代理拦截"的判断**已推翻**：沙盒默认无代理变量，是我手动 `export`
 > 了失效的 `127.0.0.1:54662` 才导致 `http=000`；直连即可。上游仓库也从
 > `kikikracle/kirikiri2`（404）更正为 `jeeb/kirikiri2`。
@@ -135,7 +135,17 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
 ## 7. 当前状态与下一步
 
 **已完成**
-- **M2b（已实现，待 CI 验证）**：官方启动链第二段。
+- **M2b** ✅（run #22 一次全绿）：官方启动链第二段。
+  **实测**（macOS host 自测，非推断）：
+  `{"ok":true,"probeValue":5,"hostReadDelta":2,"execStorageCalls":1,
+  "autoPathCount":1,"autoPathHits":1,"shiftJisReads":1,
+  "lastEncoding":"cp932","lastResolvedPath":"system/Utils.tjs"}`；
+  第二个探针 `str2num("１２３")==123` 也通过（证明脚本内全角字面量解码正确，
+  不是 latin-1 兜底碰巧语法过关）；错误 autoPath 明确失败并报
+  `Storages: script not found via autoPath`，证明解析严格、不再静默执行空脚本。
+  `M2B_RESULT=OK`、`M2A_RESULT=OK`（回归未破）、静态 224 PASS / 0 FAIL、
+  `ARCHIVE SUCCEEDED`、Mach-O 807,648 B、`strings` 三个标记全部命中。
+  交付 `dist/GalBoxNative-adhoc-M2b-9dbbef2a.ipa`（654,875 B）。
   - **编码纠错**：M2a 说「逐字节 vendoring 官方 UTF-8 原文」是错的 —— 上游 git blob
     实际是 **Shift-JIS + CRLF**（`Utils.tjs` 3,658 B / `Initialize.tjs` 7,246 B），
     GitHub **contents API 会静默转码成 UTF-8**（3,940 B / 8,182 B），M2a 拿到的是转码副本。

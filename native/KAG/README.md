@@ -33,11 +33,14 @@
   让 TJS2 能从游戏包读 `.tjs` 并递归执行。自测用目录模式归档真跑官方 `Utils.tjs`
   （含 `property` 块、`<->` 交换运算符、日文注释），探针 `intrandom(5,5) == 5`。
   这是**官方启动链第一段**，不是完整 KAG。
-- **M2b（本轮）**：官方启动链第二段 —— `Storages` 自动路径（官方
+- **M2b ✅（run #22 全绿）**：官方启动链第二段 —— `Storages` 自动路径（官方
   `Initialize.tjs` 开头连调 13 次 `addAutoPath`，后面所有 `Scripts.execStorage`
   都用短文件名，必须靠 autoPath 展开）+ **Shift-JIS 原始字节真解码**。
   同时 vendoring `Initialize.tjs` 原文作为依赖分析依据（不执行）。
   `System` / `Debug` / `Layer` / `Window` 与事件队列仍在 M2c。
+  实测：`lastEncoding=cp932`、`autoPathHits=1`、
+  `lastResolvedPath=system/Utils.tjs`、`str2num("１２３")==123`、
+  错误 autoPath 明确失败；`M2B_RESULT=OK`。
 - **M2c**：`KAGParserEx` / `KAGParser` 原生类 + 渲染/音频回调面（文本、层、图像、转场），
   把 `GameViewController` 接到官方 KAG 播放循环，取代手写 `KagEngine`。
 - **M3/M4**：TLG/TPP/WAV/OGG 解码、视频换 AVFoundation、产品化切换。
