@@ -914,7 +914,7 @@ TJS_BEGIN_NATIVE_METHOD_DECL(/* func.name */find)
 		if(i == ni->Items.end())
 			*result = -1;
 		else
-			*result = i - ni->Items.begin();
+			*result = (tjs_int)(i - ni->Items.begin());
 	}
 
 	return TJS_S_OK;
@@ -1025,7 +1025,8 @@ void tTJSArrayNI::Assign(iTJSDispatch2 * dsp)
 		tDictionaryEnumCallback callback;
 		callback.Items = &Items;
 
-		dsp->EnumMembers(TJS_IGNOREPROP, &tTJSVariantClosure(&callback, NULL), dsp);
+		tTJSVariantClosure _closure1(&callback, NULL);
+		dsp->EnumMembers(TJS_IGNOREPROP, &_closure1, dsp);
 
 	}
 }
@@ -1062,7 +1063,7 @@ void tTJSArrayNI::SaveStructuredData(std::vector<iTJSDispatch2 *> &stack,
 #ifdef TJS_TEXT_OUT_CRLF
 	stream.Write(TJS_W("(const) [\r\n"));
 #else
-	stream>Write(TJS_W("(const) [\n"));
+	stream.Write(TJS_W("(const) [\n"));
 #endif
 
 	ttstr indentstr2 = indentstr + TJS_W(" ");

@@ -879,7 +879,7 @@ void tTJSInterCodeContext::ExecuteAsFunction(iTJSDispatch2 *objthis,
 		catch(...)
 		{
 #ifdef ENABLE_DEBUGGER
-			// Œ³‚É–ß‚·
+			// ï¿½ï¿½ï¿½É–ß‚ï¿½
 			DebuggerScopeKey = oldkey;
 			DebuggerRegisterArea = oldra;
 #endif	// ENABLE_DEBUGGER
@@ -893,7 +893,7 @@ void tTJSInterCodeContext::ExecuteAsFunction(iTJSDispatch2 *objthis,
 		}
 
 #ifdef ENABLE_DEBUGGER
-		// Œ³‚É–ß‚·
+		// ï¿½ï¿½ï¿½É–ß‚ï¿½
 		DebuggerScopeKey = oldkey;
 		DebuggerRegisterArea = oldra;
 #endif	// ENABLE_DEBUGGER
@@ -2622,7 +2622,7 @@ void tTJSInterCodeContext::ProcessStringFunction(const tjs_char *member,
 			return;
 		}
 		tjs_char *p;
-		p = wcsstr(s + start, (const tjs_char*)*pstr);
+		p = const_cast<tjs_char*>(wcsstr(s + start, (const tjs_char*)*pstr));
 		if(!p)
 		{
 			if(result) *result = (tjs_int)-1;
@@ -2831,7 +2831,7 @@ void tTJSInterCodeContext::ProcessStringFunction(const tjs_char *member,
 			return;
 		}
 
-		const destLength = s_len * count;
+		const tjs_int destLength = (tjs_int)(s_len * count);
 		tTJSString new_str = tTJSString(tTJSStringBufferLength(destLength));
 		tjs_char * dest = new_str.Independ();
 		while(count--)
@@ -3008,8 +3008,8 @@ void tTJSInterCodeContext::RegisterObjectMember(iTJSDispatch2 * dest)
 	callback.Dest = dest;
 
 	// enumerate members
-	EnumMembers(TJS_IGNOREPROP,
-		&tTJSVariantClosure(&callback, (iTJSDispatch2*)NULL), this);
+	tTJSVariantClosure _closure1(&callback, (iTJSDispatch2*)NULL);
+	EnumMembers(TJS_IGNOREPROP, &_closure1, this);
 }
 //---------------------------------------------------------------------------
 #define TJS_DO_SUPERCLASS_PROXY_BEGIN \

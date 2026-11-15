@@ -30,7 +30,8 @@
 #define OutputDebugStringA(...)
 #define OutputDebugStringW(...)
 
-// 3) tjs_char = uint16_t（UTF-16），与 wchar_t(4B) 无关，无需处理。
+// 3) tjs_char 由 tjsTypes.h 决定：macOS/iOS clang 下 typedef 为 wchar_t(4B)，
+//    TJS_W(X) = L##X，对应宽字符字面量；勿假定是 uint16_t/UTF-16。
 // 4) 线程：-lpthread 由构建脚本提供；tjsThread 有 POSIX 分支。
 
 #endif // TJS2_COMPAT_H

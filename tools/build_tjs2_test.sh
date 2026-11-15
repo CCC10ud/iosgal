@@ -36,7 +36,7 @@ for f in "$SRC"/*.cpp; do
   if ! clang++ -std=c++14 -O1 -fexceptions -DTJS_NO_REGEXP -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -include "$COMPAT" \
         -c "$f" -o "$o" 2>"$o.log"; then
-    echo "[tjs2] 编译失败: $b"; tail -n 30 "$o.log"; ERR=1
+    echo "[tjs2] 编译失败: $b"; cat "$o.log"; ERR=1
   else
     OBJS+=("$o")
   fi
