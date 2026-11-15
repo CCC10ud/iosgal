@@ -1,130 +1,60 @@
-// HostInterface.hpp — GalBox 宿主接口契约（TJS2 / tp_stub 风格）
+// HostInterface.hpp — GalBox ↔ 官方 TJS2 宿主契约（Milestone 1，已对齐上游源码）
 //
-// 这是"完整 Kirikiri 运行时"移植的拱心石（Milestone 1 落地的边界定义）。
-// 官方 TJS2 通过 iTJS2Host 回调引擎层，通过 tp_stub 风格的 iTVPHost 回调平台层
-// （文件/流、tick、日志、异常、事件队列、应用路径）。GalBox 必须实现这些接口，
-// 把 TJS2 接到现有的 XP3Archive（文件）、Swift/ObjC++（渲染/音频）、iOS run loop（事件）上。
+// 【重要更正】本文件早期版本是离线凭印象写的 iTJS2Host / iTVPHost / iTVPFileSystem
+// 抽象接口。核对 vendored 官方源码后确认：TJS2 **核心**里根本没有 iTJS2Host，
+// 也没有 tp_stub 的 TVP* 平台层。TJS2 核心真正的宿主边界只有：
 //
-// 注意：方法名/签名是"按官方 tjs2/tjs.h + tp_stub.h 整理的契约近似"，
-//       待 native/TJS2/ 源码 vendoring 后，以官方头文件为准对齐（不改本契约的语义边界）。
-//       本文件仅作架构骨架与设计依据，不含实现；实现见 Host_iOS.mm（Milestone 1）。
+//   1) tjs.h:192-199 的 4 个全局函数指针（默认实现返回 NULL）：
+//        TJSCreateTextStreamForRead(const ttstr&, const ttstr&) -> iTJSTextReadStream*
+//        TJSCreateTextStreamForWrite(...)                        -> iTJSTextWriteStream*
+//        TJSCreateBinaryStreamForRead(...)                      -> tTJSBinaryStream*
+//        TJSCreateBinaryStreamForWrite(...)                     -> tTJSBinaryStream*
+//      调用点：tjsArray.cpp:269/375/422/434、tjsDictionary.cpp:76/88
+//      （Array.load/save、Dictionary.load/save、二进制字节码）。
+//   2) tjsConfig.cpp:30 的 TJSGetTickCount()（Windows 分支 GetTickCount；
+//      POSIX 分支已在 M0 编译通过，无需宿主实现）。
+//
+// tp_stub / TVP* 平台接口属于 kirikiri2 的插件层（KAG、视觉、音频、事件），
+// 是 Milestone 2 的工作，不是 TJS2 核心的前置条件。
+//
+// 本契约暴露 GalBox 侧的宿主实现入口：把上述 4 个函数指针安装到
+// XP3Archive（游戏包内文件）+ Documents（散文件/存档）上。
+// 实现见 HostStreams.cpp。
 
 #ifndef GALBOX_HOST_INTERFACE_HPP
 #define GALBOX_HOST_INTERFACE_HPP
 
-#include <cstdint>
 #include <string>
-#include <vector>
 
-// TJS 字符类型（官方 tjs2 用 16-bit 宽字符；iOS 用 UTF-16 的 unichar 对接）
-typedef char16_t tjs_char;
+namespace galbox {
+class XP3Archive;
 
-// ---------------------------------------------------------------------------
-// iTJS2Host — 引擎层宿主回调（对应官方 tjs2/tjs.h 的 iTJS2Host）
-// ---------------------------------------------------------------------------
-class iTJS2Host {
-public:
-    virtual ~iTJS2Host() {}
+namespace host {
 
-    // 引擎输出（TVPPrint / console）—— GalBox 接到 os_log + Swift 控制台
-    virtual void Print(const tjs_char* msg) = 0;
+// 安装宿主：archive 为当前打开的游戏包（可为 nullptr，表示只有散文件）；
+// storageRoot = Documents（可写，存档落点）；bundleRoot = app bundle（只读资源）。
+// 调用后 TJS::TJSCreate* 四个函数指针全部指向 GalBox 实现。
+void Install(const XP3Archive* archive,
+             const std::string& storageRoot,
+             const std::string& bundleRoot);
 
-    // 阻塞睡眠（TJS2 内置 sleep）—— iOS 上尽量不用，留作兼容
-    virtual void Sleep(tjs_uint32 ms) = 0;
+// 恢复官方默认实现（返回 NULL），用于卸载游戏包或单元测试收尾。
+void Uninstall();
 
-    // 单调毫秒时钟 —— 实现：mach_absolute_time()/NSEC_PER_SEC
-    virtual tjs_uint32 GetMilliseconds() = 0;
+bool IsInstalled();
 
-    // 本地化名 / 语言（TVPGetLocalName / TVPGetLanguage）
-    virtual std::string GetLocalName() = 0;     // 如 "zh_CN"
-    virtual int GetLanguage() = 0;              // 0=ja, 1=en, 2=zh, ... 按官方枚举
+// 自测/诊断：记录 TJS2 实际向宿主请求了多少次文件（证明宿主线确实被走到）。
+unsigned int ReadCallCount();
+unsigned int WriteCallCount();
 
-    // 错误/异常上报（引擎层不可恢复错误）
-    virtual void OnError(const tjs_char* msg) = 0;
+// Milestone 2 待办（不在本契约内，先记边界）：
+//   - KAG 插件的 TP_STUB 平台层：TVPGetTickCount / TVPPrint /
+//     TVPThrowExceptionMessage / TVPPostEvent / TVPProcessEvents / TVPGetAppPath
+//   - 事件队列 → iOS run loop + CADisplayLink（KAG @wait 靠它推进）
+//   - KAG → 渲染/音频/输入回调面（文本、图像、层、转场、选项）
+//   - TLG/TPP/WAV/OGG 解码、视频换 AVFoundation
 
-    // 退出请求（TJS2 调 exit / 宿主应退出脚本）
-    virtual bool RequestQuit() = 0;
+}  // namespace host
+}  // namespace galbox
 
-    // 多线程 dispatcher（TJS2 可选多线程）—— iOS 用 GCD 映射
-    // virtual void Dispatch(...) = 0;  // Milestone 1 按官方 iTJS2Dispatcher 细化
-};
-
-// ---------------------------------------------------------------------------
-// iTVPFileSystem — 平台层文件/流（对应官方 tp_stub 的 iTVPFileSystem / iTVPStream）
-// 实现：读 XP3Archive 内文件 + NSFileManager(Documents) 散文件
-// ---------------------------------------------------------------------------
-class iTVPStream {
-public:
-    virtual ~iTVPStream() {}
-    virtual tjs_uint64 GetSize() = 0;
-    virtual tjs_uint64 GetPosition() = 0;
-    virtual void SetPosition(tjs_uint64 pos) = 0;
-    virtual tjs_uint Read(void* buf, tjs_uint size) = 0;   // 返回实际读取字节
-    virtual void Write(const void* buf, tjs_uint size) = 0;
-};
-
-class iTVPFileSystem {
-public:
-    virtual ~iTVPFileSystem() {}
-
-    // 按游戏内相对路径打开流（xp3 内或 Documents 散目录）
-    virtual iTVPStream* OpenStream(const std::string& path, bool write = false) = 0;
-
-    // 是否存在 / 大小（GalBox 接 XP3Archive::find + NSFileManager）
-    virtual bool Exists(const std::string& path) = 0;
-    virtual tjs_uint64 GetFileSize(const std::string& path) = 0;
-
-    // 列出目录（KAG 读 system/、scenario/ 等）
-    virtual std::vector<std::string> ListDir(const std::string& dir) = 0;
-
-    // 字符编码探测（Shift-JIS / EUC-JP / UTF-8）—— 文本读取前判定
-    virtual std::string GuessEncoding(const void* data, tjs_uint len) = 0;
-};
-
-// ---------------------------------------------------------------------------
-// iTVPHost — 平台层聚合宿主（tp_stub 风格的 TVP* 入口）
-// ---------------------------------------------------------------------------
-class iTVPHost {
-public:
-    virtual ~iTVPHost() {}
-
-    // === 时钟 / 计时 ===
-    virtual tjs_uint32 GetTickCount() = 0;          // TVPGetTickCount → mach time
-
-    // === 日志 / 异常 ===
-    virtual void Print(const tjs_char* msg) = 0;    // TVPPrint
-    virtual void ShowMessageBox(const tjs_char* msg) = 0; // TVPShowMessageBox
-    virtual void ThrowException(const tjs_char* msg) = 0; // TVPThrowExceptionMessage
-
-    // === 事件队列（关键：KAG @wait / 计时器靠它推进）===
-    // GalBox 接到 iOS run loop + CADisplayLink：每帧 drain 事件、推进 KAG 状态机
-    virtual void PostEvent(int eventId, void* data) = 0;     // TVPPostEvent
-    virtual void ProcessEvents() = 0;                        // TVPProcessEvents（每帧调用）
-    virtual bool QueueEmpty() = 0;
-
-    // === 路径 / 本地化 ===
-    virtual std::string GetAppPath() = 0;          // bundle 路径
-    virtual std::string GetStoragePath() = 0;      // Documents（游戏存档/导入落点）
-    virtual std::string GetLocalName() = 0;
-    virtual int GetLanguage() = 0;
-
-    // === 随机熵（TVPGetRandomBits 等，KAG 随机分支用）===
-    virtual tjs_uint32 GetRandom() = 0;
-
-    // === 文件系统（见上）===
-    virtual iTVPFileSystem* GetFileSystem() = 0;
-
-    // === 渲染 / 音频宿主回调（Milestone 2 细化；KAG 每帧下发指令）===
-    // virtual void KAG_DrawText(...); virtual void KAG_DrawImage(...);
-    // virtual void KAG_PlayAudio(...); virtual void KAG_Transition(...);
-};
-
-// ---------------------------------------------------------------------------
-// 全局接入点：TJS2 引擎初始化时拿宿主实现（Milestone 1 由 Host_iOS.mm 提供）
-// ---------------------------------------------------------------------------
-// 官方以 TVPInit / TJS2Host 全局对象形式存在；此处用 getter 约定，
-// 待源码到位对齐官方宏/全局名（如 TVPHost，TJSGetHost）。
-iTJS2Host*  GalBox_GetTJS2Host();
-iTVPHost*   GalBox_GetTVPHost();
-
-#endif // GALBOX_HOST_INTERFACE_HPP
+#endif  // GALBOX_HOST_INTERFACE_HPP

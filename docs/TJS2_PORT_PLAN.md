@@ -1,6 +1,11 @@
 # GalBox → 完整 Kirikiri 运行时：移植方案与架构
 
-> 状态：**路线 A 已确认（完整移植官方 TJS2 + KAG）**。本回合因 GitHub 全站及镜像被本地代理拦截（`http=000`），**无法拉取上游源码、也无法推送**。本文档与 `native/Host/HostInterface.hpp` 骨架为离线产出的第一阶段设计物，网络恢复后即从 Milestone 0 落地。
+> 状态（2026-11-15 更新）：**路线 A 已确认（完整移植官方 TJS2 + KAG）**。
+> M0 ✅ 已达成（run #11 全绿）、M1a ✅ 已实现（宿主流桥到 XP3Archive，CI 真跑验证中）。
+> 早期"网络被代理拦截"的判断**已推翻**：沙盒默认无代理变量，是我手动 `export`
+> 了失效的 `127.0.0.1:54662` 才导致 `http=000`；直连即可。上游仓库也从
+> `kikikracle/kirikiri2`（404）更正为 `jeeb/kirikiri2`。
+> 本文件保留路线图与设计依据，已按官方源码核对过的部分标注更正。
 
 ## 1. 为什么要走"完整移植"而不是继续手写 KAG
 
@@ -29,8 +34,10 @@ GalBox 缺的是"程序语言那一半"。手写补 TJS2 等于从零造一门�
 - 拉取 `kirikiri2/src/core/tjs2/` 全部 `.cpp/.h`（约 30k+ 行）。
 - 剥离 Windows 依赖：用 shim 替换 `<windows.h>`、`TCHAR`、`OutputDebugString`、`__try` 等；`tjs2` 本身相对平台无关，重点在少数几个文件。
 - 作为静态库 `libtjs2.a` 接入 Xcode（或用 CMake 生成后拖入）。c++14 标准，关异常/RTTI 视上游而定。
-- 写一个极简 host + `eval("1+1")` 自测，证明引擎在 **arm64 iOS** 上能跑。
+- 写一个极简 `eval("1+1")` 自测，先在 **macOS host** 上证明引擎能编译并求值
+  （iOS arm64 编译链接放到 M1b，避免两件事混在一轮 CI 里排查）。
 - ✅ 出口：Mac runner 上 `libtjs2.a` 编出、自测打印 `2`。
+  **实测（run #11）**：TJS 2.4.28，`libtjs2.a` 1,229,824 B / 35 objs，13 个 CI 步骤全绿。
 
 ### Milestone 1 — 宿主接口（tp_stub / iTJS2Host）的 iOS 实现
 - 实现 `native/Host/HostInterface.hpp` 定义的契约：
@@ -59,21 +66,40 @@ GalBox 缺的是"程序语言那一半"。手写补 TJS2 等于从零造一门�
 
 ## 4. 宿主接口设计（拱心石，详见 `native/Host/HostInterface.hpp`）
 
-核心是两个契约：
-- `iTJS2Host`：引擎层回调（`Print` / `Sleep` / `GetMilliseconds` / `GetLocalName` / `GetLanguage` / `ShowMessageBox` / `RequestQuit` / `OnError`）。
-- `iTVPHost`（tp_stub 风格）：平台层（`iTVPFileSystem` 文件流、`TVPGetTickCount`、`TVPPrint`、`TVPThrowExceptionMessage`、`TVPPostEvent`/`TVPProcessEvents` 事件队列、`TVPGetAppPath`、随机熵）。
+**⚠️ 已按 vendored 官方源码更正**：TJS2 **核心**里不存在 `iTJS2Host` / `iTVPHost`，
+那是早期离线凭印象写的近似契约。核对 `tjs.h` 后确认真实宿主边界只有：
 
-GalBox 的 iOS 实现把上述映射到：`XP3Archive`+`NSFileManager`、`mach_absolute_time`、`os_log`、iOS run loop + `CADisplayLink`、`Documents` 路径。
+1. `tjs.h:192-199` 的 **4 个全局流工厂函数指针**（默认实现返回 NULL）：
+   `TJSCreateTextStreamForRead/Write`、`TJSCreateBinaryStreamForRead/Write`。
+   调用点：`tjsArray.cpp:269/375/422/434`、`tjsDictionary.cpp:76/88`
+   （`Array.load/save`、`Dictionary.load/save`、字节码）。
+2. `tjsConfig.cpp:30` 的 `TJSGetTickCount()`（POSIX 分支 M0 已编译通过）。
 
-## 5. Vendoring 计划（网络恢复后第一步执行）
+`tp_stub` / `TVP*` 平台层属于 kirikiri2 的**插件层**（KAG、视觉、音频、事件），
+是 M2 的工作，不是 TJS2 核心的前置条件。
 
-需从官方仓库拉取（默认 `kikikracle/kirikiri2`，镜像备选）：
-- `src/core/tjs2/` → `native/TJS2/src/`
-- `src/core/tp_stub.h` 及最小依赖 → `native/Host/`（或 `native/TJS2/`）
-- `src/plugins/win32/kag/` → `native/KAG/src/`（Milestone 2）
+**M1a 已落地**：`native/Host/HostInterface.hpp`（对齐后的契约）+
+`native/Host/HostStreams.cpp`（4 个流工厂桥到 `XP3Archive` + Documents + bundle，
+含 UTF-8 / UTF-16LE / SHIFT_JIS 解码）。`test_m1.cpp` 在 Mac runner 上真跑验证
+「二进制流读 XP3 内文件 → 文本流解日文 → TJS2 的 `Array.load` 回调宿主 → 写回 Documents」。
+
+M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplayLink`
+事件队列（KAG `@wait` 靠它推进）、渲染/音频回调面。
+
+## 5. Vendoring（M0 已完成）
+
+- 上游更正为 **`jeeb/kirikiri2` @ master**，`kirikiri2/src/core/tjs2/`
+  （`kikikracle/kirikiri2` 是 404）。
+- 77 个源文件 / 1,269,921 B 已落到 `native/TJS2/src/`，按 blob SHA 逐个取回并核对字节数，
+  清单 `VENDOR_MANIFEST.json`；6 类 clang 移植补丁见 `PATCHES.md`。
+- 官方 `src/core/base/TextStream.h` 属于插件层，TJS2 核心不需 vendoring。
+- `src/plugins/win32/kag/` → `native/KAG/src/`（Milestone 2 待做）。
 - 游戏 `system/` 脚本随具体游戏提供，不入库。
 
-**授权**：Kirikiri2/TJS2 为 BSD 风格宽松许可，允许再分发与修改，但**必须保留版权与 LICENSE 声明**。vendoring 时一并拉取 `LICENSE`/`COPYRIGHT` 并置于 `native/TJS2/` 内，勿删头注释。
+**授权更正**：Kirikiri2 / KAG 3 是**双许可证**（吉里吉里独自许可 **或** GNU GPL，
+二选一），**不是 BSD**。原文在 `native/TJS2/LICENSE.txt`。必须保留 LICENSE 与
+每个源文件头注释。⚠️ 上架 App Store 前须确认所选许可与商店条款兼容
+（GPL 选项通常冲突），或维持侧载/开源分发。
 
 ## 6. 风险与未知
 - TJS2 源码中仍有少量 Windows 耦合（线程/SEH/调试输出），需逐文件 shim，可能踩坑 → Milestone 0 会暴露。
@@ -81,10 +107,22 @@ GalBox 的 iOS 实现把上述映射到：`XP3Archive`+`NSFileManager`、`mach_a
 - 视频（DirectShow）在 iOS 无对应，需 AVFoundation 重写。
 - 验证只能靠 Mac runner，迭代慢；每个里程碑拆分到"一次推送即可验证"的粒度。
 
-## 7. 当前阻塞与下一步
-- **阻塞**：GitHub 全站 + 镜像 `http=000`，无法 fetch/push（代理层拦截，非仓库问题）。
-- **下一步（网络恢复立即执行）**：
-  1. 拉取 `tjs2/` 源码与 LICENSE 到 `native/TJS2/`。
-  2. 写 Windows→POSIX shim，接入 Xcode 静态库。
-  3. 推送触发 Mac runner，跑 Milestone 0 自测。
-  4. 回到本计划推进 Milestone 1。
+## 7. 当前状态与下一步
+
+**已完成**
+- M0：官方 TJS2 核心 vendoring + 6 类 POSIX 补丁 + `libtjs2.a` / `eval` 自测（run #11 全绿）。
+- M1a：宿主契约对齐官方 + 4 个流工厂桥到 XP3Archive（本轮推送，CI 验证中）。
+
+**无阻塞项**：网络直连可用；`push_via_api.py` 走 Git Data API 原子提交（git 协议仍被墙）。
+
+**下一步（按序）**
+1. **M1b**：用 `xcrun --sdk iphoneos clang++ -target arm64-apple-ios15.0`
+   编出 `libtjs2_ios.a` + `HostStreams.o`，通过 `OTHER_LDFLAGS` /
+   `HEADER_SEARCH_PATHS` 链接进 Xcode target；`GBEngineBridge` 加 TJS2 冒烟入口。
+   ⚠️ app 已编译 `XP3Archive.cpp`，宿主层**只能链 `HostStreams.o`**，勿重复打包 XP3Archive.o。
+2. **M2**：vendoring `src/plugins/win32/kag/`，实现 KAG 宿主回调面 + 事件队列
+   （iOS run loop / CADisplayLink），这是工作量最高的里程碑，需再拆细。
+3. **M3/M4**：TLG/TPP/WAV/OGG 解码、视频换 AVFoundation、产品化切换。
+
+**长期约束**：本机无 C++ 编译器，每个原生改动都必须靠 GitHub macOS runner 真编译验证；
+一次推送能验证的粒度要小，避免把多个未验证改动堆在一轮里。

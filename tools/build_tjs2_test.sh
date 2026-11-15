@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # build_tjs2_test.sh — 编译官方 TJS2 核心为静态库并运行 eval 自测（Milestone 0）
+#                      + 编译 GalBox 宿主层并真跑 XP3 文件读取自测（Milestone 1a）
 #
 # 由 CI 在 xcodebuild 之前调用。设计原则：
 #   - 源码尚未 vendoring 时直接跳过（exit 0），绝不破坏现有出包链路。
@@ -60,7 +61,41 @@ if [ -f "$ROOT/native/TJS2/test_m0.cpp" ]; then
       echo "[tjs2] M0 自测结果不符预期"; exit 1
     fi
   else
-    echo "[tjs2] M0 自测链接失败:"; tail -n 40 "$OUT/link.log"; exit 1
+    echo "[tjs2] M0 自测链接失败:"; cat "$OUT/link.log"; exit 1
+  fi
+fi
+
+# ---- Milestone 1a: 宿主流工厂桥到 XP3Archive，在 runner 上真跑 ----------
+HOST="$ROOT/native/Host"
+if [ -f "$HOST/HostStreams.cpp" ] && [ -f "$ROOT/native/TJS2/test_m1.cpp" ]; then
+  echo "[tjs2] M1: 编译 GalBox 宿主流实现"
+  if ! clang++ -std=c++14 -O1 -fexceptions -DTJS_NO_REGEXP -DTJS2_POSIX \
+        -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
+        -c "$HOST/HostStreams.cpp" -o "$OUT/HostStreams.o" 2>"$OUT/host_m1.log"; then
+    echo "[tjs2] M1 宿主编译失败:"; cat "$OUT/host_m1.log"; exit 1
+  fi
+  echo "[tjs2] HostStreams.o OK"
+
+  # XP3Archive 是 GalBox 自己的代码，独立编译（不注入 TJS2 compat 头）。
+  if ! clang++ -std=c++14 -O1 -I"$ROOT/native/Engine" \
+        -c "$ROOT/native/Engine/XP3Archive.cpp" -o "$OUT/XP3Archive.o" 2>"$OUT/xp3_m1.log"; then
+    echo "[tjs2] M1 XP3Archive 编译失败:"; cat "$OUT/xp3_m1.log"; exit 1
+  fi
+
+  echo "[tjs2] M1: 编译并运行宿主自测（读 XP3 内文件 / Array.load）"
+  if clang++ -std=c++14 -O1 -fexceptions -DTJS_NO_REGEXP -DTJS2_POSIX \
+        -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
+        "$ROOT/native/TJS2/test_m1.cpp" "$OUT/HostStreams.o" "$OUT/XP3Archive.o" \
+        "$OUT/libtjs2.a" -lz -liconv -lpthread -o "$OUT/tjs2test_m1" 2>"$OUT/link_m1.log"; then
+    OUTPUT_M1=$("$OUT/tjs2test_m1" "$ROOT/dist/fixtures/demo-game.xp3" "$OUT" 2>&1)
+    echo "$OUTPUT_M1" | sed 's/^/[tjs2]   /'
+    if echo "$OUTPUT_M1" | grep -q "M1_RESULT=OK"; then
+      echo "[tjs2] M1 自测通过（官方 TJS2 经宿主读到 XP3 内文件）"
+    else
+      echo "[tjs2] M1 自测未通过"; exit 1
+    fi
+  else
+    echo "[tjs2] M1 自测链接失败:"; cat "$OUT/link_m1.log"; exit 1
   fi
 fi
 exit 0
