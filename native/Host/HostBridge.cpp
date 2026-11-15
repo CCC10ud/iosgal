@@ -203,6 +203,11 @@ std::string gFatalBlock;      // 出错的脚本名
 long long gFatalLine = -1;    // 出错行号（1 起）
 std::string gFatalException;  // throw new Exception("...") 里的正文
 
+// execStorage 的两种计数：Attempts = 被脚本调用（进入方法即计），
+// Calls = 内层脚本成功跑完。必须分开 —— 只有 Calls 的话，
+// 「调用了但内层抛异常」与「压根没调用」无法区分（run #24 踩过）。
+unsigned gExecStorageAttempts = 0;
+
 void ResetDiagnostics() {
     gSys = SystemState();
     gDbg = DebugState();
@@ -323,8 +328,7 @@ std::string MakeExecResult(bool ok, const char *reason, const char *entry,
 // 这里给最小 iOS 实现：从宿主读脚本 → 交给同一个 tTJS 递归执行。
 tTJS *gActiveEngine = nullptr;
 std::string gLastScriptError;
-unsigned gExecStorageCalls = 0;      // 成功执行完的次数
-unsigned gExecStorageAttempts = 0;   // 被脚本调用的次数（含失败）
+unsigned gExecStorageCalls = 0;      // 成功执行完的次数（gExecStorageAttempts 见上方）
 
 class tTJSNC_Scripts : public tTJSNativeClass {
 public:
