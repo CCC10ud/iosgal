@@ -57,7 +57,7 @@
   逐字符实现比对一致。执行继续推进到 `KAGLoadScript("KAGLayer.tjs")`（夹具里
   故意没有该文件）——下一个缺口因此从「引擎缺正则」变成「M2e 需要 Layer/Window
   等系统脚本与原生类」。
-- **M2e-1（本轮）**：把 `kag3/template/system/` 的 **28 个上游文件**
+- **M2e-1 ✅（run #34 一次全绿）**：把 `kag3/template/system/` 的 **28 个上游文件**
   （20 个 `.tjs` + `Config.~new` + 7 个 png/asd，448,729 B）按 `/git/blobs/<sha>`
   **原始字节**全量 vendoring 到 `src/original/system/`。目的不是跑通 KAG，而是把
   run #32 的「缺文件」阻塞点逼成「缺原生类」：`KAGLayer.tjs` 第 87 行
@@ -72,7 +72,16 @@
     场景 B 断言 trace 含 `KAGLayer.tjs`、错误里不再有 `script not found`、
     报错块在 KAGLayer 内部；场景 C 是**负向对照**（故意只放旧 4 个文件），
     断言 trace 不含它且错误回到 `script not found`。没有 C，B 就是恒真式自证。
-  - 顺带修一处会让判据说谎的地方：`Install()` 不再清零 `shiftJisReads`，
+  - **run #34 实测**：A) `probeValue=2000`（20/20 可见、哨兵未命中、`scriptsRead=0`）；
+    B) `scriptsRead=10 / attempts=10 / calls=8 / shiftJisReads=10 / cp932`，
+    `scriptTrace` 一路到 `AnimationLayer.tjs`，
+    `fatal="Member \"Layer\" does not exist" @ KAGLayer.tjs:87`；
+    C) 负向对照 trace 只有 3 个脚本，错误回到 `script not found`。
+    ⚠️ 根因在 `KAGLayer.tjs:87`，但加载链在该行之后**还继续读了 7 个脚本**，
+    最外层冒泡的 execStorage 上下文是 `AnimationLayer.tjs` —— 所以
+    `lastScriptError` / `lastResolvedPath` 都不能当「停在哪一句」，只有
+    `fatalBlock + fatalLine` 可靠。
+  - 顺带修一处会让判据说谎的地方：`Install()` 此前**没有**清零 `shiftJisReads`，
     后一次启动会「借」上一次的解码计数 —— 已归零。
 - **M2e-2 起**：最小 `Layer` 子集 + `Window` 骨架 / `KAGParserEx` +
   渲染/音频回调面 + 事件队列，把 `GameViewController` 接到官方 KAG 播放循环，
