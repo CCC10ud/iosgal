@@ -200,6 +200,7 @@ struct DebugState {
     unsigned noticeCalls;
     unsigned logAsErrorCalls;
     std::string last;                 // 最后一条，UI 用
+    std::string logLocation;          // 官方 Debug.logLocation（M2e-3 补）
     std::vector<std::string> lines;   // 最多 kDebugKeep 条，防止长跑吃内存
 
     DebugState() : messageCalls(0), noticeCalls(0), logAsErrorCalls(0) {}
@@ -342,6 +343,8 @@ std::string MakeExecResult(bool ok, const char *reason, const char *entry,
     s += ",\"kagSystem\":\"M2E_SYSTEM_SCRIPTS_VENDORED\"";
     // M2e-2：GalBox 的 Layer 骨架层（纯 TJS2 shim，替代官方 293KB 原生类）
     s += ",\"layerSkeleton\":\"M2E2_LAYER_SKELETON\"";
+    // M2e-3：GalBox 的 Window 骨架层（同样纯 TJS2 shim）
+    s += ",\"windowSkeleton\":\"M2E3_WINDOW_SKELETON\"";
     s += ",\"shim\":\"" + JsonEscape(gShimStatus.c_str()) + "\"";
     s += ",\"stage\":\"M2B_STORAGES_AUTOPATH\"";
     // 诊断必须能区分「真的按 autoPath 找到」与「碰巧被 basename 宽松回退命中」，
@@ -868,6 +871,25 @@ public:
         }
         TJS_END_NATIVE_STATIC_METHOD_DECL(getKeyState)
 
+        // M2e-3：官方 KAGWindow 的类成员初始化就写了 `var saveDataLocation =
+        // System.dataPath;`（MainWindow.tjs:38）—— 也就是说**实例化** KAGWindow
+        // 的那一刻就会读它。M2c 建的 System 没有这个成员，于是它会挡住整条
+        // 启动链。官方语义是「数据（栞）保存目录」，这里给出宿主真实的上报目录。
+        TJS_BEGIN_NATIVE_PROP_DECL(dataPath)
+        {
+            TJS_BEGIN_NATIVE_PROP_GETTER
+            {
+                std::string p = galbox::host::StorageRootPath();
+                if (!p.empty() && p[p.size() - 1] == '/')
+                    p.erase(p.size() - 1);
+                *result = ttstr(Utf8ToWide(p.c_str()).c_str());
+                return TJS_S_OK;
+            }
+            TJS_END_NATIVE_PROP_GETTER
+            TJS_DENY_NATIVE_PROP_SETTER
+        }
+        TJS_END_NATIVE_STATIC_PROP_DECL(dataPath)
+
         TJS_END_NATIVE_MEMBERS
     }
 private:
@@ -904,6 +926,26 @@ public:
             return TJS_S_OK;
         }
         TJS_END_NATIVE_STATIC_METHOD_DECL(logAsError)
+
+        // M2e-3：官方 KAGWindow 构造器里有 `Debug.logLocation = saveDataLocation;`
+        // （MainWindow.tjs:290）。M2c 建的 Debug 没有这个属性，实例化 KAGWindow
+        // 时会直接报成员不存在。官方语义是「日志输出目标路径」。
+        TJS_BEGIN_NATIVE_PROP_DECL(logLocation)
+        {
+            TJS_BEGIN_NATIVE_PROP_GETTER
+            {
+                *result = ttstr(Utf8ToWide(gDbg.logLocation.c_str()).c_str());
+                return TJS_S_OK;
+            }
+            TJS_END_NATIVE_PROP_GETTER
+            TJS_BEGIN_NATIVE_PROP_SETTER
+            {
+                gDbg.logLocation = WideToUtf8(ttstr(*param).c_str());
+                return TJS_S_OK;
+            }
+            TJS_END_NATIVE_PROP_SETTER
+        }
+        TJS_END_NATIVE_STATIC_PROP_DECL(logLocation)
 
         TJS_END_NATIVE_MEMBERS
     }
@@ -964,40 +1006,53 @@ void RegisterDebugClass(tTJS *engine) {
 // 同样**不**调用 CaptureCurrentException()：骨架的失败不是入口脚本的错，
 // 不该占用 fatalBlock/fatalLine；它的信息单独走 JSON 的 shim 字段。
 static bool LoadEngineShim(tTJS *engine) {
-    static const char *kShimPath = "system/GalBoxLayer.tjs";
+    // 每个骨架一个文件。状态串记录**实际装了哪些**，于是「只装了 Layer」
+    // 与「Layer + Window 都装了」在诊断里能分开（M2e-3 的负向对照要用）。
+    static const char *kShims[] = {
+        "system/GalBoxLayer.tjs",   // M2e-2
+        "system/GalBoxWindow.tjs",  // M2e-3
+    };
+    static const char *kTags[] = {
+        "M2E2_LAYER_SKELETON",
+        "M2E3_WINDOW_SKELETON",
+    };
     if (!engine) { gShimStatus = "error: no engine"; return false; }
-    if (!galbox::host::IsExistentStorage(kShimPath)) {
-        gShimStatus = "absent";
-        return false;
-    }
-    std::wstring pathW = Utf8ToWide(kShimPath);
-    ttstr path(pathW.c_str());
-    iTJSTextReadStream *st = TJSCreateTextStreamForRead(path, ttstr());
-    if (!st) { gShimStatus = "error: cannot open shim"; return false; }
-    tTJSString body;
-    try {
-        st->Read(body, 0);
-        st->Destruct();
-    } catch (...) {
-        try { st->Destruct(); } catch (...) {}
-        gShimStatus = "error: shim read failed";
-        return false;
-    }
-    try {
-        engine->ExecScript(body.c_str(), NULL, NULL, path.c_str(), 0);
-    } catch (...) {
-        std::string msg = "shim threw";
+    std::string status;
+    bool any = false;
+    for (size_t i = 0; i < sizeof(kShims) / sizeof(kShims[0]); ++i) {
+        if (!galbox::host::IsExistentStorage(kShims[i])) continue;
+        any = true;
+        if (!status.empty()) status += "+";
+        status += kTags[i];
+        std::wstring pathW = Utf8ToWide(kShims[i]);
+        ttstr path(pathW.c_str());
+        iTJSTextReadStream *st = TJSCreateTextStreamForRead(path, ttstr());
+        if (!st) { status += "!open"; continue; }
+        tTJSString body;
         try {
-            throw;
-        } catch (const TJS::eTJS &e) {
-            msg = WideToUtf8(e.GetMessage().c_str());
+            st->Read(body, 0);
+            st->Destruct();
         } catch (...) {
+            try { st->Destruct(); } catch (...) {}
+            status += "!read";
+            continue;
         }
-        gShimStatus = "error: " + msg;
-        return false;
+        try {
+            engine->ExecScript(body.c_str(), NULL, NULL, path.c_str(), 0);
+        } catch (...) {
+            std::string msg = "shim threw";
+            try {
+                throw;
+            } catch (const TJS::eTJS &e) {
+                msg = WideToUtf8(e.GetMessage().c_str());
+            } catch (...) {
+            }
+            status += "!threw:" + msg;
+        }
     }
-    gShimStatus = "M2E2_LAYER_SKELETON";
-    return true;
+    if (!any) { gShimStatus = "absent"; return false; }
+    gShimStatus = status;
+    return status.find('!') == std::string::npos;
 }
 
 }  // namespace

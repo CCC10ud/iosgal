@@ -8,6 +8,7 @@
 #                      + 真跑正则（RegExp 原生类，std::regex 背书）（Milestone 2d）
 #                      + 全量 vendoring 官方 system/*.tjs 并推进启动链（Milestone 2e-1）
 #                      + GalBox 的 Layer 骨架能被官方脚本类继承（Milestone 2e-2）
+#                      + GalBox 的 Window 骨架能被官方脚本类继承（Milestone 2e-3）
 #
 # 由 CI 在 xcodebuild 之前调用。设计原则：
 #   - 源码尚未 vendoring 时直接跳过（exit 0），绝不破坏现有出包链路。
@@ -419,6 +420,51 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2f.cpp" ] \
     fi
   else
     echo "[tjs2] M2f 自测链接失败:"; cat "$OUT/link_m2f.log"; exit 1
+  fi
+fi
+
+
+# ---- Milestone 2e-3：GalBox 的 Window 骨架（纯 TJS2 shim） -------------------
+# run #36 停在 MainWindow.tjs:7 的 'Member "Window" does not exist'。
+# 本轮补 Window 骨架 + System.dataPath + Debug.logLocation，
+# 三个场景：继承成立 / 完整启动链 / 无 Window 骨架负向对照。
+if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2g.cpp" ] \
+   && [ -f "$KAG/src/m2g_window_probe.tjs" ] \
+   && [ -f "$KAG/src/system/GalBoxWindow.tjs" ] \
+   && [ -d "$M2F_GAME" ]; then
+
+  M2G_GAME="$OUT/m2g_game"
+  M2G_NOWIN="$OUT/m2g_nowindow"
+  rm -rf "$M2G_GAME" "$M2G_NOWIN"
+  cp -R "$M2F_GAME" "$M2G_GAME"
+  cp "$KAG/src/system/GalBoxWindow.tjs" "$M2G_GAME/system/GalBoxWindow.tjs"
+  cp "$KAG/src/m2g_window_probe.tjs"    "$M2G_GAME/m2g_window_probe.tjs"
+  # 负向对照：Layer 骨架**在**，Window 骨架**不在**。
+  cp -R "$M2F_GAME" "$M2G_NOWIN"
+  cp "$KAG/src/m2g_window_probe.tjs"    "$M2G_NOWIN/m2g_window_probe.tjs"
+
+  if [ ! -f "$M2G_NOWIN/system/GalBoxLayer.tjs" ] \
+     || [ -f "$M2G_NOWIN/system/GalBoxWindow.tjs" ]; then
+    echo "[tjs2] M2g 负向对照夹具状态不对（Layer 应在、Window 应不在）"
+    exit 1
+  fi
+  echo "[tjs2] M2g fixture: Layer+Window 骨架；负向对照只有 Layer 骨架"
+
+  echo "[tjs2] M2g: 编译并运行 Window 骨架自测（继承 / 启动链 / 负向对照）"
+  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
+        -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
+        "$HOST/test_m2g.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
+        "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
+        -lz -liconv -lpthread -o "$OUT/tjs2test_m2g" 2>"$OUT/link_m2g.log"; then
+    OUTPUT_M2G=$("$OUT/tjs2test_m2g" "$M2G_GAME" "$M2G_NOWIN" "$OUT" 2>&1)
+    echo "$OUTPUT_M2G" | sed 's/^/[tjs2]   /'
+    if echo "$OUTPUT_M2G" | grep -q "M2G_RESULT=OK"; then
+      echo "[tjs2] M2g 自测通过（官方 KAGWindow 不再缺 Window 父类 + 负向对照）"
+    else
+      echo "[tjs2] M2g 自测未通过"; exit 1
+    fi
+  else
+    echo "[tjs2] M2g 自测链接失败:"; cat "$OUT/link_m2g.log"; exit 1
   fi
 fi
 

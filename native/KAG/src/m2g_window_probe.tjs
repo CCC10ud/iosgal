@@ -1,0 +1,30 @@
+// m2g_window_probe.tjs — Milestone 2e-3 探针（GalBox 自写，**非官方**）
+//
+// 目的：证明「官方脚本类 KAGWindow 成功继承了 GalBox 的 Window 骨架」。
+//
+// run #36 实测的阻塞点是 `Member "Window" does not exist` @ MainWindow.tjs:7
+// （`class KAGWindow extends Window`）。由于 TJS2 的 super 是**惰性**的，
+// 光把 MainWindow.tjs 读进来不会报错 —— 必须真的实例化一次，父类查找才会
+// 发生。所以这里执行 `new KAGWindow()`。
+//
+// 判据编码（宿主用一个 probeExpression 取回）：
+//    1  = 实例化成功
+//   -1  = 脚本读到了，但实例化抛了异常（global.m2gProbe 未赋值）
+//   -2  = 脚本压根没读到
+// 这样「没跑到」与「跑了但失败」能分开，不会把「没执行」当成「通过」。
+//
+// 注意 TJS2 裸赋值不创建成员（M2c 踩过），必须写 global.m2gLoaded / global.m2gProbe。
+
+Storages.addAutoPath("system/");
+
+// 官方加载顺序：Menus.tjs 在 MainWindow.tjs 之前 —— KAGWindow_createMenus
+// 定义在 Menus.tjs 里（MainWindow.tjs 只调用它）。
+Scripts.execStorage("Menus.tjs");
+Scripts.execStorage("MainWindow.tjs");
+
+global.m2gLoaded = 1;
+
+// 真正的考验：走 KAGWindow(ismain=true) -> super.Window()。
+var w = new KAGWindow();
+
+global.m2gProbe = 1;

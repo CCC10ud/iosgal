@@ -612,8 +612,8 @@ ok("LoadEngineShim" in bridge_cpp and "gShimStatus" in bridge_cpp,
    "HostBridge 会加载 Layer 骨架并单独记录状态")
 ok("system/GalBoxLayer.tjs" in bridge_cpp and "M2E2_LAYER_SKELETON" in bridge_cpp,
    "骨架路径与 M2e-2 固定标记都在 HostBridge 里")
-_shim_fn = bridge_cpp[bridge_cpp.index("static bool LoadEngineShim"):
-                      bridge_cpp.index("static bool LoadEngineShim") + 2600]
+_shim_start = bridge_cpp.index("static bool LoadEngineShim")
+_shim_fn = bridge_cpp[_shim_start:bridge_cpp.index("\n}\n", _shim_start)]
 for forbidden in ("gExecStorageAttempts", "gScriptTrace +=", "gLastScriptError ="):
     ok(forbidden not in _shim_fn,
        "加载骨架不污染官方加载序列的判据: " + forbidden)
@@ -640,6 +640,52 @@ ok("scripts < 10" in m2f_test,
 ok("M2F_RESULT=OK" in test_sh and "test_m2f.cpp" in test_sh,
    "CI 运行 M2e-2 自测")
 ok("M2E2_LAYER_SKELETON" in wf, "CI 核验 Layer 骨架层真的进 app 二进制")
+
+
+print("\n[15] Milestone 2e-3 — GalBox 的 Window 骨架（纯 TJS2 shim）+ System.dataPath / Debug.logLocation")
+m2g_test = read("native/Host/test_m2g.cpp")
+m2g_probe = read("native/KAG/src/m2g_window_probe.tjs")
+win_shim = read("native/KAG/src/system/GalBoxWindow.tjs")
+
+ok("class Window" in win_shim and "非官方" in win_shim,
+   "Window 骨架是 GalBox 自写的脚本类，并明确标注非官方")
+for member in ("caption", "visible", "width", "height", "layer", "primaryLayer",
+               "children", "parent", "menu", "fullScreen", "cursor"):
+    ok(member in win_shim, "Window 骨架占位属性: " + member)
+for fn in ("function Window(", "function finalize(", "function close(",
+           "function onCloseQuery(", "function onMouseDown(", "function onKeyDown(",
+           "function onMouseWheel(", "function setCaption(", "function setSize(",
+           "function setCursor(", "function createLayer("):
+    ok(fn in win_shim, "Window 骨架占位方法: " + fn)
+
+# 宿主侧：Window 骨架路径 + 固定标记 + 这轮顺带补的两个成员
+ok("system/GalBoxWindow.tjs" in bridge_cpp and "M2E3_WINDOW_SKELETON" in bridge_cpp,
+   "HostBridge 会加载 Window 骨架并带 M2e-3 固定标记")
+ok("TJS_END_NATIVE_STATIC_PROP_DECL(dataPath)" in bridge_cpp
+   and "TJS_END_NATIVE_STATIC_PROP_DECL(logLocation)" in bridge_cpp,
+   "补上 System.dataPath 与 Debug.logLocation（KAGWindow 实例化路径要用）")
+ok("StorageRootPath()" in bridge_cpp and "logLocation" in bridge_cpp,
+   "dataPath 来自宿主真实上报的目录，不是硬编码空串")
+
+# 判据：围绕「实例化时的父类查找」，不依赖「脚本被读完」
+ok("new KAGWindow()" in m2g_probe and "global.m2gProbe = 1" in m2g_probe,
+   "探针真的实例化官方 KAGWindow（TJS2 的 super 是惰性的，必须 new 一次）")
+ok("m2gLoaded" in m2g_probe and "-2" in m2g_test,
+   "判据能区分「脚本没读到」(-2) 与「实例化失败」(-1) 与「成功」(1)")
+ok("negative control" in m2g_test
+   and "did not reproduce the Window blocker" in m2g_test,
+   "自测有无 Window 骨架的负向对照，证明骨架真的在起作用")
+ok("still blocked by the missing Window class" in m2g_test,
+   "自测断言 Window 缺口在有骨架时消失")
+ok("scripts < 15" in m2g_test,
+   "自测断言官方脚本加载序列不比 M2e-2 的 15 个倒退")
+ok("M2G_RESULT=OK" in test_sh and "test_m2g.cpp" in test_sh,
+   "CI 运行 M2e-3 自测")
+ok("M2E3_WINDOW_SKELETON" in wf, "CI 核验 Window 骨架层真的进 app 二进制")
+for tag in ("M1C_HOST_v1", "M2A_SCRIPTS_EXEC_STORAGE", "M2B_STORAGES_AUTOPATH",
+            "M2C_SYSTEM_DEBUG", "M2D_REGEXP_STDREGEX",
+            "M2E_SYSTEM_SCRIPTS_VENDORED", "M2E2_LAYER_SKELETON"):
+    ok(tag in bridge_cpp, "升级后历史二进制标记仍保留: " + tag)
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

@@ -1,0 +1,89 @@
+// GalBoxWindow.tjs — GalBox 自写的 `Window` 骨架（**非官方**，Milestone 2e-3）
+//
+// 官方 `Window` 是 kirikiri2/src/core/visual/WindowIntf.cpp 里的**原生类**
+// （同样绑死 Windows tp_stub）。KAG 的主窗口脚本 `MainWindow.tjs`（150 KB，
+// 5893 行）第 7 行就是 `class KAGWindow extends Window`，所以没有 Window，
+// 官方启动链就停在 MainWindow.tjs —— run #36 实测的阻塞点正是
+// `Member "Window" does not exist` @ MainWindow.tjs:7。
+//
+// 与 GalBoxLayer.tjs 同理：这是**过渡骨架**，只提供成员占位，让继承成立，
+// 从而把下一批缺口逼出来。它**不创建窗口、不处理输入、不绘制**。
+//
+// 成员清单来自对 MainWindow.tjs 的实际统计（`super.*` 调用 + 未在
+// KAGWindow 内用 var 声明过的窗口相关标识符）：
+//   super.Window() / finalize(...) / onCloseQuery(...) / close(...)
+//   super.onMouseDown(...) / onKeyDown(...) / super.onMouseWheel(...)
+//   以及 caption / visible / width / height / layer / primaryLayer /
+//   children / parent / menu / fullScreen / cursor 等窗口属性。
+//
+// 说明：TJS2 里子类的同名成员优先于父类，所以这里多给几个成员不会覆盖
+// KAGWindow 自己的定义（例如它自定义的 restore 是「栞的恢复」，与窗口的
+// restore 不是一回事）。
+
+class Window
+{
+	// ---- 窗口属性（占位） ----
+	var caption = "";
+	var captionLayer;
+	var visible = true;
+	var width = 640;
+	var height = 480;
+	var layer;
+	var primaryLayer;
+	var children = [];
+	var parent;
+	var menu;
+	var fullScreen = false;
+	var focused = false;
+	var cursor = 0;
+	var hint = "";
+	var isValid = true;
+
+	function Window()
+	{
+	}
+
+	function finalize() {}
+
+	// ---- 生命周期 ----
+	function close(...) {}
+	function onCloseQuery(query) {}
+	function onResize(width, height) {}
+	function onTimer(tick) {}
+	function onDraw() {}
+	function onActivate(activate) {}
+	function onDeactivate() {}
+
+	// ---- 输入 ----
+	function onMouseDown(x, y, button, shift) {}
+	function onMouseUp(x, y, button, shift) {}
+	function onMouseMove(x, y, shift) {}
+	function onMouseWheel(shift, x, y) {}
+	function onKeyDown(keycode, shift) {}
+	function onKeyUp(keycode, shift) {}
+	function onKeyPress(keycode) {}
+
+	// ---- 属性设置（占位） ----
+	function setCaption(cap) { caption = cap; }
+	function setMenu(m) { menu = m; }
+	function setSize(w, h) { width = w; height = h; }
+	function setCursor(c) { cursor = c; }
+	function setFullScreen(flag) { fullScreen = flag; }
+	function setFocused(flag) { focused = flag; }
+	function setHint(h) { hint = h; }
+	function getWidth() { return width; }
+	function getHeight() { return height; }
+
+	// ---- 绘制 / 重绘（占位，不做任何事） ----
+	function invalidate() {}
+	function redraw() {}
+	function restore() {}
+	function minimize() {}
+	function maximize() {}
+	function release() {}
+	function clear() {}
+
+	// ---- 图层（占位） ----
+	function createLayer(w, h, type) {}
+	function detach() {}
+}
