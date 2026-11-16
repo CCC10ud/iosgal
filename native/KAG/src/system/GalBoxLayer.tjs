@@ -21,17 +21,11 @@
 //   stt* / stst* 是转场方向与停留方式的枚举，官方定义在原生层内部；
 //   这里给占位值，因为当前不做转场渲染。
 
-global.clNone  = 0x1fffffff;
-global.clAdapt = 0x01ffffff;
-
-global.sttLeft   = 0;
-global.sttTop    = 1;
-global.sttRight  = 2;
-global.sttBottom = 3;
-
-global.ststNoStay   = 0;
-global.ststStaySrc  = 1;
-global.ststStayDest = 2;
+// 颜色键(clNone/clAdapt)与转场枚举(stt*/stst*)**不再在这里自造** ——
+// 官方常量表 native/KAG/src/system/GalBoxConsts.tjs 逐字提供了它们
+// （M2e-2 时这里自造过，而且把 ststStaySrc / ststStayDest 的值**弄反了**：
+//  官方是 StayDest=1、StaySrc=2）。官方常量表用的是 TJS2 的 `const`，
+// 与本文件的 `global.xxx =` 同名会冲突，所以只能留一份。
 
 // ---------------------------------------------------------------- Layer 本体
 class Layer

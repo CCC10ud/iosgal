@@ -594,9 +594,10 @@ shim = read("native/KAG/src/system/GalBoxLayer.tjs")
 # 1) 骨架必须是 GalBox 自写、且**不是**官方原文目录下的东西
 ok("class Layer" in shim and "非官方" in shim,
    "Layer 骨架是 GalBox 自写的脚本类，并明确标注非官方")
-ok("global.clNone" in shim and "global.clAdapt" in shim
-   and "global.sttLeft" in shim and "global.ststNoStay" in shim,
-   "骨架提供官方脚本直接引用的全局常量（颜色键 / 转场枚举）")
+# M2e-2 时这些常量是 GalBox 自造的（还把 ststStaySrc/Dest 弄反了）；
+# M2e-4 起改由官方常量表逐字提供，见 [16] 段。
+ok("GalBoxConsts.tjs" in read("native/KAG/src/system/GalBoxConsts.tjs"),
+   "颜色键 / 转场枚举改由官方常量表提供（M2e-2 的自造值已作废）")
 for member in ("visible", "left", "top", "opacity", "absolute", "type",
                "width", "height", "imageLeft", "imageTop", "isPrimary",
                "parent", "window"):
@@ -712,6 +713,38 @@ for tag in ("M1C_HOST_v1", "M2A_SCRIPTS_EXEC_STORAGE", "M2B_STORAGES_AUTOPATH",
             "M2C_SYSTEM_DEBUG", "M2D_REGEXP_STDREGEX",
             "M2E_SYSTEM_SCRIPTS_VENDORED", "M2E2_LAYER_SKELETON"):
     ok(tag in bridge_cpp, "升级后历史二进制标记仍保留: " + tag)
+
+
+print("\n[16] Milestone 2e-4 — 官方全局常量表（摘自 ScriptMgnIntf.cpp）")
+consts = read("native/KAG/src/system/GalBoxConsts.tjs")
+push_files = read("../push_via_api.py")
+layer_shim2 = read("native/KAG/src/system/GalBoxLayer.tjs")
+win_shim2 = read("native/KAG/src/system/GalBoxWindow.tjs")
+
+ok("ScriptMgnIntf.cpp" in consts and "TVPInitTJSScript" in consts,
+   "常量表注明来源：官方 ScriptMgnIntf.cpp 的 TVPInitTJSScript")
+# 官方那批常量**不是** C++ 宏，而是一段 TJS 初始化脚本 —— 逐字照抄才不会搞错值。
+ok(consts.count("=") > 300, "常量表规模与官方相当（300+ 个定义）")
+for pair in ("VK_SPACE=0x20", "crArrow=-2", "clNone=0x1fffffff",
+             "clAdapt=0x01ffffff", "ststStayDest=1", "ststStaySrc=2",
+             "VK_PAD1=0x1C0", "mbLeft=0", "dfBoth=0"):
+    ok(pair in consts.replace(" ", ""), "官方常量值逐字保留: " + pair)
+# M2e-2 自造过这批常量，还把 ststStaySrc/ststStayDest 弄反了 ——
+# 现在只能留一份，否则 TJS2 的 const 与 global 成员同名会冲突。
+for dup in ("global.clNone", "global.clAdapt", "global.sttLeft",
+            "global.ststStaySrc", "global.crArrow"):
+    ok(dup not in layer_shim2 and dup not in win_shim2,
+       "骨架里不再自造官方常量（避免与 const 重复定义）: " + dup)
+# 常量表必须最先装载
+_shim_s = bridge_cpp.index("static const char *kShims[]")
+_shim_order = bridge_cpp[_shim_s:_shim_s + 400]
+ok(_shim_order.index("GalBoxConsts.tjs") < _shim_order.index("GalBoxLayer.tjs")
+   and _shim_order.index("GalBoxLayer.tjs") < _shim_order.index("GalBoxWindow.tjs"),
+   "官方常量表最先装载（const 与 global 同名会冲突）")
+ok("M2E4_OFFICIAL_CONSTS" in bridge_cpp and "M2E4_OFFICIAL_CONSTS" in wf,
+   "官方常量表层有固定标记，且 CI 核验它真的进 app 二进制")
+ok("GalBoxConsts.tjs" in test_sh and "GalBoxConsts.tjs" in push_files,
+   "构建脚本把官方常量表装进夹具，推送清单也包含它")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

@@ -121,7 +121,7 @@ int main(int argc, char **argv) {
 
         if (!Has(j, "\"layerSkeleton\":\"M2E2_LAYER_SKELETON\""))
             return Fail("M2e-2 build tag missing", j);
-        if (StrField(j, "shim") != "M2E2_LAYER_SKELETON")
+        if (StrField(j, "shim").find("M2E2_LAYER_SKELETON") == std::string::npos)
             return Fail("the Layer skeleton was not loaded", j);
         if (!Has(j, "\"ok\":true"))
             return Fail("layer probe did not finish cleanly", j);
@@ -211,8 +211,10 @@ int main(int argc, char **argv) {
                     j ? j : "(null)");
         if (!j) return Fail("ExecScript(C) returned NULL", NULL);
 
-        if (StrField(j, "shim") != "absent")
-            return Fail("negative control unexpectedly loaded a skeleton", j);
+        // 状态串里现在还有官方常量表的 tag（它不在负向对照夹具里被去掉），
+        // 所以这里只查 **Layer 骨架** 的 tag 有没有出现。
+        if (StrField(j, "shim").find("M2E2_LAYER_SKELETON") != std::string::npos)
+            return Fail("negative control unexpectedly loaded the Layer skeleton", j);
         if (!Has(j, "\"ok\":false"))
             return Fail("negative control unexpectedly succeeded", j);
         if (IntField(j, "probeValue") != -1)

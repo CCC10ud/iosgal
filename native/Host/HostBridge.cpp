@@ -1009,11 +1009,15 @@ void RegisterDebugClass(tTJS *engine) {
 static bool LoadEngineShim(tTJS *engine) {
     // 每个骨架一个文件。状态串记录**实际装了哪些**，于是「只装了 Layer」
     // 与「Layer + Window 都装了」在诊断里能分开（M2e-3 的负向对照要用）。
+    // 顺序有讲究：官方常量表用 TJS2 的 `const` 声明全局常量，必须**最先**装载
+    // —— 否则后面骨架里的 global.xxx = ... 与同名常量冲突。
     static const char *kShims[] = {
+        "system/GalBoxConsts.tjs",  // M2e-4：官方常量表（摘自 ScriptMgnIntf.cpp）
         "system/GalBoxLayer.tjs",   // M2e-2
         "system/GalBoxWindow.tjs",  // M2e-3
     };
     static const char *kTags[] = {
+        "M2E4_OFFICIAL_CONSTS",
         "M2E2_LAYER_SKELETON",
         "M2E3_WINDOW_SKELETON",
     };

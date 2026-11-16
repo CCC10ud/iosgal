@@ -339,6 +339,9 @@ PYEOF
   mkdir -p "$M2E_GAME/system" "$M2E_MIN/system"
   cp "$KAG/src/original/startup.tjs"            "$M2E_GAME/startup.tjs"
   cp "$KAG/src/m2e_manifest_probe.tjs"          "$M2E_GAME/m2e_manifest_probe.tjs"
+  # 官方常量表（摘自官方 ScriptMgnIntf.cpp 的 TVPInitTJSScript）。
+  # 官方脚本直接无前缀引用 clNone/stt*/cr*/VK_* 等，必须是全局常量。
+  cp "$KAG/src/system/GalBoxConsts.tjs"          "$M2E_GAME/system/GalBoxConsts.tjs"
   cp "$KAG/src/original/system/"*               "$M2E_GAME/system/"
   # 官方 Config.tjs 是游戏自带的（上游只给 Config.~new 模板）。用 M2c 的
   # 版本对齐探针，让 Initialize.tjs 跳过 UpdateConfig.tjs，直奔系统脚本链。
@@ -351,8 +354,8 @@ PYEOF
   cp "$KAG/src/m2c_probe_config.tjs"            "$M2E_MIN/system/Config.tjs"
 
   M2E_COUNT=$(find "$M2E_GAME/system" -maxdepth 1 -type f | wc -l | tr -d ' ')
-  if [ "$M2E_COUNT" != "29" ]; then
-    echo "[tjs2] M2e 夹具 system/ 应有 28 个官方文件 + 1 个 Config.tjs，实得 $M2E_COUNT"
+  if [ "$M2E_COUNT" != "30" ]; then
+    echo "[tjs2] M2e 夹具 system/ 应有 28 个官方文件 + Config.tjs + 官方常量表，实得 $M2E_COUNT"
     exit 1
   fi
   echo "[tjs2] M2e fixture: 官方 system/ 28 文件 + Config 探针；负向对照 4 文件"
