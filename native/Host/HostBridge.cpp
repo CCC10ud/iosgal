@@ -232,6 +232,13 @@ unsigned gExecStorageAttempts = 0;
 std::string gScriptTrace;
 unsigned gScriptsRead = 0;
 
+// M2e-2：GalBox 自写的 Layer 骨架（system/GalBoxLayer.tjs）加载状态。
+// 取值："M2E2_LAYER_SKELETON"（已加载）/ "absent"（游戏包里没有这套骨架）/
+//       "error: ..."（加载失败）。刻意**不**走 Scripts.execStorage ——
+// 那会把 execStorageAttempts / scriptTrace / lastScriptError 全部污染，
+// 让「官方脚本加载序列」这条判据失真（M2e-1 刚踩过 lastResolvedPath 的坑）。
+std::string gShimStatus;
+
 void ResetDiagnostics() {
     gSys = SystemState();
     // M2d：System.exePath 不再是空串，而是真实的游戏根目录（带尾部分隔符）。
@@ -247,6 +254,7 @@ void ResetDiagnostics() {
     gFatalException.clear();
     gScriptTrace.clear();
     gScriptsRead = 0;
+    gShimStatus.clear();
 }
 
 // 引擎销毁前清掉「持有 TJS 对象引用」的字段（exceptionHandler 里存着脚本
@@ -332,6 +340,9 @@ std::string MakeExecResult(bool ok, const char *reason, const char *entry,
     s += ",\"regexp\":\"M2D_REGEXP_STDREGEX\"";
     // M2e：官方 KAG 系统脚本全量 vendoring 的固定标记（历史标记一律保留）
     s += ",\"kagSystem\":\"M2E_SYSTEM_SCRIPTS_VENDORED\"";
+    // M2e-2：GalBox 的 Layer 骨架层（纯 TJS2 shim，替代官方 293KB 原生类）
+    s += ",\"layerSkeleton\":\"M2E2_LAYER_SKELETON\"";
+    s += ",\"shim\":\"" + JsonEscape(gShimStatus.c_str()) + "\"";
     s += ",\"stage\":\"M2B_STORAGES_AUTOPATH\"";
     // 诊断必须能区分「真的按 autoPath 找到」与「碰巧被 basename 宽松回退命中」，
     // 也要能区分「Shift-JIS 正确解码」与「逐字节 latin-1 兜底但语法没报错」。
@@ -941,6 +952,54 @@ void RegisterDebugClass(tTJS *engine) {
     global->PropSet(TJS_MEMBERENSURE, TJS_W("Debug"), NULL, &val, global);
 }
 
+// ---- M2e-2：加载 GalBox 自写的 Layer 骨架 --------------------------------
+// 官方 `Layer` 是 kirikiri2/src/core/visual/LayerIntf.cpp 里的原生类（293 KB，
+// 绑死 Windows tp_stub）。KAG 的 20 个系统脚本里有 18 个 `extends Layer`，
+// 没有它一个都跑不起来。M2e-2 先用一份**纯 TJS2 的骨架**顶上，让这些脚本
+// 能真正被实例化，从而把「下一批缺哪个成员」逼出来。
+//
+// 刻意**不**经过 Scripts.execStorage：那会把 execStorageAttempts /
+// scriptTrace / lastScriptError 三条判据一起污染，「官方脚本加载序列」
+// 就失真了（M2e-1 刚在 lastResolvedPath 上踩过坑）。
+// 同样**不**调用 CaptureCurrentException()：骨架的失败不是入口脚本的错，
+// 不该占用 fatalBlock/fatalLine；它的信息单独走 JSON 的 shim 字段。
+static bool LoadEngineShim(tTJS *engine) {
+    static const char *kShimPath = "system/GalBoxLayer.tjs";
+    if (!engine) { gShimStatus = "error: no engine"; return false; }
+    if (!galbox::host::IsExistentStorage(kShimPath)) {
+        gShimStatus = "absent";
+        return false;
+    }
+    std::wstring pathW = Utf8ToWide(kShimPath);
+    ttstr path(pathW.c_str());
+    iTJSTextReadStream *st = TJSCreateTextStreamForRead(path, ttstr());
+    if (!st) { gShimStatus = "error: cannot open shim"; return false; }
+    tTJSString body;
+    try {
+        st->Read(body, 0);
+        st->Destruct();
+    } catch (...) {
+        try { st->Destruct(); } catch (...) {}
+        gShimStatus = "error: shim read failed";
+        return false;
+    }
+    try {
+        engine->ExecScript(body.c_str(), NULL, NULL, path.c_str(), 0);
+    } catch (...) {
+        std::string msg = "shim threw";
+        try {
+            throw;
+        } catch (const TJS::eTJS &e) {
+            msg = WideToUtf8(e.GetMessage().c_str());
+        } catch (...) {
+        }
+        gShimStatus = "error: " + msg;
+        return false;
+    }
+    gShimStatus = "M2E2_LAYER_SKELETON";
+    return true;
+}
+
 }  // namespace
 
 extern "C" int GalBoxTJS2Available(void) { return 1; }
@@ -1085,6 +1144,9 @@ extern "C" char *GalBoxTJS2ExecScript(const char *entryName,
         RegisterStoragesClass(engine);
         RegisterSystemClass(engine);
         RegisterDebugClass(engine);
+        // M2e-2：先装上 GalBox 的 Layer 骨架（若游戏包里带了），再跑入口脚本。
+        // 商业游戏通常自带官方原生 Layer 语义，这里只是过渡兜底。
+        LoadEngineShim(engine);
 
         std::wstring entryW = Utf8ToWide(entryName);
         ttstr entry(entryW.c_str());

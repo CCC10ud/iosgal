@@ -1,0 +1,86 @@
+// GalBoxLayer.tjs — GalBox 自写的 `Layer` 骨架（**非官方**，Milestone 2e-2）
+//
+// 官方 `Layer` 是 kirikiri2/src/core/visual/LayerIntf.cpp 里的**原生类**
+// （293 KB，绑死 Windows 的 tp_stub，无法直接移植）。而 KAG 的 20 个系统脚本里
+// 有 18 个写着 `extends Layer`，没有 Layer 就一个都跑不起来 —— run #34 已经把
+// 根因钉死在 `KAGLayer.tjs:87` 的 `Member "Layer" does not exist`。
+//
+// 本文件是**过渡骨架**：纯 TJS2 脚本，只提供让 `class KAGLayer extends Layer`
+// 能成立所需的成员占位，从而把「接下来还缺哪个原生成员」一条条逼出来。
+// 它**不渲染、不解码图片、不做转场**，离能显示画面还差得很远。
+//
+// 为什么用脚本而不是原生类：TJS2 里脚本类的继承由引擎自己实现（super proxy），
+// 而原生类被脚本继承时，`super.<ctor>()` 会在**脚本实例**上取原生实例 ——
+// 那条路径需要另外一套原生实例注册机制。先用脚本骨架把缺口清单逼出来，
+// 等清单齐了再决定哪些成员值得做成真正的原生类。
+//
+// 数值来源：
+//   clNone / clAdapt 取自官方 LayerIntf.cpp 的注释
+//     0x1fffffff = clNone （不应用颜色键 / 用图像 alpha）
+//     0x01ffffff = clAdapt（自适应颜色键）
+//   stt* / stst* 是转场方向与停留方式的枚举，官方定义在原生层内部；
+//   这里给占位值，因为当前不做转场渲染。
+
+global.clNone  = 0x1fffffff;
+global.clAdapt = 0x01ffffff;
+
+global.sttLeft   = 0;
+global.sttTop    = 1;
+global.sttRight  = 2;
+global.sttBottom = 3;
+
+global.ststNoStay   = 0;
+global.ststStaySrc  = 1;
+global.ststStayDest = 2;
+
+// ---------------------------------------------------------------- Layer 本体
+class Layer
+{
+	var visible = true;
+	var left = 0;
+	var top = 0;
+	var width = 0;
+	var height = 0;
+	var opacity = 255;
+	var absolute = 0;
+	var type = 0;
+	var imageLeft = 0;
+	var imageTop = 0;
+	var isPrimary = false;
+	var parent;
+	var window;
+
+	function Layer(win, par)
+	{
+		window = win;
+		parent = par;
+	}
+
+	function finalize() {}
+
+	// 官方签名：loadImages(storage, key) -> 图像编号（-1 表示失败）
+	function loadImages(storage, key) { return -1; }
+
+	function assignImages(src) {}
+
+	function setPos(l, t, w, h)
+	{
+		left = l;
+		top = t;
+		width = w;
+		height = h;
+	}
+
+	function setImagePos(x, y)
+	{
+		imageLeft = x;
+		imageTop = y;
+	}
+
+	function setMode() {}
+	function focus() {}
+	function removeMode() {}
+
+	function beginTransition(method, withchildren, src, elm) {}
+	function onTransitionCompleted(dest, src) {}
+}

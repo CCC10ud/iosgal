@@ -7,6 +7,7 @@
 #                      + 真跑官方 Initialize.tjs 原文 + System/Debug 原生类（Milestone 2c）
 #                      + 真跑正则（RegExp 原生类，std::regex 背书）（Milestone 2d）
 #                      + 全量 vendoring 官方 system/*.tjs 并推进启动链（Milestone 2e-1）
+#                      + GalBox 的 Layer 骨架能被官方脚本类继承（Milestone 2e-2）
 #
 # 由 CI 在 xcodebuild 之前调用。设计原则：
 #   - 源码尚未 vendoring 时直接跳过（exit 0），绝不破坏现有出包链路。
@@ -370,6 +371,54 @@ PYEOF
     fi
   else
     echo "[tjs2] M2e 自测链接失败:"; cat "$OUT/link_m2e.log"; exit 1
+  fi
+fi
+
+
+# ---- Milestone 2e-2：GalBox 的 Layer 骨架（纯 TJS2 shim） --------------------
+# run #34 停在 KAGLayer.tjs:87 的 'Member "Layer" does not exist'。
+# 本轮用一份自写的纯 TJS2 Layer 骨架顶上，让官方脚本类能真正实例化，
+# 把下一批缺口逼出来。三个场景：继承成功 / 完整启动链 / 无骨架负向对照。
+if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2f.cpp" ] \
+   && [ -f "$KAG/src/m2f_layer_probe.tjs" ] \
+   && [ -f "$KAG/src/system/GalBoxLayer.tjs" ] \
+   && [ -d "$M2E_GAME" ]; then
+
+  M2F_GAME="$OUT/m2f_game"
+  M2F_NOSHIM="$OUT/m2f_noshim"
+  rm -rf "$M2F_GAME" "$M2F_NOSHIM"
+  cp -R "$M2E_GAME" "$M2F_GAME"
+  cp "$KAG/src/system/GalBoxLayer.tjs" "$M2F_GAME/system/GalBoxLayer.tjs"
+  cp "$KAG/src/m2f_layer_probe.tjs"    "$M2F_GAME/m2f_layer_probe.tjs"
+  # 负向对照：同一套夹具，唯一区别就是**不放** Layer 骨架。
+  cp -R "$M2F_GAME" "$M2F_NOSHIM"
+  rm -f "$M2F_NOSHIM/system/GalBoxLayer.tjs"
+
+  if [ ! -f "$M2F_NOSHIM/system/KAGLayer.tjs" ]; then
+    echo "[tjs2] M2f 负向对照夹具缺少官方 KAGLayer.tjs"
+    exit 1
+  fi
+  if [ -f "$M2F_NOSHIM/system/GalBoxLayer.tjs" ]; then
+    echo "[tjs2] M2f 负向对照夹具里不该有 Layer 骨架"
+    exit 1
+  fi
+  echo "[tjs2] M2f fixture: 官方 28 文件 + GalBox Layer 骨架；负向对照去掉骨架"
+
+  echo "[tjs2] M2f: 编译并运行 Layer 骨架自测（继承 / 启动链 / 负向对照）"
+  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
+        -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
+        "$HOST/test_m2f.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
+        "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
+        -lz -liconv -lpthread -o "$OUT/tjs2test_m2f" 2>"$OUT/link_m2f.log"; then
+    OUTPUT_M2F=$("$OUT/tjs2test_m2f" "$M2F_GAME" "$M2F_NOSHIM" "$OUT" 2>&1)
+    echo "$OUTPUT_M2F" | sed 's/^/[tjs2]   /'
+    if echo "$OUTPUT_M2F" | grep -q "M2F_RESULT=OK"; then
+      echo "[tjs2] M2f 自测通过（官方脚本类成功继承 Layer 骨架 + 负向对照）"
+    else
+      echo "[tjs2] M2f 自测未通过"; exit 1
+    fi
+  else
+    echo "[tjs2] M2f 自测链接失败:"; cat "$OUT/link_m2f.log"; exit 1
   fi
 fi
 

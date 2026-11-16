@@ -1,0 +1,26 @@
+// m2f_layer_probe.tjs — Milestone 2e-2 探针（GalBox 自写，**非官方**）
+//
+// 目的：证明「官方脚本类 KAGLayer 成功继承了 GalBox 的 Layer 骨架」。
+//
+// 关键机制（TJS2 的 super 是**惰性**的）：`class KAGLayer extends Layer` 这条
+// 语句本身不会去查 `Layer` —— 引擎把它编译成一个 super proxy，只有在**实例化**
+// 或访问父类成员时才真正求值。所以「脚本能不能被加载」和「继承成不成立」是两
+// 件事，必须真的 `new` 一次才算数。run #34 的现象正是如此：
+// KAGLayer.tjs 被成功读完（scriptTrace 里有它），但 Layer 缺失是在后来别的脚本
+// 触发父类成员查找时才炸出来的。
+//
+// 判据：走到最后一行 -> global.m2fProbe = 1。
+// 若 Layer 缺失，`super.Layer(win, par)` 会抛
+// `Member "Layer" does not exist`，global.m2fProbe 不会被赋值 -> probeValue = -1。
+//
+// 注意 TJS2 裸赋值不创建成员（M2c 踩过），必须写 global.m2fProbe。
+
+Storages.addAutoPath("system/");
+
+// 官方原文（Shift-JIS 原始字节）。它只定义 class，不实例化。
+Scripts.execStorage("KAGLayer.tjs");
+
+// 真正的考验：实例化会走 KAGLayer(win,par) -> super.Layer(win,par)。
+var k = new KAGLayer(null, null);
+
+global.m2fProbe = 1;

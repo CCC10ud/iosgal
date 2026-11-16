@@ -585,6 +585,62 @@ ok("448729" in m2e_test and "VerifyVendoredBytes" in m2e_test,
    "C++ 自测独立校验 28 个文件的精确字节数")
 ok("scriptsRead" in swift_vc2, "app 诊断 toast 展示真实读到的系统脚本数")
 
+
+print("\n[14] Milestone 2e-2 — GalBox 的 Layer 骨架（纯 TJS2 shim）")
+m2f_test = read("native/Host/test_m2f.cpp")
+m2f_probe = read("native/KAG/src/m2f_layer_probe.tjs")
+shim = read("native/KAG/src/system/GalBoxLayer.tjs")
+
+# 1) 骨架必须是 GalBox 自写、且**不是**官方原文目录下的东西
+ok("class Layer" in shim and "非官方" in shim,
+   "Layer 骨架是 GalBox 自写的脚本类，并明确标注非官方")
+ok("global.clNone" in shim and "global.clAdapt" in shim
+   and "global.sttLeft" in shim and "global.ststNoStay" in shim,
+   "骨架提供官方脚本直接引用的全局常量（颜色键 / 转场枚举）")
+for member in ("visible", "left", "top", "opacity", "absolute", "type",
+               "width", "height", "imageLeft", "imageTop", "isPrimary",
+               "parent", "window"):
+    ok(member in shim, "骨架占位成员: " + member)
+for fn in ("function Layer(", "function finalize(", "function loadImages(",
+           "function assignImages(", "function setPos(", "function setImagePos(",
+           "function setMode(", "function focus(", "function removeMode(",
+           "function beginTransition(", "function onTransitionCompleted("):
+    ok(fn in shim, "骨架占位方法: " + fn)
+
+# 2) 宿主必须能加载它，且**不污染**官方脚本加载序列的三条判据
+ok("LoadEngineShim" in bridge_cpp and "gShimStatus" in bridge_cpp,
+   "HostBridge 会加载 Layer 骨架并单独记录状态")
+ok("system/GalBoxLayer.tjs" in bridge_cpp and "M2E2_LAYER_SKELETON" in bridge_cpp,
+   "骨架路径与 M2e-2 固定标记都在 HostBridge 里")
+_shim_fn = bridge_cpp[bridge_cpp.index("static bool LoadEngineShim"):
+                      bridge_cpp.index("static bool LoadEngineShim") + 2600]
+for forbidden in ("gExecStorageAttempts", "gScriptTrace +=", "gLastScriptError ="):
+    ok(forbidden not in _shim_fn,
+       "加载骨架不污染官方加载序列的判据: " + forbidden)
+ok("CaptureCurrentException" not in _shim_fn,
+   "骨架自身的失败不占用 fatalBlock/fatalLine（那是入口脚本的定位）")
+for tag in ("M1C_HOST_v1", "M2A_SCRIPTS_EXEC_STORAGE", "M2B_STORAGES_AUTOPATH",
+            "M2C_SYSTEM_DEBUG", "M2D_REGEXP_STDREGEX",
+            "M2E_SYSTEM_SCRIPTS_VENDORED"):
+    ok(tag in bridge_cpp, "升级后历史二进制标记仍保留: " + tag)
+
+# 3) 判据要能区分「继承成立」与「探针压根没跑」，并且必须有负向对照
+ok("new KAGLayer(null, null)" in m2f_probe and "global.m2fProbe = 1" in m2f_probe,
+   "探针真的实例化官方脚本类，并把结果写回 global")
+ok('typeof m2fProbe == \\"undefined\\"' in m2f_test or
+   "typeof m2fProbe" in m2f_test,
+   "自测能区分「实例化抛异常」(probeValue=-1) 与「实例化成功」(probeValue=1)")
+ok("negative control" in m2f_test
+   and "did not reproduce the Layer blocker" in m2f_test,
+   "自测有无骨架的负向对照，证明骨架真的在起作用")
+ok("still blocked by the missing Layer class" in m2f_test,
+   "自测断言 Layer 缺口在有骨架时消失")
+ok("scripts < 10" in m2f_test,
+   "自测断言官方脚本加载序列不比 M2e-1 倒退")
+ok("M2F_RESULT=OK" in test_sh and "test_m2f.cpp" in test_sh,
+   "CI 运行 M2e-2 自测")
+ok("M2E2_LAYER_SKELETON" in wf, "CI 核验 Layer 骨架层真的进 app 二进制")
+
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
 sys.exit(0 if F == 0 else 1)
