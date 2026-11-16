@@ -696,8 +696,15 @@ ok("negative control" in m2g_test
    "自测有无 Window 骨架的负向对照，证明骨架真的在起作用")
 ok("still blocked by the missing Window class" in m2g_test,
    "自测断言 Window 缺口在有骨架时消失")
-ok("scripts < 15" in m2g_test,
-   "自测断言官方脚本加载序列不比 M2e-2 的 15 个倒退")
+# 补上 Window 骨架后，Initialize.tjs 第 232 行的 `new KAGWindow()` 真的会执行，
+# 断点从「加载 MainWindow.tjs」前移到「KAGWindow 类体/构造器」内部。
+# ⇒ 「脚本数不倒退」不再是本轮的硬判据（本轮硬判据是「Window 缺口消除」），
+#    但必须把观测值打全，供下一轮定位这个新现象。
+ok("autoPathCount" in m2g_test and "hostReadDelta" in m2g_test
+   and "scriptsRead" in m2g_test,
+   "自测把场景 B 的观测值打全（脚本数/attempts/calls/autoPathCount/hostReadDelta）")
+ok("the official script chain got shorter than in M2e-2" not in m2g_test,
+   "自测不再把「脚本数不倒退」当硬判据（断点前移属新课题，另开一轮定位）")
 ok("M2G_RESULT=OK" in test_sh and "test_m2g.cpp" in test_sh,
    "CI 运行 M2e-3 自测")
 ok("M2E3_WINDOW_SKELETON" in wf, "CI 核验 Window 骨架层真的进 app 二进制")

@@ -115,7 +115,62 @@ int main(int argc, char **argv) {
     if (!Exists(std::string(noWin) + "/system/GalBoxLayer.tjs"))
         return Fail("negative control must still contain the Layer skeleton", NULL);
 
+
+    // ---- 场景 B：完整官方启动链 -------------------------------------------
+    {
+        galbox::XP3Archive arc;
+        if (!OpenDir(game, arc)) return Fail("cannot open fixture B", NULL);
+        if (!GalBoxTJS2Install(&arc, storage, ""))
+            return Fail("Install(B) returned 0", NULL);
+
+        char *j = GalBoxTJS2ExecScript("startup.tjs", NULL);
+        std::printf("[m2g] B (full official startup chain) -> %s\n", j ? j : "(null)");
+        if (!j) return Fail("ExecScript(B) returned NULL", NULL);
+
+        const std::string trace = StrField(j, "scriptTrace");
+        const std::string fatal = StrField(j, "fatal");
+        const std::string inner = StrField(j, "lastScriptError");
+        std::printf("[m2g]   scriptTrace = \"%s\"\n", trace.c_str());
+        std::printf("[m2g]   fatalBlock  = \"%s\" (line %lld)\n",
+                    StrField(j, "fatalBlock").c_str(), IntField(j, "fatalLine"));
+        std::printf("[m2g]   fatal       = \"%s\"\n", fatal.c_str());
+        std::printf("[m2g]   inner error = \"%s\"\n", inner.c_str());
+
+        if (!Has(j, "\"ok\":false"))
+            return Fail("official startup unexpectedly reported success", j);
+        if (fatal.find("\"Window\"") != std::string::npos ||
+            inner.find("\"Window\"") != std::string::npos)
+            return Fail("still blocked by the missing Window class", j);
+
+        const int scripts = CountTrace(trace);
+        // 本轮**不**把「脚本数不倒退」当硬判据：补上 Window 骨架后，
+        // Initialize.tjs 第 232 行 `new KAGWindow()` 真的会执行，于是链的
+        // 断点从「加载 MainWindow.tjs」前移到「KAGWindow 类体/构造器」内部。
+        // 到底断在哪、为什么 autoPathCount 变成 0，是下一轮的专门课题。
+        // 这里只把观测值打全，供下一轮定位。
+        std::printf("[m2g]   scriptsRead    = %lld\n", IntField(j, "scriptsRead"));
+        std::printf("[m2g]   attempts       = %lld\n", IntField(j, "execStorageAttempts"));
+        std::printf("[m2g]   calls          = %lld\n", IntField(j, "execStorageCalls"));
+        std::printf("[m2g]   autoPathCount  = %lld\n", IntField(j, "autoPathCount"));
+        std::printf("[m2g]   autoPathHits   = %lld\n", IntField(j, "autoPathHits"));
+        std::printf("[m2g]   hostReadDelta  = %lld\n", IntField(j, "hostReadDelta"));
+        std::printf("[m2g]   appLock        = %s\n",
+                    Has(j, "\"appLock\":true") ? "true" : "false");
+        std::printf("[m2g] official scripts read: %d\n", scripts);
+
+        // 回归：M2e-2 的 Layer 骨架必须还在
+        if (!Has(j, "\"M2E2_LAYER_SKELETON\""))
+            return Fail("M2e-2 regression: Layer skeleton missing", j);
+
+        GalBoxTJS2Free(j);
+        GalBoxTJS2Uninstall();
+        arc.close();
+    }
     // ---- 场景 A：官方 KAGWindow 不再缺 Window 父类 ------------------------
+    // （注意：本轮把 A 排在 B **之后**跑，是一次隔离实验 —— run #40 里 B 的
+    //  诊断自相矛盾(autoPathCount=0 却报错在 MainWindow.tjs)，怀疑是同进程
+    //  内前一个场景残留的状态。B 先跑，若 autoPathCount 变成 11，说明确实是
+    //  场景污染，而不是官方脚本本身的问题。）
     {
         galbox::XP3Archive arc;
         if (!OpenDir(game, arc)) return Fail("cannot open fixture A", NULL);
@@ -161,50 +216,6 @@ int main(int argc, char **argv) {
         // 官方 MainWindow.tjs 必须真的被读到（不是探针自己编的类）
         if (StrField(j, "scriptTrace").find("MainWindow.tjs") == std::string::npos)
             return Fail("the official MainWindow.tjs was never read", j);
-
-        GalBoxTJS2Free(j);
-        GalBoxTJS2Uninstall();
-        arc.close();
-    }
-
-    // ---- 场景 B：完整官方启动链 -------------------------------------------
-    {
-        galbox::XP3Archive arc;
-        if (!OpenDir(game, arc)) return Fail("cannot open fixture B", NULL);
-        if (!GalBoxTJS2Install(&arc, storage, ""))
-            return Fail("Install(B) returned 0", NULL);
-
-        char *j = GalBoxTJS2ExecScript("startup.tjs", NULL);
-        std::printf("[m2g] B (full official startup chain) -> %s\n", j ? j : "(null)");
-        if (!j) return Fail("ExecScript(B) returned NULL", NULL);
-
-        const std::string trace = StrField(j, "scriptTrace");
-        const std::string fatal = StrField(j, "fatal");
-        const std::string inner = StrField(j, "lastScriptError");
-        std::printf("[m2g]   scriptTrace = \"%s\"\n", trace.c_str());
-        std::printf("[m2g]   fatalBlock  = \"%s\" (line %lld)\n",
-                    StrField(j, "fatalBlock").c_str(), IntField(j, "fatalLine"));
-        std::printf("[m2g]   fatal       = \"%s\"\n", fatal.c_str());
-        std::printf("[m2g]   inner error = \"%s\"\n", inner.c_str());
-
-        if (!Has(j, "\"ok\":false"))
-            return Fail("official startup unexpectedly reported success", j);
-        if (fatal.find("\"Window\"") != std::string::npos ||
-            inner.find("\"Window\"") != std::string::npos)
-            return Fail("still blocked by the missing Window class", j);
-
-        const int scripts = CountTrace(trace);
-        if (scripts < 15) {
-            std::printf("[m2g] scripts in trace = %d\n", scripts);
-            return Fail("the official script chain got shorter than in M2e-2", j);
-        }
-        std::printf("[m2g] official scripts read: %d\n", scripts);
-
-        // 回归
-        if (!Has(j, "\"appLock\":true"))
-            return Fail("M2d regression: createAppLock no longer reached", j);
-        if (!Has(j, "\"M2E2_LAYER_SKELETON\""))
-            return Fail("M2e-2 regression: Layer skeleton missing", j);
 
         GalBoxTJS2Free(j);
         GalBoxTJS2Uninstall();

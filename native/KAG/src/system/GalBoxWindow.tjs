@@ -20,6 +20,17 @@
 // KAGWindow 自己的定义（例如它自定义的 restore 是「栞的恢复」，与窗口的
 // restore 不是一回事）。
 
+// 光标形状常量：官方由原生 Layer/Window 层提供。KAGWindow 的类成员初始化
+// 直接读它们（'var cursorDefault = crArrow;'，MainWindow.tjs:205），缺一个就
+// 会在**加载** MainWindow.tjs 时炸掉。值是占位（官方是内部光标 ID），
+// 因为当前根本不设置光标。
+global.crArrow     = 0;
+global.crHandPoint = 1;
+global.crSizeAll   = 2;
+global.crText      = 3;
+global.crWait      = 4;
+global.crIBeam     = 5;
+
 class Window
 {
 	// ---- 窗口属性（占位） ----
