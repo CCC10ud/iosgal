@@ -717,7 +717,6 @@ for tag in ("M1C_HOST_v1", "M2A_SCRIPTS_EXEC_STORAGE", "M2B_STORAGES_AUTOPATH",
 
 print("\n[16] Milestone 2e-4 — 官方全局常量表（摘自 ScriptMgnIntf.cpp）")
 consts = read("native/KAG/src/system/GalBoxConsts.tjs")
-push_files = read("../push_via_api.py")
 layer_shim2 = read("native/KAG/src/system/GalBoxLayer.tjs")
 win_shim2 = read("native/KAG/src/system/GalBoxWindow.tjs")
 
@@ -743,8 +742,12 @@ ok(_shim_order.index("GalBoxConsts.tjs") < _shim_order.index("GalBoxLayer.tjs")
    "官方常量表最先装载（const 与 global 同名会冲突）")
 ok("M2E4_OFFICIAL_CONSTS" in bridge_cpp and "M2E4_OFFICIAL_CONSTS" in wf,
    "官方常量表层有固定标记，且 CI 核验它真的进 app 二进制")
-ok("GalBoxConsts.tjs" in test_sh and "GalBoxConsts.tjs" in push_files,
-   "构建脚本把官方常量表装进夹具，推送清单也包含它")
+# 注意：静态测试**只能**读仓库内的文件。run #43 就是因为这里读了
+# ../push_via_api.py（本地有、CI 的 checkout 里没有）而红的 —— 本地绿、CI 红。
+ok("GalBoxConsts.tjs" in test_sh,
+   "构建脚本把官方常量表装进夹具")
+ok("GalBoxConsts.tjs" in read("native/KAG/README.md"),
+   "KAG README 登记了官方常量表（来源与两处自造错值）")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

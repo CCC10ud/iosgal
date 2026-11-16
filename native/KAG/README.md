@@ -172,6 +172,13 @@
   **`Layer` / `Window` 骨架**（**非官方**，M2e-2 / M2e-3 起）。放在 `src/system/`
   而不是 `src/original/system/`，就是为了和官方原文泾渭分明 —— 它们是过渡件，
   不是官方文件。
+- `src/system/GalBoxConsts.tjs`：**官方全局常量表**（M2e-4 起）。逐字摘自
+  `kirikiri2/src/core/base/ScriptMgnIntf.cpp` 的 `TVPInitTJSScript` —— 官方那批
+  常量（`clNone` / `stt*` / `stst*` / `cr*` / 全部 `VK_*` 键码 …，共 378 个）
+  **不是** C++ 宏，而是引擎初始化时执行的一段 TJS 脚本。照抄直接抓出两处自造错值：
+  `ststStayDest` / `ststStaySrc` 的顺序反了（官方 StayDest=1、StaySrc=2）、
+  `crArrow` 自造成 0（官方 -2）。装载顺序必须**常量表最先**（它用 `const`，
+  与骨架里的 `global.xxx =` 同名会冲突）。
 - `src/m2c_probe_config.tjs`：M2c 用的**探针版** `Config.tjs`（只写
   `config_version = kagVersion`），用来跳过 `UpdateConfig.tjs`、把执行
   精确推到 `createAppLock` 的正则处。**不是官方文件**，不进 `src/original/`。
