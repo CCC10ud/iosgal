@@ -1,9 +1,9 @@
 {
-  "milestone": "M2a + M2b",
+  "milestone": "M2a + M2b + M2c + M2d + M2e-1",
   "upstream": "jeeb/kirikiri2",
   "branch": "master",
   "source_root": "kag3/template/",
-  "retrieved": "2026-11-15",
+  "retrieved": "2026-11-15 (M2a/M2b), 2026-11-16 (M2e-1 全量)",
   "license_note": "KAG3 template scripts carry their own header: 'Copyright (C) 2001-2009, W.Dee  改変・配布は自由です' (free to modify and redistribute). This differs from the TJS2 core dual license; see ../TJS2/LICENSE.txt for the core.",
   "encoding_finding": {
     "correction": "M2a originally claimed these files are 'UTF-8 with CRLF, upstream original, byte-for-byte'. That was WRONG. The upstream git blobs are Shift-JIS + CRLF. The GitHub contents API silently transcoded them to UTF-8, and M2a vendored that transcoded copy.",
@@ -39,13 +39,84 @@
       "encoding": "Shift-JIS + CRLF (exact git blob bytes)"
     },
     {
-      "path": "src/original/system/Utils.tjs",
-      "source": "kag3/template/system/Utils.tjs",
-      "bytes": 3658,
-      "blob_sha": "529be2d212cb7fa5b39c07d00a7b3c9bafbddb6e",
-      "sha256": "2ce10d5be58cec07908d5caa7f26eb7c3790bb0fe9bbd879424a0e067c0e805b",
-      "encoding": "Shift-JIS + CRLF (exact git blob bytes)",
-      "note": "Fixture for test_m2b.cpp: proves GalBox can decode and execute the real upstream bytes, not just the transcoded copy."
+      "path": "src/original/system/AnimationLayer.tjs",
+      "source": "kag3/template/system/AnimationLayer.tjs",
+      "bytes": 31464,
+      "blob_sha": "59afaf8f5fd3c0b0e6f137df86b26734a4887a43",
+      "sha256": "1a4d9161daeb01851e499cb17af849352abd47ef56ac30b780a44f18b5d4d716",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/BGM.tjs",
+      "source": "kag3/template/system/BGM.tjs",
+      "bytes": 15453,
+      "blob_sha": "1d766e778c3f128db4222fc084c8a1a7d3982392",
+      "sha256": "d07fb5c460cbc9b8f40af6e697020b891d2909cb6c5b463fb269363d01119441",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/ButtonLayer.tjs",
+      "source": "kag3/template/system/ButtonLayer.tjs",
+      "bytes": 7541,
+      "blob_sha": "7c81299ae94fff8ed0a7c4579dd17579c722c569",
+      "sha256": "e45a4f3c215efcde71f3d3af68b9232afa5ed9acb0ea247081df24f9a1651802",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/CheckBoxLayer.tjs",
+      "source": "kag3/template/system/CheckBoxLayer.tjs",
+      "bytes": 4856,
+      "blob_sha": "0989f82fabf6124d90975572a7b4679d8b428b37",
+      "sha256": "bc99672e33bef16919fc8bf732d2ade5308f94567d9289083a324b590e128607",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/Conductor.tjs",
+      "source": "kag3/template/system/Conductor.tjs",
+      "bytes": 11530,
+      "blob_sha": "7e6340a7ac19cfcad35ba5e030fefc719b94bfe2",
+      "sha256": "00aa4ee4da39bbe643a052896c42232bab03b98fe9f1ed0f61aa7c09d4cf216a",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/Config.~new",
+      "source": "kag3/template/system/Config.~new",
+      "bytes": 25899,
+      "blob_sha": "17e6379eee211fe7fb9bb2e68521d568da5f8da4",
+      "sha256": "df8a76019b94b37fb4add043ca379a471cd3086dec88aa13cfc336c745026e12",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/DefaultMover.tjs",
+      "source": "kag3/template/system/DefaultMover.tjs",
+      "bytes": 7665,
+      "blob_sha": "3b5fc2fa19fb71bbaa0f27ec598872393bd2627b",
+      "sha256": "a2ee7aa4b334b36f52ba726f7f1c01def7eb29e7d4b7888f7067970348d28d26",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/EditLayer.tjs",
+      "source": "kag3/template/system/EditLayer.tjs",
+      "bytes": 16138,
+      "blob_sha": "9b01ae897fd8bd77fad209d7a4bceed07217903d",
+      "sha256": "3812919a3432f326131f01049cff2277df6a7a746540beaaf07c5931d420deb7",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/GraphicLayer.tjs",
+      "source": "kag3/template/system/GraphicLayer.tjs",
+      "bytes": 14982,
+      "blob_sha": "4242ae39e2480aaed396950489da8adaaa34a6b3",
+      "sha256": "1c113b46af38d53179a1559c3972c0ddb1be61791e49602661f1627f15f31230",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/HistoryLayer.tjs",
+      "source": "kag3/template/system/HistoryLayer.tjs",
+      "bytes": 24415,
+      "blob_sha": "3736494d7aa194ad21b077b30ac6c99d03e0554b",
+      "sha256": "433b9fb01ba0b18f5bd2465b0dad4309c10a89bb3462632e8033d888d19b797a",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
     },
     {
       "path": "src/original/system/Initialize.tjs",
@@ -53,8 +124,145 @@
       "bytes": 7246,
       "blob_sha": "5da0a72cbd4a9f1196d39d128b8a1cbdccdfa73c",
       "sha256": "971d8b0f1fc28d251a40799fe1ce60b2a5ab4a70956616db02f0c9bc331396c7",
-      "encoding": "Shift-JIS + CRLF (exact git blob bytes)",
-      "note": "Vendored for dependency analysis only. NOT executed: it needs Layer/Window/System/Storages/Debug and the KAG window loop."
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)",
+      "note": "Fixture for test_m2{c,d,e}.cpp. M2c 起官方原文真跑；M2d 推过 createAppLock 的正则；M2e-1 继续加载 KAGLayer.tjs 并停在 Layer 原生类缺失。"
+    },
+    {
+      "path": "src/original/system/KAGLayer.tjs",
+      "source": "kag3/template/system/KAGLayer.tjs",
+      "bytes": 13213,
+      "blob_sha": "935eb9c796f4a37a2332cec9be768181d540705b",
+      "sha256": "875477d4db18c43d80ec59fa6f8f8494c0253af8c602d9ee68e055b1acc649dc",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/LineBreak.asd",
+      "source": "kag3/template/system/LineBreak.asd",
+      "bytes": 616,
+      "blob_sha": "90e5a87c515423f2fc124436ceb3f28402a84984",
+      "sha256": "02138934eb53848e1bcf76e7a50bdfe631734c49990bf1dd5e1b2ef493289891",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/LineBreak.png",
+      "source": "kag3/template/system/LineBreak.png",
+      "bytes": 81,
+      "blob_sha": "fa9dddd5bb45932b1ae621385c7944bfb7565263",
+      "sha256": "bf531cfe6b0719aa85ac4660bff0c6d6d6bde317e6439638eb99150b1ab2fa6f",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/LineBreak_a.png",
+      "source": "kag3/template/system/LineBreak_a.png",
+      "bytes": 1972,
+      "blob_sha": "020b6c42f23f2822bb2f0e91a5a4b16d4238390c",
+      "sha256": "4c3a73acd9264729cf0f11965497408df29e0571fc6019388c17235a4fa25983",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/MainWindow.tjs",
+      "source": "kag3/template/system/MainWindow.tjs",
+      "bytes": 150598,
+      "blob_sha": "2b4c2fd750562775a8a9f0d2c4f7278f5da30fcf",
+      "sha256": "34c4824df0d6cb6afb57998b613ec5df284f3f6df431952ce352680e68abbc28",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/Menus.tjs",
+      "source": "kag3/template/system/Menus.tjs",
+      "bytes": 8074,
+      "blob_sha": "c2a97fd8c06c3b546a70b15c259caae5e7aa5d8d",
+      "sha256": "7dfb1b78329eb56b5a30f5a7e8f3144a1899eeaf68be5792759bbae1f7128751",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/MessageLayer.tjs",
+      "source": "kag3/template/system/MessageLayer.tjs",
+      "bytes": 77527,
+      "blob_sha": "9b98397548c8ec5e9569ea179b502e9c3e294850",
+      "sha256": "7a93be5135917c0fae5ed3f78063d8915dd99a1d505c267c5253ba4fbaf93c3b",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/Movie.tjs",
+      "source": "kag3/template/system/Movie.tjs",
+      "bytes": 7072,
+      "blob_sha": "42eaddb4d1c2083edb8a16b96cb97d6dcc6d6901",
+      "sha256": "a4bd47097603d34c54fb931bcea6d370dd54c6d73be07dbac7dd51bc33ee4a6d",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/PageBreak.asd",
+      "source": "kag3/template/system/PageBreak.asd",
+      "bytes": 616,
+      "blob_sha": "90e5a87c515423f2fc124436ceb3f28402a84984",
+      "sha256": "02138934eb53848e1bcf76e7a50bdfe631734c49990bf1dd5e1b2ef493289891",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/PageBreak.png",
+      "source": "kag3/template/system/PageBreak.png",
+      "bytes": 81,
+      "blob_sha": "fa9dddd5bb45932b1ae621385c7944bfb7565263",
+      "sha256": "bf531cfe6b0719aa85ac4660bff0c6d6d6bde317e6439638eb99150b1ab2fa6f",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/PageBreak_a.png",
+      "source": "kag3/template/system/PageBreak_a.png",
+      "bytes": 1768,
+      "blob_sha": "1b29dcdb1bae5a7c38b8b2e9967d50f116b4afd0",
+      "sha256": "0731b7e753be87928a18c8966c3e28feed6af309c9d777f36cc94e9a38f4c893",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/Plugin.tjs",
+      "source": "kag3/template/system/Plugin.tjs",
+      "bytes": 2475,
+      "blob_sha": "a62c605db5684baff92f23f1933b8bba5c35ea94",
+      "sha256": "ff7c023bd9b5b7f4c74d6a063c14e486f3797fdd5052e35dc853f67645584063",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/SE.tjs",
+      "source": "kag3/template/system/SE.tjs",
+      "bytes": 6266,
+      "blob_sha": "0e58c4b2b0fd24ab95ba29e254514e2e11828043",
+      "sha256": "ad63ee2e795ce4aa7f076f0d8d629877b07888b1e09a7ae783b92ced1c2685cf",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/UpdateConfig.tjs",
+      "source": "kag3/template/system/UpdateConfig.tjs",
+      "bytes": 2973,
+      "blob_sha": "0ef762a68f4e27842d0def70e964d09a156d66bf",
+      "sha256": "ffe0cdf96923e4077c7065d3f74f06997d2518193f148818bb363aaf734e96a2",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/Utils.tjs",
+      "source": "kag3/template/system/Utils.tjs",
+      "bytes": 3658,
+      "blob_sha": "529be2d212cb7fa5b39c07d00a7b3c9bafbddb6e",
+      "sha256": "2ce10d5be58cec07908d5caa7f26eb7c3790bb0fe9bbd879424a0e067c0e805b",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)",
+      "note": "Fixture for test_m2b.cpp: proves GalBox can decode and execute the real upstream bytes, not just the transcoded copy."
+    },
+    {
+      "path": "src/original/system/YesNoDialog.tjs",
+      "source": "kag3/template/system/YesNoDialog.tjs",
+      "bytes": 4406,
+      "blob_sha": "e3a6916b9c1d91634b5625ee5d99fde0946b5abf",
+      "sha256": "e871f750aaf66e901c21a0508021782c9d4880b49a55185ec85725f95b2f437f",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
+    },
+    {
+      "path": "src/original/system/check.png",
+      "source": "kag3/template/system/check.png",
+      "bytes": 144,
+      "blob_sha": "e5902a30a23474769a0306efb6429b7ede5626dc",
+      "sha256": "1c51abd56c19105747af286d63320399d4b9c52f5bf94bf2a0317a9679f4a5d3",
+      "encoding": "exact git blob bytes (Shift-JIS + CRLF for .tjs)"
     }
   ],
   "galbox_authored": [
@@ -65,11 +273,38 @@
     {
       "path": "m2b_probe_startup.tjs",
       "note": "Not from upstream. Calls Storages.addAutoPath + isExistentStorage + Scripts.execStorage with a SHORT name, forcing the autoPath resolver to work."
+    },
+    {
+      "path": "m2e_manifest_probe.tjs",
+      "note": "Not from upstream. Checks all 20 official .tjs via Storages.isExistentStorage using short names + autoPath, with an always-absent sentinel to prove the lookup is not always-true."
+    },
+    {
+      "path": "m2d_regex_probe.tjs",
+      "note": "Not from upstream. 23 RegExp semantic checks (M2d)."
     }
   ],
   "not_vendored_yet": [
-    "the remaining 24 system/*.tjs (448,729 B total upstream) — need Layer/Window/System native classes first (M2c)",
     "kirikiri2/src/plugins/win32/KAGParserEx/ (KAGParser.cpp 83 KB) — needs tp_stub platform layer",
-    "kirikiri2/src/core/base/{ScriptMgnIntf,StorageIntf,EventIntf}.cpp — official implementation of Scripts/Storages/events, currently replaced by a minimal GalBox implementation"
-  ]
+    "kirikiri2/src/core/base/{ScriptMgnIntf,StorageIntf,EventIntf}.cpp — official Scripts/Storages/events implementation, currently replaced by a minimal GalBox implementation",
+    "Layer / Window / AsyncTrigger 等 KAG 原生类（M2e-2 起补最小子集）",
+    "kag3/template/ 下除 system/ 之外的资源（DefaultMover 之外的图像/字体等）"
+  ],
+  "m2e_full_vendoring": {
+    "retrieved": "2026-11-16",
+    "source": "jeeb/kirikiri2 @ master, kag3/template/system/",
+    "method": "GitHub /git/trees/master?recursive=1 列出 28 个 blob → 逐个 /git/blobs/<sha> 取 base64 → 原始字节落盘；每份都用 sha1('blob <len>\\0'+raw) 重算并比对 tree 里的 sha（28/28 一致）。绝不使用 contents API（会静默转 UTF-8）。",
+    "total_files": 28,
+    "total_bytes": 448729,
+    "tjs_files": 20,
+    "other_files": [
+      "Config.~new (官方 Config.tjs 模板)",
+      "LineBreak.asd/.png/_a.png",
+      "PageBreak.asd/.png/_a.png",
+      "check.png"
+    ],
+    "encoding": ".tjs 全部为 Shift-JIS + CRLF 原始字节；二进制 png/asd 原样保留",
+    "why": "run #32 停在 'Storages: script not found via autoPath: KAGLayer.tjs'（缺文件）。全量 vendoring 把阻塞点逼成 'class KAGLayer extends Layer' 里 Layer 原生类未实现（缺原生类），这样 M2e 后面的工作才有一条条可验证的缺口清单。",
+    "integrity_check": "tools/build_tjs2_test.sh 在构建夹具前，用本清单的 sha256 + bytes 对 native/KAG/src/original/system/ 下 28 个文件逐文件校验；native/Host/test_m2e.cpp 再对夹具里的 28 个文件校验精确字节数。",
+    "not_in_app_bundle": "这些是官方模板脚本，商业游戏自带自己的 system/ 副本；GalBox 不把它们打进 app，只在自测夹具里使用。app 里保留的是 M2E_SYSTEM_SCRIPTS_VENDORED 二进制标记。"
+  }
 }

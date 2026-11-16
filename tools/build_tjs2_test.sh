@@ -6,6 +6,7 @@
 #                      + 真跑 Storages 自动路径 + 官方原始 Shift-JIS 字节（Milestone 2b）
 #                      + 真跑官方 Initialize.tjs 原文 + System/Debug 原生类（Milestone 2c）
 #                      + 真跑正则（RegExp 原生类，std::regex 背书）（Milestone 2d）
+#                      + 全量 vendoring 官方 system/*.tjs 并推进启动链（Milestone 2e-1）
 #
 # 由 CI 在 xcodebuild 之前调用。设计原则：
 #   - 源码尚未 vendoring 时直接跳过（exit 0），绝不破坏现有出包链路。
@@ -295,4 +296,81 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2d.cpp" ] \
     echo "[tjs2] M2d 自测链接失败:"; cat "$OUT/link_m2d.log"; exit 1
   fi
 fi
+
+# ---- Milestone 2e-1：官方 KAG 系统脚本全量 vendoring -----------------------
+# run #32 停在 "Storages: script not found via autoPath: KAGLayer.tjs"（缺文件）。
+# 本轮把 kag3/template/system/ 的 28 个上游 blob 原样装进夹具，把阻塞点逼成
+# "class KAGLayer extends Layer" 里 Layer 原生类未实现（缺原生类）。
+# 判据分三层：① 清单 sha256/bytes 逐文件校验；② TJS2 侧逐个 isExistentStorage
+# 20/20 命中且不存在的哨兵不命中；③ scriptTrace 的正反对照（有文件 / 无文件）。
+if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2e.cpp" ] \
+   && [ -f "$KAG/src/m2e_manifest_probe.tjs" ] \
+   && [ -f "$KAG/src/original/system/KAGLayer.tjs" ]; then
+
+  # ① 28 个文件必须与上游 git blob 逐字节一致（用仓库里的清单做唯一数据源）。
+  #    contents API 会静默转 UTF-8，字节数与 sha256 都会变 —— 这一步就是抓它。
+  if ! python3 - "$KAG/VENDOR_MANIFEST.json" "$KAG/src/original" <<'PYEOF'
+import json, hashlib, os, sys
+man = json.load(open(sys.argv[1], encoding='utf-8'))
+root = sys.argv[2]
+items = [e for e in man['upstream_raw']
+         if e['path'].startswith('src/original/system/')]
+assert len(items) == 28, 'expected 28 system blobs, got %d' % len(items)
+total = 0
+for e in items:
+    p = os.path.join(root, e['path'][len('src/original/'):])
+    raw = open(p, 'rb').read()
+    assert len(raw) == e['bytes'], (e['path'], len(raw), e['bytes'])
+    assert hashlib.sha256(raw).hexdigest() == e['sha256'], e['path']
+    total += len(raw)
+assert total == 448729, total
+print('  [m2e] 28 official blobs verified:', total, 'B')
+PYEOF
+  then
+    echo "[tjs2] M2e vendoring 校验失败：官方 system 原始字节与清单不符"
+    exit 1
+  fi
+
+  M2E_GAME="$OUT/m2e_game"
+  M2E_MIN="$OUT/m2e_min"
+  rm -rf "$M2E_GAME" "$M2E_MIN"
+  mkdir -p "$M2E_GAME/system" "$M2E_MIN/system"
+  cp "$KAG/src/original/startup.tjs"            "$M2E_GAME/startup.tjs"
+  cp "$KAG/src/m2e_manifest_probe.tjs"          "$M2E_GAME/m2e_manifest_probe.tjs"
+  cp "$KAG/src/original/system/"*               "$M2E_GAME/system/"
+  # 官方 Config.tjs 是游戏自带的（上游只给 Config.~new 模板）。用 M2c 的
+  # 版本对齐探针，让 Initialize.tjs 跳过 UpdateConfig.tjs，直奔系统脚本链。
+  cp "$KAG/src/m2c_probe_config.tjs"            "$M2E_GAME/system/Config.tjs"
+
+  # 负向对照：只有 M2d 的 4 个文件，KAGLayer.tjs 故意缺席。
+  cp "$KAG/src/original/startup.tjs"            "$M2E_MIN/startup.tjs"
+  cp "$KAG/src/original/system/Initialize.tjs"  "$M2E_MIN/system/Initialize.tjs"
+  cp "$KAG/src/original/system/Utils.tjs"       "$M2E_MIN/system/Utils.tjs"
+  cp "$KAG/src/m2c_probe_config.tjs"            "$M2E_MIN/system/Config.tjs"
+
+  M2E_COUNT=$(find "$M2E_GAME/system" -maxdepth 1 -type f | wc -l | tr -d ' ')
+  if [ "$M2E_COUNT" != "29" ]; then
+    echo "[tjs2] M2e 夹具 system/ 应有 28 个官方文件 + 1 个 Config.tjs，实得 $M2E_COUNT"
+    exit 1
+  fi
+  echo "[tjs2] M2e fixture: 官方 system/ 28 文件 + Config 探针；负向对照 4 文件"
+
+  echo "[tjs2] M2e: 编译并运行全量系统脚本自测（清单 / 启动链 / 负向对照）"
+  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
+        -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
+        "$HOST/test_m2e.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
+        "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
+        -lz -liconv -lpthread -o "$OUT/tjs2test_m2e" 2>"$OUT/link_m2e.log"; then
+    OUTPUT_M2E=$("$OUT/tjs2test_m2e" "$M2E_GAME" "$M2E_MIN" "$OUT" 2>&1)
+    echo "$OUTPUT_M2E" | sed 's/^/[tjs2]   /'
+    if echo "$OUTPUT_M2E" | grep -q "M2E_RESULT=OK"; then
+      echo "[tjs2] M2e 自测通过（缺文件 → 缺 Layer 原生类，三场景含负向对照）"
+    else
+      echo "[tjs2] M2e 自测未通过"; exit 1
+    fi
+  else
+    echo "[tjs2] M2e 自测链接失败:"; cat "$OUT/link_m2e.log"; exit 1
+  fi
+fi
+
 exit 0

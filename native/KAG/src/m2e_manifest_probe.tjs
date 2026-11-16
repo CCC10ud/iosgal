@@ -1,0 +1,43 @@
+// m2e_manifest_probe.tjs — Milestone 2e-1 清单探针（GalBox 自写，**非官方**）
+//
+// 用途：在真 TJS2 引擎里，按官方 Initialize.tjs 的方式（先 addAutoPath("system/")，
+// 之后一律用短文件名）逐个确认 20 个官方 system/*.tjs 都在游戏包里。
+//
+// 为什么不能只数「没抛异常」：Storages.isExistentStorage 若被实现成永真函数，
+// 20 条命中照样全过。所以末尾放一个**必然不存在的哨兵**，并把结果编码成
+//     global.m2eProbe = found * 100 + badSentinelHits
+// 期望 20 * 100 + 0 = 2000。宿主 test_m2e.cpp 断言恰好 2000，
+// 于是「文件数不对」「有文件没进包」「存在性检查恒真」三种情况都会翻车。
+//
+// 注意 TJS2 裸赋值不创建成员（M2c 踩过），必须写 global.xxx。
+
+Storages.addAutoPath("system/");
+
+var found = 0;
+var bad = 0;
+
+if(Storages.isExistentStorage("AnimationLayer.tjs")) found++; else Debug.message("M2E_MISSING: AnimationLayer.tjs");
+if(Storages.isExistentStorage("BGM.tjs")) found++; else Debug.message("M2E_MISSING: BGM.tjs");
+if(Storages.isExistentStorage("ButtonLayer.tjs")) found++; else Debug.message("M2E_MISSING: ButtonLayer.tjs");
+if(Storages.isExistentStorage("CheckBoxLayer.tjs")) found++; else Debug.message("M2E_MISSING: CheckBoxLayer.tjs");
+if(Storages.isExistentStorage("Conductor.tjs")) found++; else Debug.message("M2E_MISSING: Conductor.tjs");
+if(Storages.isExistentStorage("DefaultMover.tjs")) found++; else Debug.message("M2E_MISSING: DefaultMover.tjs");
+if(Storages.isExistentStorage("EditLayer.tjs")) found++; else Debug.message("M2E_MISSING: EditLayer.tjs");
+if(Storages.isExistentStorage("GraphicLayer.tjs")) found++; else Debug.message("M2E_MISSING: GraphicLayer.tjs");
+if(Storages.isExistentStorage("HistoryLayer.tjs")) found++; else Debug.message("M2E_MISSING: HistoryLayer.tjs");
+if(Storages.isExistentStorage("Initialize.tjs")) found++; else Debug.message("M2E_MISSING: Initialize.tjs");
+if(Storages.isExistentStorage("KAGLayer.tjs")) found++; else Debug.message("M2E_MISSING: KAGLayer.tjs");
+if(Storages.isExistentStorage("MainWindow.tjs")) found++; else Debug.message("M2E_MISSING: MainWindow.tjs");
+if(Storages.isExistentStorage("Menus.tjs")) found++; else Debug.message("M2E_MISSING: Menus.tjs");
+if(Storages.isExistentStorage("MessageLayer.tjs")) found++; else Debug.message("M2E_MISSING: MessageLayer.tjs");
+if(Storages.isExistentStorage("Movie.tjs")) found++; else Debug.message("M2E_MISSING: Movie.tjs");
+if(Storages.isExistentStorage("Plugin.tjs")) found++; else Debug.message("M2E_MISSING: Plugin.tjs");
+if(Storages.isExistentStorage("SE.tjs")) found++; else Debug.message("M2E_MISSING: SE.tjs");
+if(Storages.isExistentStorage("UpdateConfig.tjs")) found++; else Debug.message("M2E_MISSING: UpdateConfig.tjs");
+if(Storages.isExistentStorage("Utils.tjs")) found++; else Debug.message("M2E_MISSING: Utils.tjs");
+if(Storages.isExistentStorage("YesNoDialog.tjs")) found++; else Debug.message("M2E_MISSING: YesNoDialog.tjs");
+
+// 反向哨兵：这个文件不可能存在。命中了就说明存在性检查是恒真的，上面的 20 次命中全部作废。
+if(Storages.isExistentStorage("__m2e_no_such_file__.tjs")) bad++;
+
+global.m2eProbe = found * 100 + bad;

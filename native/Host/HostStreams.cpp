@@ -473,8 +473,12 @@ void Install(XP3Archive* archive,
     gStorageRoot = storageRoot;
     gBundleRoot = bundleRoot;
     gInstalled = true;
-    // 每个游戏包都是一次全新的启动：官方 Initialize.tjs 会重新 addAutoPath。
+    // 每个游戏包都是一次全新的启动：官方 Initialize.tjs 会重新 addAutoPath，
+    // 编码诊断也必须归零，否则后一次启动会「借」上一次的 shiftJisReads
+    // 计数，让「本轮真的解码了几个官方脚本」这类判据说谎。
     ClearAutoPaths();
+    gShiftJisReads = 0;
+    gLastTextEncoding = "none";
 
     TJS::TJSCreateTextStreamForRead   = &CreateTextRead;
     TJS::TJSCreateTextStreamForWrite  = &CreateTextWrite;

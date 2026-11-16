@@ -32,6 +32,14 @@
 //   ③ 官方 Initialize.tjs 那句 `System.exePath.replace(/[^A-Za-z]/g,'_')`
 //      能真正算出键值 —— 本轮把它记进 JSON 的 appLockKey 当硬判据。
 //
+// M2e-1 把官方 kag3/template/system/ 的 28 个文件（20 个 .tjs + Config.~new +
+// 7 个 png/asd）按 git blob 原始字节全量 vendoring。目的不是「跑通 KAG」，而是
+// 把 run #32 的阻塞点（Storages: script not found via autoPath: KAGLayer.tjs）
+// 从「缺文件」逼成「缺原生类」：脚本能被真实读到并解析，才会暴露
+// `class KAGLayer extends Layer` 里 Layer 未实现这一真正的下一步工作。
+// 为此新增 scriptTrace —— 只在**成功打开流并读到正文之后**追加短名，
+// 所以「文件没找到」和「文件读到了但执行失败」在诊断里能分开，不会混为一谈。
+//
 // 由 build_tjs2_test.sh（macOS host，真跑自测）与 build_tjs2_ios.sh
 // （iphoneos arm64，编 .o 供 app 链接）用同一套 flags 编译。
 
@@ -218,6 +226,12 @@ std::string gLastScriptError;
 // 「调用了但内层抛异常」与「压根没调用」无法区分（run #24 踩过）。
 unsigned gExecStorageAttempts = 0;
 
+// M2e：脚本读取轨迹。只记「流已成功打开且正文已读到」的短名；
+// execStorage 的存在性检查失败不会写进来，因此 trace 里出现 KAGLayer.tjs
+// 就等于「文件真在包里、真被解码了」，而不是「碰巧名字对上了」。
+std::string gScriptTrace;
+unsigned gScriptsRead = 0;
+
 void ResetDiagnostics() {
     gSys = SystemState();
     // M2d：System.exePath 不再是空串，而是真实的游戏根目录（带尾部分隔符）。
@@ -231,6 +245,8 @@ void ResetDiagnostics() {
     gFatalBlock.clear();
     gFatalLine = -1;
     gFatalException.clear();
+    gScriptTrace.clear();
+    gScriptsRead = 0;
 }
 
 // 引擎销毁前清掉「持有 TJS 对象引用」的字段（exceptionHandler 里存着脚本
@@ -314,6 +330,8 @@ std::string MakeExecResult(bool ok, const char *reason, const char *entry,
     s += ",\"scripts\":\"M2A_SCRIPTS_EXEC_STORAGE\"";
     // M2d：正则层换成 std::regex 重写版的固定标记
     s += ",\"regexp\":\"M2D_REGEXP_STDREGEX\"";
+    // M2e：官方 KAG 系统脚本全量 vendoring 的固定标记（历史标记一律保留）
+    s += ",\"kagSystem\":\"M2E_SYSTEM_SCRIPTS_VENDORED\"";
     s += ",\"stage\":\"M2B_STORAGES_AUTOPATH\"";
     // 诊断必须能区分「真的按 autoPath 找到」与「碰巧被 basename 宽松回退命中」，
     // 也要能区分「Shift-JIS 正确解码」与「逐字节 latin-1 兜底但语法没报错」。
@@ -323,6 +341,8 @@ std::string MakeExecResult(bool ok, const char *reason, const char *entry,
     s += ",\"lastEncoding\":\"" + JsonEscape(galbox::host::LastTextEncoding()) + "\"";
     s += ",\"lastResolvedPath\":\""
        + JsonEscape(galbox::host::LastResolvedPath().c_str()) + "\"";
+    s += ",\"scriptTrace\":\"" + JsonEscape(gScriptTrace.c_str()) + "\"";
+    s += ",\"scriptsRead\":" + std::to_string(gScriptsRead);
 
     // ---- M2c：System / Debug 观测值 ----
     s += ",\"exePath\":\"" + JsonEscape(gSys.exePath.c_str()) + "\"";
@@ -409,6 +429,11 @@ public:
                 gLastScriptError = "no active TJS2 engine";
                 return TJS_E_FAIL;
             }
+            // 到这里文件已确实存在、流已打开、正文已读入（含 CP932 解码）。
+            // 此后 ExecScript 抛异常属于「脚本内容的问题」，不再是「缺文件」。
+            if (!gScriptTrace.empty()) gScriptTrace += ",";
+            gScriptTrace += nameU8;
+            ++gScriptsRead;
             try {
                 gActiveEngine->ExecScript(body.c_str(), result, NULL,
                                           name.c_str(), 0);

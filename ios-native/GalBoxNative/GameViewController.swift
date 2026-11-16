@@ -251,14 +251,18 @@ final class GameViewController: UIViewController {
                 // M2d：createAppLock 能通过 = 官方脚本里那句
                 // System.exePath.replace(/[^A-Za-z]/g,'_') 真的算出来了。
                 let locked = r["appLock"] as? Bool ?? false
+                // M2e-1：官方 system/*.tjs 全量在位后，能读到几个脚本由
+                // HostBridge 的 scriptTrace 计数暴露（不是「没报错就算读到」）。
+                let scripts = r["scriptsRead"] as? Int ?? 0
                 let block = r["fatalBlock"] as? String ?? ""
                 let line = r["fatalLine"] as? Int ?? -1
                 var why = r["fatalException"] as? String ?? ""
                 if why.isEmpty { why = r["fatal"] as? String ?? "" }
                 if why.isEmpty { why = r["lastScriptError"] as? String ?? "" }
                 if why.count > 34 { why = String(why.prefix(34)) + "…" }
-                var msg = "KAG 初始化：autoPath \(paths) · notice \(notices) · tick \(ticks)"
+                var msg = "KAG 初始化：autoPath \(paths) · 脚本 \(scripts) · notice \(notices) · tick \(ticks)"
                 if locked { msg += " · 正则✓" }
+                if scripts >= 4 { msg += " · 系统脚本✓" }
                 if !why.isEmpty {
                     let shortBlock = (block as NSString).lastPathComponent
                     msg += "，停在 \(shortBlock):\(line) \(why)"
@@ -286,7 +290,7 @@ final class GameViewController: UIViewController {
         guard let name = scriptName, let data = GBEngineBridge.data(forFile: name),
               let text = String(data: data, encoding: .utf8) else {
             if isTJS2 {
-                showError("检测到 TJS2 启动脚本（startup.tjs）。官方启动链前四段已打通：Scripts.execStorage（执行包内 .tjs）、Storages 自动路径（含 Shift-JIS 解码）、System / Debug 原生类、RegExp 正则（std::regex 实现）—— 官方 Initialize.tjs 原文能一路执行过配置检查与 createAppLock 的正则替换。但它随后必然停下：后面要 KAGLayer / KAGWindow / Layer 等系统脚本与原生类，还要事件循环与渲染/音频回调面。商业游戏仍无法运行，包内也没有可直接播放的 .ks 剧本。")
+                showError("检测到 TJS2 启动脚本（startup.tjs）。官方启动链前四段已打通：Scripts.execStorage（执行包内 .tjs）、Storages 自动路径（含 Shift-JIS 解码）、System / Debug 原生类、RegExp 正则（std::regex 实现）—— 官方 Initialize.tjs 原文能一路执行过配置检查与 createAppLock 的正则替换。本轮又把官方 kag3/template/system/ 的 28 个文件按原始字节全量纳入自测：不再报「缺 KAGLayer.tjs」，而是真的读到并解析该文件后停在 `class KAGLayer extends Layer` —— 即下一步要补 Layer / Window 等原生类、事件循环与渲染/音频回调面。商业游戏仍无法运行，包内也没有可直接播放的 .ks 剧本。")
             } else {
                 showError("包内没有可运行的 .ks 剧本")
             }

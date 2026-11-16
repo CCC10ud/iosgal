@@ -327,12 +327,15 @@ for item in kag_man["upstream_raw"]:
     b = raw("native/KAG/" + item["path"])
     ok(len(b) == item["bytes"] and hashlib.sha256(b).hexdigest() == item["sha256"],
        "官方 git blob 原始字节保真: " + item["path"])
-    try:
-        b.decode("utf-8")
-        is_utf8 = True
-    except UnicodeDecodeError:
-        is_utf8 = False
-    ok(not is_utf8, "官方原始字节确实不是 UTF-8（是 Shift-JIS）: " + item["path"])
+    # M2e-1 起 upstream_raw 还含官方 png/asd 资源；它们不是文本脚本，
+    # 「不是 UTF-8」这条编码判据只适用于 .tjs（二进制/ASCII 资源只验保真）。
+    if item["path"].endswith(".tjs"):
+        try:
+            b.decode("utf-8")
+            is_utf8 = True
+        except UnicodeDecodeError:
+            is_utf8 = False
+        ok(not is_utf8, "官方原始字节确实不是 UTF-8（是 Shift-JIS）: " + item["path"])
 ok("Shift-JIS" in kag_readme and "contents API" in kag_readme,
    "README 已更正 M2a 的「逐字节 UTF-8」误判")
 ok("contents API" in kag_man["encoding_finding"]["correction"]
@@ -512,6 +515,75 @@ ok("KAGLayer.tjs" in m2d_test, "自测断言「下一个缺口」是 KAGLayer.tj
 ok("M2D_RESULT=OK" in test_sh and "test_m2d.cpp" in test_sh,
    "CI 运行 M2d 自测")
 ok("M2D_REGEXP_STDREGEX" in wf, "CI 核验 std::regex 正则层真的进 app 二进制")
+
+
+print("\n[13] Milestone 2e-1 — 官方 KAG 系统脚本全量 vendoring")
+kag_manifest = kag_man
+m2e_test = read("native/Host/test_m2e.cpp")
+m2e_probe = read("native/KAG/src/m2e_manifest_probe.tjs")
+streams_cpp = read("native/Host/HostStreams.cpp")
+swift_vc2 = read("ios-native/GalBoxNative/GameViewController.swift")
+
+sys_items = [e for e in kag_manifest["upstream_raw"]
+             if e["path"].startswith("src/original/system/")]
+ok(len(sys_items) == 28, "清单列出上游 system/ 的全部 28 个 blob")
+ok(sum(e["bytes"] for e in sys_items) == 448729, "28 个 blob 合计 448,729 B")
+ok(len([e for e in sys_items if e["path"].endswith(".tjs")]) == 20,
+   "其中 20 个是官方 .tjs 系统脚本")
+ok(kag_manifest.get("m2e_full_vendoring", {}).get("total_bytes") == 448729,
+   "清单单独记录本轮全量 vendoring 的总字节数")
+
+# 真闭环：逐文件重新算 sha256 + 字节数，与清单和磁盘比对。
+# 只检查「文件存在」的话，M2a 那次 contents API 静默转码就会蒙混过关。
+_bad = []
+for e in sys_items:
+    fp = "native/KAG/" + e["path"]
+    blob = raw(fp)
+    if len(blob) != e["bytes"] or hashlib.sha256(blob).hexdigest() != e["sha256"]:
+        _bad.append(e["path"])
+ok(not _bad, "28 个官方文件与清单 sha256/bytes 逐字节一致: " + str(_bad[:3]))
+# 明确断言不是 UTF-8 转码副本：Initialize.tjs 必须仍是 7246 B 的 SJIS 原文
+_init = raw("native/KAG/src/original/system/Initialize.tjs")
+ok(len(_init) == 7246 and b"\x83" in _init[:64],
+   "Initialize.tjs 仍是官方 SJIS 原始字节（非 contents API 转码副本）")
+
+ok("sha256" in test_sh and "448729" in test_sh and "M2E_COUNT" in test_sh,
+   "构建脚本逐文件校验官方 blob 并核对夹具文件数")
+ok("M2E_RESULT=OK" in test_sh and "test_m2e.cpp" in test_sh,
+   "CI 运行 M2e 自测")
+ok("M2E_SYSTEM_SCRIPTS_VENDORED" in wf, "CI 核验 M2e 标记真的进 app 二进制")
+ok("M2E_SYSTEM_SCRIPTS_VENDORED" in bridge_cpp, "HostBridge 带 M2e 固定标记")
+
+# 历史标记一个都不能被升级覆盖掉（M2c 差点踩过）
+for tag in ("M1C_HOST_v1", "M2A_SCRIPTS_EXEC_STORAGE",
+            "M2B_STORAGES_AUTOPATH", "M2C_SYSTEM_DEBUG",
+            "M2D_REGEXP_STDREGEX"):
+    ok(tag in bridge_cpp, "升级后历史二进制标记仍保留: " + tag)
+
+# scriptTrace 必须只在「流成功读到正文之后」追加，否则「文件没找到」也会算命中
+ok("gScriptTrace" in bridge_cpp and "gScriptsRead" in bridge_cpp,
+   "HostBridge 记录脚本读取轨迹")
+ok("gScriptTrace += nameU8" in bridge_cpp and "scriptTrace" in bridge_cpp,
+   "轨迹只在读流成功后写入，并作为 JSON 字段暴露")
+ok("gShiftJisReads = 0" in streams_cpp,
+   "每次 Install 清零 SJIS 计数（否则后一次启动会借上一次的判据）")
+
+# 判据本身要能区分三种情况，且必须有负向对照
+ok("probe != 2000" in m2e_test and "scriptsRead\") != 0" in m2e_test,
+   "清单探针能区分「文件数不对」与「存在性检查恒真」")
+ok("__m2e_no_such_file__.tjs" in m2e_probe and "global.m2eProbe" in m2e_probe,
+   "探针含必然不存在的哨兵，结果写回 global（不被裸赋值坑）")
+ok("negative control" in m2e_test and "script not found via autoPath: KAGLayer.tjs" in m2e_test,
+   "自测有无系统脚本的负向对照，证明 scriptTrace 不是恒真计数器")
+ok("KAGLayer.tjs was never actually read" in m2e_test
+   and "block.find(\"KAGLayer\")" in m2e_test,
+   "自测断言阻塞点从「缺文件」变成「KAGLayer 里缺 Layer 原生类」")
+ok("shiftJisReads\") < 4" in m2e_test
+   and "M2d regression: createAppLock no longer reached" in m2e_test,
+   "自测同时守住 SJIS 解码链与 M2d 正则回归")
+ok("448729" in m2e_test and "VerifyVendoredBytes" in m2e_test,
+   "C++ 自测独立校验 28 个文件的精确字节数")
+ok("scriptsRead" in swift_vc2, "app 诊断 toast 展示真实读到的系统脚本数")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
