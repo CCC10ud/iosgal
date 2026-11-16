@@ -9,6 +9,7 @@
 #                      + 全量 vendoring 官方 system/*.tjs 并推进启动链（Milestone 2e-1）
 #                      + GalBox 的 Layer 骨架能被官方脚本类继承（Milestone 2e-2）
 #                      + GalBox 的 Window 骨架能被官方脚本类继承（Milestone 2e-3）
+#                      + 夹具换成官方 Config.tjs（Milestone 2e-5）
 #
 # 由 CI 在 xcodebuild 之前调用。设计原则：
 #   - 源码尚未 vendoring 时直接跳过（exit 0），绝不破坏现有出包链路。
@@ -468,6 +469,56 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2g.cpp" ] \
     fi
   else
     echo "[tjs2] M2g 自测链接失败:"; cat "$OUT/link_m2g.log"; exit 1
+  fi
+fi
+
+
+# ---- Milestone 2e-5：夹具换成官方 Config.tjs + 查同进程状态泄漏 -------------
+# run #45 的缺口 'Member "KAGWindow_config" does not exist' @ MainWindow.tjs:273
+# 来自**游戏自带的 Config.tjs**（KAGWindow_config 定义在官方 Config.~new:51），
+# 而我们的夹具用的是 M2c 那份只有一行版本号的探针版 Config。
+# 本轮用官方 Config.~new 的原始 SJIS 字节当 Config.tjs，让夹具第一次接近真实游戏。
+if [ -f "$HOST/test_m2h.cpp" ] && [ -d "$M2G_GAME" ] \
+   && [ -f "$KAG/src/original/system/Config.~new" ]; then
+
+  M2H_GAME="$OUT/m2h_game"
+  M2H_CTRL="$OUT/m2h_ctrl"
+  rm -rf "$M2H_GAME" "$M2H_CTRL"
+  cp -R "$M2G_GAME" "$M2H_GAME"
+  # 官方 Config.tjs = 原始 Shift-JIS 字节 + 前置一行 ASCII 版本号。
+  # 版本号用来让 Initialize.tjs 跳过 UpdateConfig.tjs 分支；
+  # ASCII 在 CP932 里恒等，和 SJIS 正文混排安全。
+  { printf 'global.config_version = "3.29-dev.20071022";\n'; \
+    cat "$KAG/src/original/system/Config.~new"; } > "$M2H_GAME/system/Config.tjs"
+  # 负向对照：同一套夹具，Config.tjs 换回 M2c 的探针版（缺 KAGWindow_config）
+  cp -R "$M2G_GAME" "$M2H_CTRL"
+  cp "$KAG/src/m2c_probe_config.tjs" "$M2H_CTRL/system/Config.tjs"
+
+  if ! grep -q "function KAGWindow_config" "$M2H_GAME/system/Config.tjs"; then
+    echo "[tjs2] M2e-5 夹具的 Config.tjs 里没有 KAGWindow_config（官方原文没拼进去？）"
+    exit 1
+  fi
+  if grep -q "function KAGWindow_config" "$M2H_CTRL/system/Config.tjs"; then
+    echo "[tjs2] M2e-5 负向对照夹具不该有 KAGWindow_config"
+    exit 1
+  fi
+  echo "[tjs2] M2e-5 fixture: 官方 Config.tjs（含 KAGWindow_config）；负向对照用探针版"
+
+  echo "[tjs2] M2e-5: 编译并运行自测（官方 Config.tjs / 二次执行诊断 / 负向对照）"
+  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
+        -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
+        "$HOST/test_m2h.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
+        "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
+        -lz -liconv -lpthread -o "$OUT/tjs2test_m2h" 2>"$OUT/link_m2h.log"; then
+    OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_GAME" "$M2H_CTRL" "$OUT" 2>&1)
+    echo "$OUTPUT_M2H" | sed 's/^/[tjs2]   /'
+    if echo "$OUTPUT_M2H" | grep -q "M2H_RESULT=OK"; then
+      echo "[tjs2] M2e-5 自测通过（官方 Config.tjs 消掉 KAGWindow_config 缺口 + 负向对照）"
+    else
+      echo "[tjs2] M2e-5 自测未通过"; exit 1
+    fi
+  else
+    echo "[tjs2] M2e-5 自测链接失败:"; cat "$OUT/link_m2h.log"; exit 1
   fi
 fi
 

@@ -749,6 +749,41 @@ ok("GalBoxConsts.tjs" in test_sh,
 ok("GalBoxConsts.tjs" in read("native/KAG/README.md"),
    "KAG README 登记了官方常量表（来源与两处自造错值）")
 
+
+print("\n[17] Milestone 2e-5 — 夹具换成官方 Config.tjs + 同进程状态泄漏探针")
+m2h_test = read("native/Host/test_m2h.cpp")
+cfg_new = raw("native/KAG/src/original/system/Config.~new")
+
+# KAGWindow_config 必须真的在官方 Config.~new 里（这是本轮缺口的根因）
+try:
+    cfg_text = cfg_new.decode("cp932")
+except UnicodeDecodeError:
+    cfg_text = cfg_new.decode("shift_jis", errors="replace")
+ok("function KAGWindow_config()" in cfg_text,
+   "官方 Config.~new 里定义了 KAGWindow_config（run #45 缺口的根因）")
+ok(";global.config_version" in cfg_text,
+   "官方 Config.~new 的版本行是被注释掉的模板写法")
+
+# 构建脚本：官方原文 + 前置 ASCII 版本号，且必须校验拼接结果
+ok("Config.~new" in test_sh and "global.config_version" in test_sh,
+   "构建脚本用官方 Config.~new 拼出 Config.tjs")
+ok("function KAGWindow_config" in test_sh,
+   "构建脚本校验夹具 Config.tjs 里确实有 KAGWindow_config")
+ok("m2c_probe_config.tjs" in test_sh,
+   "构建脚本备了探针版 Config.tjs 作负向对照")
+ok("M2H_RESULT=OK" in test_sh and "test_m2h.cpp" in test_sh,
+   "CI 运行 M2e-5 自测")
+
+# 自测三场景 + 负向对照
+ok("the official Config.tjs did not take effect" in m2h_test,
+   "自测断言换了官方 Config.tjs 后 KAGWindow_config 缺口消失")
+ok("negative control did not reproduce the KAGWindow_config gap" in m2h_test,
+   "自测有负向对照（探针版 Config 必须复现该缺口）")
+ok("scripts < 15" in m2h_test,
+   "自测断言加载脚本数不比 M2e-4 的 15 个倒退")
+ok("A2 verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
+   "自测带「同进程第二次执行」的诊断探针（状态泄漏定位用）")
+
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
 sys.exit(0 if F == 0 else 1)
