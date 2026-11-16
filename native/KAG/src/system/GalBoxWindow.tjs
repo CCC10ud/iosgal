@@ -36,8 +36,8 @@ class Window
 	var fullScreen = false;
 	var focused = false;
 	var cursor = 0;
-	var hint = "";
-	var isValid = true;
+	var hintText = "";
+	var isValidFlag = true;
 
 	function Window()
 	{
@@ -46,8 +46,8 @@ class Window
 	function finalize() {}
 
 	// ---- 生命周期 ----
-	function close(...) {}
-	function onCloseQuery(query) {}
+	function close() {}
+	function onCloseQuery(q) {}
 	function onResize(width, height) {}
 	function onTimer(tick) {}
 	function onDraw() {}
@@ -70,20 +70,17 @@ class Window
 	function setCursor(c) { cursor = c; }
 	function setFullScreen(flag) { fullScreen = flag; }
 	function setFocused(flag) { focused = flag; }
-	function setHint(h) { hint = h; }
+	function setHint(t) { hintText = t; }
 	function getWidth() { return width; }
 	function getHeight() { return height; }
 
 	// ---- 绘制 / 重绘（占位，不做任何事） ----
-	function invalidate() {}
 	function redraw() {}
 	function restore() {}
 	function minimize() {}
 	function maximize() {}
-	function release() {}
 	function clear() {}
 
 	// ---- 图层（占位） ----
 	function createLayer(w, h, type) {}
-	function detach() {}
 }

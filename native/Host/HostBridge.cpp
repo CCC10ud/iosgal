@@ -58,6 +58,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -1017,42 +1018,56 @@ static bool LoadEngineShim(tTJS *engine) {
         "M2E3_WINDOW_SKELETON",
     };
     if (!engine) { gShimStatus = "error: no engine"; return false; }
+    // tag 只在**真正装载成功**时进 status —— run #38 里 Window 骨架是语法
+    // 错误，可状态串里照样出现了 "M2E3_WINDOW_SKELETON"，判据差点被骗过去。
+    // 失败另进 failed，串在状态末尾的 "!failed:" 之后。
     std::string status;
+    std::string failed;
     bool any = false;
     for (size_t i = 0; i < sizeof(kShims) / sizeof(kShims[0]); ++i) {
         if (!galbox::host::IsExistentStorage(kShims[i])) continue;
         any = true;
-        if (!status.empty()) status += "+";
-        status += kTags[i];
         std::wstring pathW = Utf8ToWide(kShims[i]);
         ttstr path(pathW.c_str());
         iTJSTextReadStream *st = TJSCreateTextStreamForRead(path, ttstr());
-        if (!st) { status += "!open"; continue; }
+        if (!st) {
+            failed += (failed.empty() ? "" : ";") + std::string(kTags[i]) + ":open";
+            continue;
+        }
         tTJSString body;
         try {
             st->Read(body, 0);
             st->Destruct();
         } catch (...) {
             try { st->Destruct(); } catch (...) {}
-            status += "!read";
+            failed += (failed.empty() ? "" : ";") + std::string(kTags[i]) + ":read";
             continue;
         }
         try {
             engine->ExecScript(body.c_str(), NULL, NULL, path.c_str(), 0);
+            if (!status.empty()) status += "+";
+            status += kTags[i];
+        } catch (const TJS::eTJSScriptError &e) {
+            // 语法错误必须带 block/line：run #38 里只看到一句
+            // "Syntax error (syntax error)"，定位不到是第几行，只能靠二分试。
+            std::string blk = e.GetBlockName() ? WideToUtf8(e.GetBlockName()) : "?";
+            std::ostringstream line;
+            line << e.GetSourceLine();
+            failed += (failed.empty() ? "" : ";") + std::string(kTags[i]) + ":" +
+                      blk + ":" + line.str() + ": " +
+                      WideToUtf8(e.GetMessage().c_str());
+        } catch (const TJS::eTJS &e) {
+            failed += (failed.empty() ? "" : ";") + std::string(kTags[i]) + ":" +
+                      WideToUtf8(e.GetMessage().c_str());
         } catch (...) {
-            std::string msg = "shim threw";
-            try {
-                throw;
-            } catch (const TJS::eTJS &e) {
-                msg = WideToUtf8(e.GetMessage().c_str());
-            } catch (...) {
-            }
-            status += "!threw:" + msg;
+            failed += (failed.empty() ? "" : ";") + std::string(kTags[i]) + ":unknown";
         }
     }
     if (!any) { gShimStatus = "absent"; return false; }
     gShimStatus = status;
-    return status.find('!') == std::string::npos;
+    if (!failed.empty())
+        gShimStatus += (gShimStatus.empty() ? "" : "!") + "failed:" + failed;
+    return failed.empty();
 }
 
 }  // namespace

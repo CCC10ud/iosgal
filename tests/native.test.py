@@ -649,6 +649,15 @@ win_shim = read("native/KAG/src/system/GalBoxWindow.tjs")
 
 ok("class Window" in win_shim and "非官方" in win_shim,
    "Window 骨架是 GalBox 自写的脚本类，并明确标注非官方")
+# run #38 踩过的两个语法雷：TJS2 不支持 `...` 变参定义，也没有
+# `function invalidate()` 这种以关键字命名的函数。撞上会让**整个** shim
+# 语法错误、连带 Window 完全装不上。
+_win_code = "\n".join(l for l in win_shim.splitlines()
+                      if not l.strip().startswith("//"))
+ok("(...)" not in _win_code,
+   "Window 骨架不用 `...` 变参定义（TJS2 没有这个记号）")
+ok("function invalidate(" not in win_shim,
+   "Window 骨架不用 TJS2 关键字 invalidate 作函数名")
 for member in ("caption", "visible", "width", "height", "layer", "primaryLayer",
                "children", "parent", "menu", "fullScreen", "cursor"):
     ok(member in win_shim, "Window 骨架占位属性: " + member)
@@ -661,6 +670,16 @@ for fn in ("function Window(", "function finalize(", "function close(",
 # 宿主侧：Window 骨架路径 + 固定标记 + 这轮顺带补的两个成员
 ok("system/GalBoxWindow.tjs" in bridge_cpp and "M2E3_WINDOW_SKELETON" in bridge_cpp,
    "HostBridge 会加载 Window 骨架并带 M2e-3 固定标记")
+# run #38 踩过：骨架语法错误时状态串里照样出现了 tag，判据差点被骗过去。
+# 现在 tag 只在 ExecScript 成功后才进 status，失败另进 failed。
+_shim_start2 = bridge_cpp.index("static bool LoadEngineShim")
+_shim_fn2 = bridge_cpp[_shim_start2:bridge_cpp.index("\n}\n", _shim_start2)]
+ok("status += kTags[i];" in _shim_fn2
+   and _shim_fn2.index("status += kTags[i];") >
+       _shim_fn2.index("engine->ExecScript(body.c_str()"),
+   "骨架 tag 只在真正装载成功后才写入状态串（防「标记在但没装上」）")
+ok("failed:" in _shim_fn2 and "GetSourceLine()" in _shim_fn2,
+   "骨架装载失败会记录 block/line（run #38 只看到一句 Syntax error）")
 ok("TJS_END_NATIVE_STATIC_PROP_DECL(dataPath)" in bridge_cpp
    and "TJS_END_NATIVE_STATIC_PROP_DECL(logLocation)" in bridge_cpp,
    "补上 System.dataPath 与 Debug.logLocation（KAGWindow 实例化路径要用）")
