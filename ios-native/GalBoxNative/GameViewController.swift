@@ -265,6 +265,8 @@ final class GameViewController: UIViewController {
                 if scripts >= 4 { msg += " · 系统脚本✓" }
                 // M2e-2：Layer 骨架装上后，官方脚本类才真正能实例化。
                 if (r["layerSkeleton"] as? String) != nil { msg += " · Layer✓" }
+                // M2e-3：Window 骨架装上后，官方 KAGWindow 类才真正能实例化。
+                if (r["windowSkeleton"] as? String) != nil { msg += " · Window✓" }
                 if !why.isEmpty {
                     let shortBlock = (block as NSString).lastPathComponent
                     msg += "，停在 \(shortBlock):\(line) \(why)"
@@ -292,7 +294,7 @@ final class GameViewController: UIViewController {
         guard let name = scriptName, let data = GBEngineBridge.data(forFile: name),
               let text = String(data: data, encoding: .utf8) else {
             if isTJS2 {
-                showError("检测到 TJS2 启动脚本（startup.tjs）。官方启动链前四段已打通：Scripts.execStorage（执行包内 .tjs）、Storages 自动路径（含 Shift-JIS 解码）、System / Debug 原生类、RegExp 正则（std::regex 实现）—— 官方 Initialize.tjs 原文能一路执行过配置检查与 createAppLock 的正则替换。随后又把官方 kag3/template/system/ 的 28 个文件按原始字节全量纳入自测，并用一份自写的纯脚本 Layer 骨架让官方脚本类真正能实例化 —— 官方启动链现在能真实读到 15 个系统脚本，停在 MainWindow.tjs 缺 Window 原生类。后面还要 Window / AsyncTrigger 等原生类、事件循环与渲染/音频回调面。商业游戏仍无法运行，包内也没有可直接播放的 .ks 剧本。")
+                showError("检测到 TJS2 启动脚本（startup.tjs）。官方启动链前四段已打通：Scripts.execStorage（执行包内 .tjs）、Storages 自动路径（含 Shift-JIS 解码）、System / Debug 原生类、RegExp 正则（std::regex 实现）—— 官方 Initialize.tjs 原文能一路执行过配置检查与 createAppLock 的正则替换。随后又把官方 kag3/template/system/ 的 28 个文件按原始字节全量纳入自测，并用自写的纯脚本 Layer / Window 骨架让官方脚本类真正能实例化 —— 官方启动链现在能真实读到 15 个系统脚本，停在 MainWindow.tjs 缺 VK_* 键码常量。后面还要 AsyncTrigger 等原生类、事件循环与渲染/音频回调面（目前的骨架不渲染、不解码图片，离出画面还差很远）。商业游戏仍无法运行，包内也没有可直接播放的 .ks 剧本。")
             } else {
                 showError("包内没有可运行的 .ks 剧本")
             }

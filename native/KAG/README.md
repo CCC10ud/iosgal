@@ -115,7 +115,42 @@
     刻意**不走** `Scripts.execStorage` —— 那会污染 `execStorageAttempts` /
     `scriptTrace` / `lastScriptError` 三条判据；也不调 `CaptureCurrentException`，
     骨架自己的失败不该占用 `fatalBlock`/`fatalLine`。
-- **M2e-3 起**：
+- **M2e-3 ✅（run #41 一次全绿）**：**GalBox 自写的 `Window` 骨架**
+  + `System.dataPath` + `Debug.logLocation`。
+  官方 `Window` 同样是 `core/visual/WindowIntf.cpp` 的原生类，而
+  `MainWindow.tjs`（150 KB / 5893 行）第 7 行就是 `class KAGWindow extends
+  Window`。沿用 M2e-2 的路子，用纯 TJS2 骨架顶：
+  `native/KAG/src/system/GalBoxWindow.tjs`（明确标注非官方）。成员清单来自对
+  `MainWindow.tjs` 的实际统计（`super.*` 调用 + 未在 KAGWindow 内用 `var`
+  声明过的窗口相关标识符）。顺带补两个宿主侧成员，它们就在实例化路径上：
+  `System.dataPath`（KAGWindow 的**类成员初始化**就写了
+  `var saveDataLocation = System.dataPath;`，MainWindow.tjs:38）与
+  `Debug.logLocation`（构造器里 `Debug.logLocation = saveDataLocation;`，
+  MainWindow.tjs:290）。
+  - **踩到两个 TJS2 语法雷（都写进了静态测试防复发）**：
+    ① `function close(...)` —— TJS2 **不支持** `...` 变参定义（源码里根本没这个
+    记号，官方 20 个脚本里也没有一处 `function xxx(...)`；`...` 只在**调用**时
+    展开数组）；② `function invalidate()` —— `invalidate` 是 TJS2 的对象失效
+    **关键字**，官方脚本从不当函数名用。撞上任何一条都会让**整个** shim 语法
+    错误、连带 `Window` 完全装不上。
+  - **判据加固**：骨架 tag 之前是在尝试装载**之前**就写进状态串的，于是骨架
+    语法错误时状态串照样出现 `M2E3_WINDOW_SKELETON` —— 判据差点被骗过去。
+    现在 tag 只在 `ExecScript` 成功之后才进 `status`，失败另进 `failed` 并附
+    **block/line**（run #38 只看到一句 `Syntax error`，定位不到行）。
+  - **run #41 实测**：场景 A（`new KAGWindow()`）越过了父类查找，撞到下一个
+    缺口 `Member "crArrow" does not exist` @ `MainWindow.tjs:205`
+    ⇒ 又补了 `crArrow` / `crHandPoint` / `crSizeAll` 等**全局光标常量**
+    （官方由原生层提供，而 KAGWindow 的类成员初始化直接读它们）；
+    场景 B（完整启动链，干净首跑）`scriptsRead=15 / autoPathCount=11 /
+    appLock=true`，新缺口 `Member "VK_SPACE" does not exist`
+    @ `MainWindow.tjs:210` ⇒ 下一个缺口是 **VK_\* 键码常量**；
+    场景 C（无 Window 骨架）复现 `Member "Window" does not exist`。
+  - ⚠️ **发现一个未解现象（下一轮的课题）**：run #40 里「场景 B 排在场景 A
+    之后」时，官方启动链**整个坏掉**（`autoPathCount=0`、`trace` 只 1 项、
+    `appLock=false`），诊断自相矛盾。**隔离实验**（把 B 调到最前跑）显示：
+    干净首跑一切正常 ⇒ 确认是**同进程内前一个场景的状态泄漏**，不是官方脚本
+    本身的问题。根因待查。
+- **M2e-4 起**：
   渲染/音频回调面 + 事件队列，把 `GameViewController` 接到官方 KAG 播放循环，
   取代手写 `KagEngine`。
 - **M3/M4**：TLG/TPP/WAV/OGG 解码、视频换 AVFoundation、产品化切换。
@@ -133,9 +168,10 @@
 - `src/m2a_probe_startup.tjs`、`src/m2b_probe_startup.tjs`、
   `src/m2d_regex_probe.tjs`、`src/m2e_manifest_probe.tjs`、
   `src/m2f_layer_probe.tjs`：GalBox 自写探针。
-- `src/system/GalBoxLayer.tjs`：GalBox 自写的 **`Layer` 骨架**（**非官方**，
-  M2e-2 起）。放在 `src/system/` 而不是 `src/original/system/`，就是为了和
-  官方原文泾渭分明 —— 它是过渡件，不是官方文件。
+- `src/system/GalBoxLayer.tjs`、`src/system/GalBoxWindow.tjs`：GalBox 自写的
+  **`Layer` / `Window` 骨架**（**非官方**，M2e-2 / M2e-3 起）。放在 `src/system/`
+  而不是 `src/original/system/`，就是为了和官方原文泾渭分明 —— 它们是过渡件，
+  不是官方文件。
 - `src/m2c_probe_config.tjs`：M2c 用的**探针版** `Config.tjs`（只写
   `config_version = kagVersion`），用来跳过 `UpdateConfig.tjs`、把执行
   精确推到 `createAppLock` 的正则处。**不是官方文件**，不进 `src/original/`。

@@ -150,6 +150,49 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
 ## 7. 当前状态与下一步
 
 **已完成**
+- **M2e-3** ✅（run #41 一次全绿）：**GalBox 自写的 `Window` 骨架** +
+  `System.dataPath` + `Debug.logLocation`。
+  官方 `Window` 同样是 `core/visual/WindowIntf.cpp` 的原生类，而
+  `MainWindow.tjs`（150 KB / 5893 行）第 7 行就是 `class KAGWindow extends
+  Window` ⇒ run #36 的阻塞点。沿用 M2e-2 的路子，用纯 TJS2 骨架顶
+  （`native/KAG/src/system/GalBoxWindow.tjs`，明确标注非官方、放在与官方原文
+  不同的目录）。成员清单来自对 `MainWindow.tjs` 的实际统计，不是照抄文档猜的。
+  - 顺带补两个宿主侧成员，它们**就在实例化路径上**，缺一个就挡住：
+    `System.dataPath`（KAGWindow 的**类成员初始化**就写了
+    `var saveDataLocation = System.dataPath;`，MainWindow.tjs:38 ——
+    实例化的那一刻就会读它）与 `Debug.logLocation`（构造器里
+    `Debug.logLocation = saveDataLocation;`，MainWindow.tjs:290）。
+  - **踩到两个 TJS2 语法雷**（都已写进静态测试防复发）：
+    ① `function close(...)` —— TJS2 **不支持** `...` 变参定义（源码里没有这个
+    记号，官方 20 个脚本里也没有一处 `function xxx(...)`；`...` 只在**调用**时
+    展开数组）；② `function invalidate()` —— `invalidate` 是 TJS2 的对象失效
+    **关键字**，官方脚本从不当函数名用。撞上任何一条都会让**整个** shim 语法
+    错误、连带 `Window` 完全装不上。
+  - **判据加固**：骨架 tag 之前是在尝试装载**之前**就写进状态串的，于是骨架
+    语法错误时状态串照样出现 `M2E3_WINDOW_SKELETON` —— 判据差点被骗过去。
+    现在 tag 只在 `ExecScript` 成功之后才进 `status`，失败另进 `failed` 并附
+    **block/line**（run #38 只看到一句 `Syntax error`，定位不到行，只能二分试）。
+  - **run #41 实测（macOS host 真跑）**：
+    A) `new KAGWindow()` **越过了父类查找**，撞到下一个缺口
+       `Member "crArrow" does not exist` @ `MainWindow.tjs:205`
+       ⇒ 又补了 `crArrow` / `crHandPoint` / `crSizeAll` 等**全局光标常量**
+       （官方由原生层提供；KAGWindow 的类成员初始化直接读它们，缺一个会在
+       **加载** `MainWindow.tjs` 时就炸，不是实例化时）。
+    B) 完整官方启动链（干净首跑）：`scriptsRead=15 / attempts=15 / calls=14 /
+       autoPathCount=11 / autoPathHits=14 / appLock=true`，
+       新缺口 `Member "VK_SPACE" does not exist` @ `MainWindow.tjs:210`
+       ⇒ **下一个缺口是 `VK_*` 键码常量**（官方由原生层提供）。
+    C) 负向对照（无 `Window` 骨架）：`Member "Window" does not exist`
+       @ `MainWindow.tjs` —— 精确复现 run #36 的阻塞点。
+  - ⚠️ **发现一个未解现象（下一轮的课题）**：run #40 里「场景 B 排在场景 A
+    之后」时，官方启动链**整个坏掉** —— `autoPathCount=0`（13 次
+    `addAutoPath` 一次都没成功）、`trace` 只 1 项、`appLock=false`、
+    `debugNotices=3`（说明 `Initialize.tjs` 明明执行过），诊断自相矛盾。
+    **隔离实验**（把 B 调到最前跑）显示干净首跑一切正常 ⇒ 确认是
+    **同进程内前一个场景的状态泄漏**，不是官方脚本本身的问题。根因待查。
+  - 回归 M0~M2e-2 全绿；静态 464 PASS / 0 FAIL；`ARCHIVE SUCCEEDED`；
+    app 二进制 893,184 B；八个标记（含新增 M2E3）全命中。
+  - 交付 `dist/GalBoxNative-adhoc-M2e3-c61a4ce5.ipa`（696,000 B，Mach-O arm64）。
 - **M2e-2** ✅（run #36 一次全绿）：**GalBox 自写的 `Layer` 骨架**。
   官方 `Layer` 是 `kirikiri2/src/core/visual/LayerIntf.cpp` 的**原生类**
   （293 KB，绑死 Windows tp_stub），而 KAG 的 20 个系统脚本里有 **18 个**
@@ -442,20 +485,22 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
 **无阻塞项**：网络直连可用；`push_via_api.py` 走 Git Data API 原子提交（git 协议仍被墙）。
 
 **下一步（按序）**
-1. **M2e-3（`Window` 原生类骨架）** —— 现在唯一的阻塞点：
-   run #36 把官方脚本加载数从 10 推到 **15**，`MainWindow.tjs` 已进入
-   `scriptTrace`，新缺口是 **`MainWindow.tjs:7` 的
-   `Member "Window" does not exist`**。
-   `MainWindow.tjs` 有 150 KB，是官方 KAG 的主窗口脚本，`class KAGWindow
-   extends Window`；`Window` 之后大概率还有 `AsyncTrigger` 等。
-   做法沿用 M2e-2 已验证的路子：
-   ① 先写纯 TJS2 的 `Window` 骨架（`src/system/GalBoxWindow.tjs`），
-      在 `LoadEngineShim()` 里一并装载；
-   ② 每补一个类，就用 `scriptTrace` 的长度 + `fatalBlock/fatalLine`
-      看阻塞点是否又往前挪一格；
-   ③ 骨架补完后，缺口清单齐了，再决定哪些成员值得做成**真正的原生类**
-      （需要渲染/音频回调面的那部分）——纯脚本骨架永远画不出画面。
-   官方 20 个系统脚本（448,729 B）已在仓库，随时可查。
+1. **M2e-4（原生层提供的常量 + 同进程状态泄漏）** —— 两件事：
+   ① **补 `VK_*` 键码常量**（run #41 的新缺口：`Member "VK_SPACE" does not
+      exist` @ `MainWindow.tjs:210`）。这批常量官方由原生层提供
+      （`VK_SPACE` / `VK_RETURN` / `VK_LEFT` / `VK_PAD1` … 共 15 个被
+      `MainWindow.tjs` 用到），Windows 虚拟键码有标准取值，直接补进
+      `GalBoxWindow.tjs` 即可。同类还有 `AsyncTrigger`（`new AsyncTrigger(...)`，
+      官方在 `core/base/EventIntf.cpp`）—— 那是真正的原生类，要单列。
+   ② **查清「同进程内第二次执行会破坏官方启动链」**（run #40 现象，run #41
+      隔离实验已定位为状态泄漏）。怀疑对象：`GalBoxTJS2ExecScript` 每次
+      `new tTJS()` 但状态是进程级的（`TJSRegisterNativeClass` 的全局类表、
+      `tTJSNativeClass::ClassID` 静态成员、字符串映射表）。做法：二分 ——
+      先让场景 A 只 `execStorage` 不 `new KAGWindow()`，再逐项加回，看哪一步
+      开始污染。
+   ③ 修掉之后，把自测顺序改回 A → B → C 并**恢复**「脚本数不倒退」断言
+      （run #41 为了做隔离实验暂时放宽成了只打印）。
+2. **M2e-5 之后的接口约束**：`new KAGWindow()` 与
 2. **M2e 之后的接口约束**：`new KAGWindow()` 与
    `kag.process("first.ks")` 需要的原生类，接 iOS run loop / CADisplayLink
    与渲染/音频回调面。宿主回调面继续走「纯 C 边界 + C++ 适配层」，
@@ -466,12 +511,13 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
 3. **M3/M4**：TLG/TPP/WAV/OGG 解码、视频换 AVFoundation、产品化切换。
 
 **当前边界**：`Scripts` / `Storages` / `System` / `Debug` / `RegExp` 五个原生类
-+ GalBox 的 `Layer` 骨架就位，官方 28 个 `system/` 文件全部按原始字节在位。
-`Initialize.tjs` 原文能推过配置检查、算完二重起動键值，并真实读取 **15 个**
-系统脚本；根因推进到 `MainWindow.tjs:7` 缺 `Window` 原生类，
-**不是缺文件、也不是引擎缺语言能力**。`Layer` 目前是**纯脚本骨架**，
++ GalBox 的 `Layer` / `Window` 骨架就位，官方 28 个 `system/` 文件全部按原始
+字节在位。`Initialize.tjs` 原文能推过配置检查、算完二重起動键值，并真实读取
+**15 个**系统脚本；根因推进到 `MainWindow.tjs:210` 缺 `VK_*` 键码常量，
+**不是缺文件、也不是引擎缺语言能力**。`Layer` / `Window` 目前是**纯脚本骨架**，
 不渲染、不解码图片 —— 能让官方脚本跑起来，但离出画面还差渲染/音频回调面、
-事件循环与 `Window` / `AsyncTrigger` 等原生类。商业游戏仍不可运行。
+事件循环与 `AsyncTrigger` 等原生类。⚠️ 另有一个未解现象：同进程内第二次执行
+会破坏官方启动链（隔离实验已确认是状态泄漏，根因待查）。商业游戏仍不可运行。
 
 **踩坑记录**：
 - **GitHub contents API 会静默转码**（M2b 发现）：`/repos/.../contents/<path>`
