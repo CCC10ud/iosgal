@@ -1031,7 +1031,9 @@ static bool LoadEngineShim(tTJS *engine) {
         ttstr path(pathW.c_str());
         iTJSTextReadStream *st = TJSCreateTextStreamForRead(path, ttstr());
         if (!st) {
-            failed += (failed.empty() ? "" : ";") + std::string(kTags[i]) + ":open";
+            if (!failed.empty()) failed += ";";
+            failed += kTags[i];
+            failed += ":open";
             continue;
         }
         tTJSString body;
@@ -1040,7 +1042,9 @@ static bool LoadEngineShim(tTJS *engine) {
             st->Destruct();
         } catch (...) {
             try { st->Destruct(); } catch (...) {}
-            failed += (failed.empty() ? "" : ";") + std::string(kTags[i]) + ":read";
+            if (!failed.empty()) failed += ";";
+            failed += kTags[i];
+            failed += ":read";
             continue;
         }
         try {
@@ -1053,20 +1057,34 @@ static bool LoadEngineShim(tTJS *engine) {
             std::string blk = e.GetBlockName() ? WideToUtf8(e.GetBlockName()) : "?";
             std::ostringstream line;
             line << e.GetSourceLine();
-            failed += (failed.empty() ? "" : ";") + std::string(kTags[i]) + ":" +
-                      blk + ":" + line.str() + ": " +
-                      WideToUtf8(e.GetMessage().c_str());
+            if (!failed.empty()) failed += ";";
+            failed += kTags[i];
+            failed += ":";
+            failed += blk;
+            failed += ":";
+            failed += line.str();
+            failed += ": ";
+            failed += WideToUtf8(e.GetMessage().c_str());
         } catch (const TJS::eTJS &e) {
-            failed += (failed.empty() ? "" : ";") + std::string(kTags[i]) + ":" +
-                      WideToUtf8(e.GetMessage().c_str());
+            if (!failed.empty()) failed += ";";
+            failed += kTags[i];
+            failed += ":";
+            failed += WideToUtf8(e.GetMessage().c_str());
         } catch (...) {
-            failed += (failed.empty() ? "" : ";") + std::string(kTags[i]) + ":unknown";
+            if (!failed.empty()) failed += ";";
+            failed += kTags[i];
+            failed += ":unknown";
         }
     }
     if (!any) { gShimStatus = "absent"; return false; }
     gShimStatus = status;
-    if (!failed.empty())
-        gShimStatus += (gShimStatus.empty() ? "" : "!") + "failed:" + failed;
+    if (!failed.empty()) {
+        // 注意：`(cond ? "" : "!") + "failed:"` 是 `const char* + const char[8]`，
+        // 编译器直接报 invalid operands（run #39 红的原因）。逐段拼，别混着加。
+        if (!gShimStatus.empty()) gShimStatus += "!";
+        gShimStatus += "failed:";
+        gShimStatus += failed;
+    }
     return failed.empty();
 }
 
