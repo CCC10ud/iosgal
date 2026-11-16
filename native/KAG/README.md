@@ -150,7 +150,39 @@
     `appLock=false`），诊断自相矛盾。**隔离实验**（把 B 调到最前跑）显示：
     干净首跑一切正常 ⇒ 确认是**同进程内前一个场景的状态泄漏**，不是官方脚本
     本身的问题。根因待查。
-- **M2e-4 起**：
+- **M2e-4 ✅（run #45 一次全绿）**：**官方全局常量表**。
+  run #41 的新缺口是 `Member "VK_SPACE" does not exist` @ `MainWindow.tjs:210`，
+  接着又撞上 `Member "crArrow" does not exist` @ `:205`。这批常量官方都是
+  **全局常量**（官方脚本直接无前缀引用）。
+  - 🔴 **找官方的过程比预想有价值**：官方**不是**用 C++ 宏注册它们，而是在
+    `kirikiri2/src/core/base/ScriptMgnIntf.cpp` 里有一段 TJS 初始化脚本
+    `TVPInitTJSScript`，引擎初始化时执行它来声明这些全局常量。⇒ 这批常量
+    本来就住在**脚本层**，照抄即可，不必做成原生类。
+    （顺便：`ScriptMgnIntf.cpp` 正是官方 `Scripts` / `Storages` 的实现文件 ——
+    M2a/M2b 手写它们时没有这份参考。）
+  - `src/system/GalBoxConsts.tjs` = 该脚本的**逐字副本**（只去掉 C++ 字符串的
+    续行符、分组注释前换行），**378 个常量**：边框/更新/鼠标键/IME/Shift 状态、
+    图层类型 `lt*`、混合模式 `om*`、绘制面 `df*`、命中 `ht*`、转场
+    `stt*`/`stst*`、调试级别 `tkdl*`、AsyncTrigger 模式 `atm*`、拉伸 `st*`、
+    剪贴板 `cbfText`、视频叠加 `vom*`、周期事件 `per*`、声音焦点 `sgfm*`、
+    文件属性 `fa*`、鼠标光标 `cr*`、颜色 `cl*`、全部 `VK_*` 键码
+    （含 Kirikiri 自有的手柄键 `VK_PAD*`）。
+  - 🔴 **照抄直接抓出我自己的两个错**：`ststStayDest` / `ststStaySrc` 的值
+    **反了**（官方 StayDest=1、StaySrc=2，M2e-2 自造成 StaySrc=1）；`crArrow`
+    自造成 0，官方是 **-2**（整套 `cr*` 都是负数）。⇒ 这类常量**不猜**。
+  - 装载顺序：常量表必须**最先**（它用 TJS2 的 `const`，与骨架里的
+    `global.xxx =` 同名会冲突），因此 Layer/Window 骨架里自造的同名字段已删除。
+  - **run #45 实测**：场景 B（干净首跑）`scriptsRead=15 / autoPathCount=11 /
+    appLock=true`，新缺口推进到 **`Member "KAGWindow_config" does not exist`
+    @ `MainWindow.tjs:273`**；场景 A 同样撞到它；场景 C 仍复现
+    `Member "Window" does not exist`。
+    ⇒ `KAGWindow_config` 定义在**官方 `Config.~new` 第 51 行**，也就是说它属于
+    **游戏自带的 `Config.tjs`**，不在这 20 个系统脚本里 ⇒ 我们的夹具用的是
+    M2c 那份「只有一行版本号」的探针版 Config，才缺这个函数。
+    **这是夹具不够真实，不是引擎缺陷** —— 下一轮把夹具换成官方 `Config.~new`
+    （前面补一行 ASCII 的 `global.config_version = "3.29-dev.20071022";`
+    以跳过 `UpdateConfig.tjs` 分支）。
+- **M2e-5 起**：
   渲染/音频回调面 + 事件队列，把 `GameViewController` 接到官方 KAG 播放循环，
   取代手写 `KagEngine`。
 - **M3/M4**：TLG/TPP/WAV/OGG 解码、视频换 AVFoundation、产品化切换。

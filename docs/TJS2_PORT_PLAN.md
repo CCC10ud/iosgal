@@ -150,6 +150,42 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
 ## 7. 当前状态与下一步
 
 **已完成**
+- **M2e-4** ✅（run #45 一次全绿）：**官方全局常量表**（逐字照抄）。
+  run #41 的新缺口 `Member "VK_SPACE" does not exist` @ `MainWindow.tjs:210`，
+  接着又撞上 `Member "crArrow" does not exist` @ `:205` —— 这批常量官方都是
+  **全局常量**（官方脚本直接无前缀引用）。
+  - 🔴 **找官方的过程比预想的有价值**：官方**不是**用 C++ 宏注册它们，而是在
+    `kirikiri2/src/core/base/ScriptMgnIntf.cpp` 里有一段 TJS 初始化脚本
+    `TVPInitTJSScript`，引擎初始化时执行它来声明这些全局常量。⇒ 这批常量
+    本来就住在**脚本层**，照抄即可，不必做成原生类。
+    （顺便：`ScriptMgnIntf.cpp` 正是官方 `Scripts` / `Storages` 的实现文件 ——
+    M2a/M2b 手写它们时没有这份参考。）
+  - `native/KAG/src/system/GalBoxConsts.tjs` = 该脚本的**逐字副本**（只去掉
+    C++ 字符串续行符、分组注释前换行），**378 个常量**：`lt*` / `om*` / `df*` /
+    `ht*` / `stt*` / `stst*` / `tkdl*` / `atm*` / `st*` / `cbfText` / `vom*` /
+    `per*` / `sgfm*` / `fa*` / `cr*` / `cl*` / 全部 `VK_*`（含 Kirikiri 自有的
+    手柄键 `VK_PAD*`）。
+  - 🔴 **照抄直接抓出我自己的两个错**：`ststStayDest` / `ststStaySrc` 的值
+    **反了**（官方 StayDest=1、StaySrc=2；M2e-2 自造成 StaySrc=1）；
+    `crArrow` 自造成 0，官方是 **-2**（整套 `cr*` 都是负数）。
+    ⇒ 这类常量**不猜**，照抄官方。
+  - 装载顺序：常量表必须**最先**（它用 TJS2 的 `const`，与骨架里的
+    `global.xxx =` 同名会冲突），因此 Layer/Window 骨架里自造的同名字段已删除。
+  - **run #45 实测（macOS host 真跑）**：场景 B（干净首跑）
+    `scriptsRead=15 / attempts=15 / calls=14 / autoPathCount=11 /
+    autoPathHits=14 / appLock=true`，新缺口推进到
+    **`Member "KAGWindow_config" does not exist` @ `MainWindow.tjs:273`**；
+    场景 A 同样撞到它；场景 C 仍复现 `Member "Window" does not exist`。
+    ⇒ `KAGWindow_config` 定义在**官方 `Config.~new` 第 51 行** ⇒ 它属于
+    **游戏自带的 `Config.tjs`**，不在这 20 个系统脚本里 ⇒ 我们的夹具用的是
+    M2c 那份「只有一行版本号」的探针版 Config，才缺这个函数。
+    **这是夹具不够真实，不是引擎缺陷**。
+  - ⚠️ 另记一条工程坑（run #43）：静态测试里写了
+    `read("../push_via_api.py")` —— 那是本地工具，**不在仓库里**，CI 的
+    checkout 没有 ⇒ 本地全绿、CI 直接崩。**静态测试只能读仓库内的文件。**
+  - 回归 M0~M2e-3 全绿；静态 484 PASS / 0 FAIL；`ARCHIVE SUCCEEDED`；
+    app 二进制 893,184 B；九个标记（含新增 M2E4）全命中。
+  - 交付 `dist/GalBoxNative-adhoc-M2e4-cdf7549a.ipa`（695,831 B，Mach-O arm64）。
 - **M2e-3** ✅（run #41 一次全绿）：**GalBox 自写的 `Window` 骨架** +
   `System.dataPath` + `Debug.logLocation`。
   官方 `Window` 同样是 `core/visual/WindowIntf.cpp` 的原生类，而
@@ -485,21 +521,22 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
 **无阻塞项**：网络直连可用；`push_via_api.py` 走 Git Data API 原子提交（git 协议仍被墙）。
 
 **下一步（按序）**
-1. **M2e-4（原生层提供的常量 + 同进程状态泄漏）** —— 两件事：
-   ① **补 `VK_*` 键码常量**（run #41 的新缺口：`Member "VK_SPACE" does not
-      exist` @ `MainWindow.tjs:210`）。这批常量官方由原生层提供
-      （`VK_SPACE` / `VK_RETURN` / `VK_LEFT` / `VK_PAD1` … 共 15 个被
-      `MainWindow.tjs` 用到），Windows 虚拟键码有标准取值，直接补进
-      `GalBoxWindow.tjs` 即可。同类还有 `AsyncTrigger`（`new AsyncTrigger(...)`，
-      官方在 `core/base/EventIntf.cpp`）—— 那是真正的原生类，要单列。
+1. **M2e-5（夹具换成官方 `Config.tjs` + 同进程状态泄漏）** —— 三件事：
+   ① **夹具换成官方 `Config.~new`**（run #45 的新缺口
+      `Member "KAGWindow_config" does not exist` @ `MainWindow.tjs:273`）。
+      那个函数定义在官方 `Config.~new` 第 51 行，属于**游戏自带的 Config.tjs**。
+      做法：把官方 `Config.~new` 的**原始 SJIS 字节**当 `Config.tjs` 用，前面
+      插一行 ASCII 的 `global.config_version = "3.29-dev.20071022";` 以跳过
+      `UpdateConfig.tjs` 分支（ASCII 在 CP932 里恒等，混排安全）。
+      ⇒ 这一步会让夹具第一次**接近真实游戏**，KAG 的配置函数全部到位。
    ② **查清「同进程内第二次执行会破坏官方启动链」**（run #40 现象，run #41
       隔离实验已定位为状态泄漏）。怀疑对象：`GalBoxTJS2ExecScript` 每次
       `new tTJS()` 但状态是进程级的（`TJSRegisterNativeClass` 的全局类表、
       `tTJSNativeClass::ClassID` 静态成员、字符串映射表）。做法：二分 ——
-      先让场景 A 只 `execStorage` 不 `new KAGWindow()`，再逐项加回，看哪一步
-      开始污染。
+      先让场景 A 只 `execStorage` 不 `new KAGWindow()`，再逐项加回。
+      ⚠️ 这条**影响 app**：同一个进程里第二次打开游戏包就会命中。
    ③ 修掉之后，把自测顺序改回 A → B → C 并**恢复**「脚本数不倒退」断言
-      （run #41 为了做隔离实验暂时放宽成了只打印）。
+      （run #41 为做隔离实验暂时放宽成了只打印）。
 2. **M2e-5 之后的接口约束**：`new KAGWindow()` 与
 2. **M2e 之后的接口约束**：`new KAGWindow()` 与
    `kag.process("first.ks")` 需要的原生类，接 iOS run loop / CADisplayLink
