@@ -150,6 +150,52 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
 ## 7. 当前状态与下一步
 
 **已完成**
+- **M2e-2** ✅（run #36 一次全绿）：**GalBox 自写的 `Layer` 骨架**。
+  官方 `Layer` 是 `kirikiri2/src/core/visual/LayerIntf.cpp` 的**原生类**
+  （293 KB，绑死 Windows tp_stub），而 KAG 的 20 个系统脚本里有 **18 个**
+  `extends Layer` —— 没有它一个都跑不起来。本轮用一份**纯 TJS2 的骨架**
+  （`native/KAG/src/system/GalBoxLayer.tjs`，明确标注非官方、放在与官方原文
+  不同的目录）先顶上：`class Layer` 占位成员 + 官方脚本直接引用的全局常量
+  （`clNone` / `clAdapt` / `stt*` / `stst*`）。它**不渲染、不解码图片、不转场**。
+  - **关键机制（TJS2 的 `super` 是惰性的）**：`class X extends Y` 这条语句
+    **不去查** `Y`，引擎把它编译成 super proxy，只有在**实例化**或访问父类
+    成员时才求值。⇒「脚本被成功读完」≠「继承成立」，必须真的 `new` 一次。
+    run #34 里 `KAGLayer.tjs` 进了 `scriptTrace` 却仍报 Layer 缺失，就是这个。
+  - 判据三场景（都真跑）：A) `m2f_layer_probe.tjs` 读入官方 `KAGLayer.tjs`
+    原文后 `new KAGLayer(null,null)` 走通 → `global.m2fProbe=1`，`probeValue`
+    必须**恰好 1**（-1 = 实例化抛异常，探针压根没走到最后一行）；
+    B) 完整官方启动链：仍要求 `ok=false`、错误里不再有 Layer 缺失、
+    加载脚本数不比 M2e-1 的 10 个倒退；
+    C) **负向对照**：同一套夹具但**不放**骨架，必须复现 run #34 的
+    `Member "Layer" does not exist` @ `KAGLayer.tjs:87`。没有 C，A 就是恒真式自证。
+  - **run #36 实测（macOS host 真跑）**：
+    A) `{"ok":true,"probeValue":1,"shim":"M2E2_LAYER_SKELETON",
+       "scriptTrace":"KAGLayer.tjs","lastEncoding":"cp932",...}`
+       → 官方脚本类**成功继承** GalBox 的 Layer 骨架。
+    B) `{"ok":false,"scriptsRead":15,"execStorageAttempts":15,
+       "execStorageCalls":14,"shiftJisReads":15,"autoPathCount":11,
+       "appLock":true,"lastDebug":"スクリプトの読み込みに 35ms かかりました",
+       "fatal":"Member \"Window\" does not exist","fatalBlock":"MainWindow.tjs",
+       "fatalLine":7,"lastScriptError":"exception in execStorage(system/Initialize.tjs)"}`
+       `scriptTrace` = Initialize, Config, Utils, KAGLayer, HistoryLayer, BGM,
+       SE, Movie, Conductor, AnimationLayer, GraphicLayer, MessageLayer, Menus,
+       DefaultMover, **MainWindow**
+       ⇒ 官方脚本加载数 **10 → 15**，新阻塞点精确落在
+       **`MainWindow.tjs:7` 缺 `Window` 原生类**。
+       ⚠️ `lastScriptError` 指向的是 `system/Initialize.tjs`（异常冒泡回它的
+       `KAGLoadScript`），**根因只在 `fatalBlock + fatalLine`** —— 这已经是第
+       两次验证「只有 fatal 定位可信」。
+    C) `{"ok":false,"probeValue":-1,"shim":"absent",
+       "fatal":"Member \"Layer\" does not exist","fatalBlock":"KAGLayer.tjs",
+       "fatalLine":87}` → 精确复现 run #34 的阻塞点。
+  - 宿主侧：`HostBridge` 新增 `LoadEngineShim()`，在跑入口脚本前加载
+    `system/GalBoxLayer.tjs`（游戏包里没有就跳过，状态走 JSON 的 `shim` 字段）。
+    刻意**不走** `Scripts.execStorage`（那会污染 `execStorageAttempts` /
+    `scriptTrace` / `lastScriptError` 三条判据），也不调 `CaptureCurrentException`
+    （骨架自己的失败不该占用 `fatalBlock`/`fatalLine`）。
+  - 回归 M0~M2e-1 全绿；静态 419 PASS / 0 FAIL；`ARCHIVE SUCCEEDED`；
+    app 二进制 893,184 B；七个标记（含新增 M2E2）全命中。
+  - 交付 `dist/GalBoxNative-adhoc-M2e2-323514e1.ipa`（693,381 B，Mach-O arm64）。
 - **M2e-1** ✅（run #34 一次全绿）：**官方 KAG 系统脚本全量 vendoring**。
   run #32 停在 `Storages: script not found via autoPath: KAGLayer.tjs`（缺文件），
   本轮把 `kag3/template/system/` 的 **28 个上游 blob**（20 个 `.tjs` +
@@ -396,18 +442,20 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
 **无阻塞项**：网络直连可用；`push_via_api.py` 走 Git Data API 原子提交（git 协议仍被墙）。
 
 **下一步（按序）**
-1. **M2e-2（`Layer` 原生类最小子集）** —— 现在唯一的阻塞点，
-   已被 run #34 精确定位到 `KAGLayer.tjs:87` 的
-   `Member "Layer" does not exist`（`class KAGLayer extends Layer`）。
-   注意实测中启动链在该行之后**还继续读了 7 个脚本**，说明这些脚本里的
-   class 声明对缺 super class 有一定容错；因此**不要一上来就实现完整 Layer**
-   （293 KB 的官方 `LayerIntf.cpp` 绑死 Windows tp_stub），而是：
-   ① 先做「能被继承、能注册全局 `Layer`、暴露 KAGLayer.tjs 顶层语句所需成员」
-      的骨架，用 `scriptTrace` 看加载链是否继续推进到 `MainWindow.tjs`；
-   ② 每推进一步就把新暴露的缺失成员记进 `fatal`，逐条补最小实现；
-   ③ 再补 `Window` 骨架与 iOS run loop / `CADisplayLink` 推进 `@wait`。
-   官方 `KAGLayer.tjs` / `AnimationLayer.tjs` / `GraphicLayer.tjs` /
-   `MessageLayer.tjs` / `MainWindow.tjs` 共 20 个脚本已在仓库，随时可查。
+1. **M2e-3（`Window` 原生类骨架）** —— 现在唯一的阻塞点：
+   run #36 把官方脚本加载数从 10 推到 **15**，`MainWindow.tjs` 已进入
+   `scriptTrace`，新缺口是 **`MainWindow.tjs:7` 的
+   `Member "Window" does not exist`**。
+   `MainWindow.tjs` 有 150 KB，是官方 KAG 的主窗口脚本，`class KAGWindow
+   extends Window`；`Window` 之后大概率还有 `AsyncTrigger` 等。
+   做法沿用 M2e-2 已验证的路子：
+   ① 先写纯 TJS2 的 `Window` 骨架（`src/system/GalBoxWindow.tjs`），
+      在 `LoadEngineShim()` 里一并装载；
+   ② 每补一个类，就用 `scriptTrace` 的长度 + `fatalBlock/fatalLine`
+      看阻塞点是否又往前挪一格；
+   ③ 骨架补完后，缺口清单齐了，再决定哪些成员值得做成**真正的原生类**
+      （需要渲染/音频回调面的那部分）——纯脚本骨架永远画不出画面。
+   官方 20 个系统脚本（448,729 B）已在仓库，随时可查。
 2. **M2e 之后的接口约束**：`new KAGWindow()` 与
    `kag.process("first.ks")` 需要的原生类，接 iOS run loop / CADisplayLink
    与渲染/音频回调面。宿主回调面继续走「纯 C 边界 + C++ 适配层」，
@@ -417,12 +465,13 @@ M1b / M2 才需要：`mach_absolute_time`、`os_log`、iOS run loop + `CADisplay
    ⚠️ 商业 `startup.tjs` 的执行必须放后台队列，切勿在主线程同步调用。
 3. **M3/M4**：TLG/TPP/WAV/OGG 解码、视频换 AVFoundation、产品化切换。
 
-**当前边界**：`Scripts` / `Storages` / `System` / `Debug` / `RegExp` 五个原生类就位，
-官方 28 个 `system/` 文件全部按原始字节在位。`Initialize.tjs` 原文能推过配置检查、
-算完二重起動键值，并真实读取 10 个系统脚本（8 个跑完）；根因是
-`KAGLayer.tjs:87` 缺 `Layer` 原生类，**不是缺文件、也不是引擎缺语言能力**。
-`GraphicLayer` / `MessageLayer` / `Menus` / `DefaultMover` / `MainWindow` 等
-还没被读到，它们会在补上 `Layer` 后逐条暴露新缺口。商业游戏仍不可运行。
+**当前边界**：`Scripts` / `Storages` / `System` / `Debug` / `RegExp` 五个原生类
++ GalBox 的 `Layer` 骨架就位，官方 28 个 `system/` 文件全部按原始字节在位。
+`Initialize.tjs` 原文能推过配置检查、算完二重起動键值，并真实读取 **15 个**
+系统脚本；根因推进到 `MainWindow.tjs:7` 缺 `Window` 原生类，
+**不是缺文件、也不是引擎缺语言能力**。`Layer` 目前是**纯脚本骨架**，
+不渲染、不解码图片 —— 能让官方脚本跑起来，但离出画面还差渲染/音频回调面、
+事件循环与 `Window` / `AsyncTrigger` 等原生类。商业游戏仍不可运行。
 
 **踩坑记录**：
 - **GitHub contents API 会静默转码**（M2b 发现）：`/repos/.../contents/<path>`

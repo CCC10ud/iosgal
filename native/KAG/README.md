@@ -83,7 +83,39 @@
     `fatalBlock + fatalLine` 可靠。
   - 顺带修一处会让判据说谎的地方：`Install()` 此前**没有**清零 `shiftJisReads`，
     后一次启动会「借」上一次的解码计数 —— 已归零。
-- **M2e-2 起**：最小 `Layer` 子集 + `Window` 骨架 / `KAGParserEx` +
+- **M2e-2 ✅（run #36 一次全绿）**：**GalBox 自写的 `Layer` 骨架**。
+  官方 `Layer` 是 `kirikiri2/src/core/visual/LayerIntf.cpp` 的**原生类**
+  （293 KB，绑死 Windows tp_stub），而 KAG 的 20 个系统脚本里有 **18 个**
+  `extends Layer` —— 没有它一个都跑不起来。本轮用一份**纯 TJS2 的骨架**
+  （`src/system/GalBoxLayer.tjs`，明确标注非官方）先顶上：提供 `class Layer`
+  的占位成员，以及官方脚本直接引用的全局常量
+  （`clNone` / `clAdapt` / `stt*` / `stst*`）。它**不渲染、不解码图片、不转场**，
+  只负责让继承成立，把下一批缺失成员逼出来。
+  - **关键机制（TJS2 的 `super` 是惰性的）**：`class X extends Y` 这条语句
+    **不去查** `Y`，引擎把它编译成一个 super proxy，只有在**实例化**或访问
+    父类成员时才求值。所以「脚本被成功读完」≠「继承成立」—— 必须真的
+    `new` 一次。run #34 里 `KAGLayer.tjs` 进了 `scriptTrace` 却仍报 Layer 缺失，
+    就是这个原因。
+  - 判据三场景（都真跑）：A) `m2f_layer_probe.tjs` 读入官方 `KAGLayer.tjs`
+    原文后 `new KAGLayer(null,null)` 走通 → `global.m2fProbe=1`，`probeValue`
+    必须恰好 1（-1 = 实例化抛异常）；B) 完整官方启动链：仍要求 `ok=false`、
+    错误里不再有 Layer 缺失、加载脚本数不比 M2e-1 的 10 个倒退；
+    C) **负向对照**：同一套夹具但**不放**骨架，必须复现 run #34 的
+    `Member "Layer" does not exist` @ `KAGLayer.tjs:87`。
+  - **run #36 实测**：A) `probeValue=1`、`shim=M2E2_LAYER_SKELETON`、
+    `scriptTrace="KAGLayer.tjs"`（官方 SJIS 原文，`lastEncoding=cp932`）；
+    B) 官方脚本加载数 **10 → 15**（`Initialize, Config, Utils, KAGLayer,
+    HistoryLayer, BGM, SE, Movie, Conductor, AnimationLayer, GraphicLayer,
+    MessageLayer, Menus, DefaultMover, MainWindow`），
+    新阻塞点 `Member "Window" does not exist` @ `MainWindow.tjs:7`
+    ⇒ **下一个原生类是 `Window`**；C) `shim="absent"`、`probeValue=-1`、
+    复现 `Member "Layer" does not exist` @ `KAGLayer.tjs:87`。
+  - 宿主侧：`HostBridge` 新增 `LoadEngineShim()`，在跑入口脚本前加载
+    `system/GalBoxLayer.tjs`（游戏包里没有就跳过，状态走 JSON 的 `shim` 字段）。
+    刻意**不走** `Scripts.execStorage` —— 那会污染 `execStorageAttempts` /
+    `scriptTrace` / `lastScriptError` 三条判据；也不调 `CaptureCurrentException`，
+    骨架自己的失败不该占用 `fatalBlock`/`fatalLine`。
+- **M2e-3 起**：
   渲染/音频回调面 + 事件队列，把 `GameViewController` 接到官方 KAG 播放循环，
   取代手写 `KagEngine`。
 - **M3/M4**：TLG/TPP/WAV/OGG 解码、视频换 AVFoundation、产品化切换。
@@ -99,7 +131,11 @@
   这些是官方模板脚本，商业游戏自带自己的 `system/` 副本，因此**不打进 app bundle**，
   只在自测夹具里使用；app 里保留的是 `M2E_SYSTEM_SCRIPTS_VENDORED` 二进制标记。
 - `src/m2a_probe_startup.tjs`、`src/m2b_probe_startup.tjs`、
-  `src/m2d_regex_probe.tjs`、`src/m2e_manifest_probe.tjs`：GalBox 自写探针。
+  `src/m2d_regex_probe.tjs`、`src/m2e_manifest_probe.tjs`、
+  `src/m2f_layer_probe.tjs`：GalBox 自写探针。
+- `src/system/GalBoxLayer.tjs`：GalBox 自写的 **`Layer` 骨架**（**非官方**，
+  M2e-2 起）。放在 `src/system/` 而不是 `src/original/system/`，就是为了和
+  官方原文泾渭分明 —— 它是过渡件，不是官方文件。
 - `src/m2c_probe_config.tjs`：M2c 用的**探针版** `Config.tjs`（只写
   `config_version = kagVersion`），用来跳过 `UpdateConfig.tjs`、把执行
   精确推到 `createAppLock` 的正则处。**不是官方文件**，不进 `src/original/`。
