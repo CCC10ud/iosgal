@@ -621,6 +621,10 @@ for forbidden in ("gExecStorageAttempts", "gScriptTrace +=", "gLastScriptError =
 ok("CaptureCurrentException" not in _shim_fn,
    "骨架自身的失败不占用 fatalBlock/fatalLine（那是入口脚本的定位）")
 # run #52：所有自测统一无缓冲 stdout + 通用崩溃诊断（退出码 + gdb 栈）
+# run #53：Linux M2c 崩溃栈 tTJSString::GetLen NULL 解引用（空串长度为 0 是官方语义）
+str_h = read("native/TJS2/src/tjsString.h")
+ok("P10" in str_h and "if(!Ptr) return 0;" in str_h,
+   "tTJSString::GetLen 对所有构建启用空串保护（P10，官方仅 CODEGUARD 下有）")
 ok("diag_crash()" in test_sh and "crash backtrace (gdb)" in test_sh,
    "构建脚本有通用崩溃诊断函数（每段自测崩了都能拿栈）")
 import glob as _glob

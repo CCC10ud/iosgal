@@ -407,6 +407,13 @@ public:
 #ifdef __CODEGUARD__
 		if(!Ptr) return 0; // tTJSVariantString::GetLength can return zero if 'this' is NULL
 #endif
+		// P10 (GalBox, run #53): 官方只在 __CODEGUARD__ 下才有上面的 NULL 保护。
+		// 正常构建里空串 tTJSString(Ptr=NULL) 调 GetLen() 会执行 NULL->GetLength()。
+		// macOS clang 把这次解引用优化掉(非虚成员只读固定偏移)侥幸不 fault，
+		// Linux clang++ -O1 真的访存 -> SIGSEGV。gdb 栈: eTJSScriptError::AddTrace
+		// -> tTJSString::GetLen at tjsString.h:410。空串长度为 0 是官方明确语义
+		// (__CODEGUARD__ 分支self-documenting)，这里对所有构建启用它。
+		if(!Ptr) return 0;
 		return Ptr->GetLength();
 	}
 
