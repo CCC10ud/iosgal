@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT LEAK LEAK2" in test_sh,
-   "构建脚本把八个场景拆成独立进程跑（NOMENU / NOSTYLE / NOTIMER / NOFONT 四个负向对照）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER LEAK LEAK2" in test_sh,
+   "构建脚本把九个场景拆成独立进程跑（NOMENU / NOSTYLE / NOTIMER / NOFONT / NOKAGPARSER 五个负向对照）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -950,6 +950,31 @@ ok("NOFONT control did not reproduce the Layer.font gap" in m2h_test,
 ok("the chain did not reach AnimationLayer.tjs" in m2h_test and
    "old AnimationLayer.tjs font lines" in m2h_test,
    "M2e-10：自测要求链真到 AnimationLayer.tjs 且离开旧 font 停点")
+
+# ---- M2e-11：KAGParser 骨架（Conductor.tjs:13）----
+kagparser_shim = read("native/KAG/src/system/GalBoxKAGParser.tjs")
+ok("class KAGParser" in kagparser_shim and "function KAGParser()" in kagparser_shim,
+   "M2e-11：KAGParser 骨架提供 Conductor.tjs:13 extends 所需的父类")
+ok(all(m in kagparser_shim for m in [
+       "function finalize()", "function clear()", "function assign(src)",
+       "function store()", "function restore(dic)", "function loadScenario()",
+       "function goToLabel()"]),
+   "M2e-11：骨架覆盖 Conductor.tjs 全部 super.* 调用（assign/store/restore/loadScenario/goToLabel 等）")
+ok("return %[]" in kagparser_shim,
+   "M2e-11：store() 返回空字典，让 return super.store(...) 拿得到值")
+ok("GalBoxKAGParser.tjs" in bridge_cpp and "M2E11_KAGPARSER_SKELETON" in bridge_cpp,
+   "M2e-11：KAGParser 骨架进 LoadEngineShim 序列且带 shim tag")
+ok("cp \"$KAG/src/system/GalBoxKAGParser.tjs\"" in test_sh and
+   "M2H_NOKAGPARSER" in test_sh and "m2h_nokagparser" in test_sh,
+   "M2e-11：构建脚本把 KAGParser 骨架放进夹具并生成 NOKAGPARSER 负向对照")
+ok("M2e-11 gap (KAGParser) not cleared" in m2h_test and
+   "M2e-11 regression: KAGParser skeleton was not loaded" in m2h_test,
+   "M2e-11：A 硬判据清掉 KAGParser 缺口 + KAGParser 骨架真的装进引擎")
+ok("NOKAGPARSER control did not reproduce the KAGParser gap" in m2h_test,
+   "M2e-11：NOKAGPARSER 负向对照必须复现 Conductor.tjs:13 缺口")
+ok("the chain did not reach Conductor.tjs" in m2h_test and
+   "old Conductor.tjs:13 KAGParser line" in m2h_test,
+   "M2e-11：自测要求链真到 Conductor.tjs 且离开旧 KAGParser 停点")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

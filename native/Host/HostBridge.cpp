@@ -1060,6 +1060,7 @@ static bool LoadEngineShim(tTJS *engine) {
         "system/GalBoxPad.tjs",     // M2e-6：UpdateConfig.tjs 配置升级路径
         "system/GalBoxMenu.tjs",    // M2e-7：Menus.tjs 的 MenuItem / Menu 骨架
         "system/GalBoxTimer.tjs",   // M2e-9：MainWindow.tjs 的 Timer 骨架
+        "system/GalBoxKAGParser.tjs", // M2e-11：Conductor.tjs 的 KAGParser 父类骨架
     };
     static const char *kTags[] = {
         "M2E4_OFFICIAL_CONSTS",
@@ -1069,6 +1070,7 @@ static bool LoadEngineShim(tTJS *engine) {
         "M2E6_PAD_SKELETON",
         "M2E7_MENU_SKELETON",
         "M2E9_TIMER_SKELETON",
+        "M2E11_KAGPARSER_SKELETON",
     };
     if (!engine) { gShimStatus = "error: no engine"; return false; }
     // tag 只在**真正装载成功**时进 status —— run #38 里 Window 骨架是语法

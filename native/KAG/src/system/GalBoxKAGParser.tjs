@@ -1,0 +1,46 @@
+// GalBoxKAGParser.tjs — GalBox 自写的 `KAGParser` 骨架（**非官方**，Milestone 2e-11）
+//
+// 官方 `KAGParser` 是 KAG3 里的原生类（KAGParser.cpp，脚本解析器本体：
+// 读 scenario、按标签跳转、中断/恢复、状态存取）。run 44049497384（M2e-10）
+// 实测的下一缺口是**类定义阶段**（不是实例化阶段）的：
+//     Member "KAGParser" does not exist @ Conductor.tjs:13
+//     (class BaseConductor extends KAGParser)
+//
+// 与其他骨架不同：这里在 `extends KAGParser` 求值时就需要类存在，所以文件
+// 必须比 Conductor.tjs 更早装载。逐条统计官方 Conductor.tjs 对父类的用法，
+// 通过 super 调用的只有下面 8 个成员：
+//   KAGParser()（构造）/ finalize() / clear() / assign(src) / store() /
+//   restore(dic) / loadScenario() / goToLabel()
+// 官方脚本没有直接读 KAGParser 的字段（context/pos 等），全走 super 方法。
+//
+// 骨架只让 BaseConductor 能继承、实例化并调用这些 super 方法；不真解析
+// scenario、不维护标签表、不存取状态。store() 返回空字典（官方返回状态字典），
+// 让 `return super.store(...)` 的调用方拿得到东西而不报错。
+//
+// ⚠️ TJS2 语法雷（M2e-3 踩过）：方法定义不要用 `...` 变参；`...` 只出现在
+// **调用方**（官方 super.xxx(...) 是转发实参），骨架这边用普通形参即可。
+
+class KAGParser
+{
+	function KAGParser()
+	{
+	}
+
+	function finalize() {}
+
+	function clear() {}
+
+	function assign(src) {}
+
+	function store()
+	{
+		// 官方返回状态字典；给空字典让 `return super.store(...)` 拿得到值。
+		return %[];
+	}
+
+	function restore(dic) {}
+
+	function loadScenario() {}
+
+	function goToLabel() {}
+}
