@@ -42,6 +42,15 @@ class Window
 	var hintText = "";
 	var isValidFlag = true;
 
+	// M2E8_STYLE_BEGIN —— M2e-8 负向对照夹具按这对标记整段删掉，用来证明
+	// 这三个成员确实是官方 MainWindow.tjs:313-320 所必需，不是摆设。
+	// 常量 bsSingle / bsDialog 已在官方常量表 GalBoxConsts.tjs 里（M2e-4 逐字抄），
+	// 这里缺的只是 Window 原生对象上的可写属性。
+	var borderStyle = 1;   // bsSingle
+	var innerSunken = false;
+	var showScrollBars = false;
+	// M2E8_STYLE_END
+
 	function Window()
 	{
 		// M2e-7：官方 Window 构造时会带出一个 Menu 对象；KAGWindow 的
@@ -80,6 +89,12 @@ class Window
 	function setHint(t) { hintText = t; }
 	function getWidth() { return width; }
 	function getHeight() { return height; }
+
+	// 官方 KAGWindow 构造里紧接着会调 setInnerSize(scWidth, scHeight)，
+	// 并用 add(child) 把 Timer / Layer / Conductor 等子对象登记到窗口。
+	// 骨架只做占位：尺寸记在 width/height，子对象记在 children。
+	function setInnerSize(w, h) { width = w; height = h; }
+	function add(child) { children.add(child); return child; }
 
 	// ---- 绘制 / 重绘（占位，不做任何事） ----
 	function redraw() {}

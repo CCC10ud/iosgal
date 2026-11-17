@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU LEAK LEAK2" in test_sh,
-   "构建脚本把五个场景拆成独立进程跑（含 M2e-7 的 NOMENU 负向对照，避免场景间污染）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE LEAK LEAK2" in test_sh,
+   "构建脚本把六个场景拆成独立进程跑（含 M2e-7 NOMENU / M2e-8 NOSTYLE 负向对照）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -879,6 +879,28 @@ ok("NOMENU" in m2h_test and
 ok("did not reach Menus.tjs" in m2h_test and
    "scripts < 16" in m2h_test,
    "M2e-7：自测要求脚本链真走到 Menus.tjs 且不倒退")
+
+# ---- M2e-8：Window 样式成员（borderStyle / innerSunken / showScrollBars）----
+win8 = read("native/KAG/src/system/GalBoxWindow.tjs")
+consts8 = read("native/KAG/src/system/GalBoxConsts.tjs")
+ok("var borderStyle = 1" in win8 and "bsSingle" in win8 and
+   "M2E8_STYLE_BEGIN" in win8 and "M2E8_STYLE_END" in win8,
+   "M2e-8：Window 骨架补 borderStyle 且带负向对照可删的标记")
+ok("var innerSunken" in win8 and "var showScrollBars" in win8,
+   "M2e-8：紧随 borderStyle 的两个 Window 属性也补齐")
+ok("bsSingle=1" in consts8 and "bsDialog=3" in consts8,
+   "M2e-8：bsSingle / bsDialog 来自官方常量表（M2e-4），没有重复自造")
+ok("function setInnerSize(w, h)" in win8 and "function add(child)" in win8,
+   "M2e-8：Window 容器接口 setInnerSize / add 占位（下一缺口 Timer 前的必要成员）")
+ok("M2H_NOSTYLE" in test_sh and "m2h_nostyle" in test_sh and
+   "M2E8_STYLE_BEGIN" in test_sh,
+   "M2e-8：构建脚本按标记生成 NOSTYLE 负向对照夹具")
+ok("M2e-8 gap (window style) not cleared" in m2h_test and
+   "NOSTYLE control did not reproduce the borderStyle gap" in m2h_test,
+   "M2e-8：A 硬判据清掉样式缺口 + NOSTYLE 必须复现该缺口")
+ok("did not reach MainWindow.tjs" in m2h_test and
+   "old MainWindow.tjs style lines" in m2h_test,
+   "M2e-8：自测要求链真到 MainWindow.tjs 且离开旧样式停点")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

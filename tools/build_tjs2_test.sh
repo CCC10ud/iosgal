@@ -551,6 +551,36 @@ if [ -f "$HOST/test_m2h.cpp" ] && [ -d "$M2G_GAME" ] \
     echo "[tjs2] M2e-7 负向对照夹具里不该有 GalBoxMenu.tjs"
     exit 1
   fi
+  # M2e-8 负向对照：只包含官方 Config + Menu 骨架，但把 Window 骨架里
+  # M2E8_STYLE_BEGIN/END 之间的三个样式成员整段删掉。它必须复现
+  # `Member "borderStyle" does not exist` @ MainWindow.tjs。
+  M2H_NOSTYLE="$OUT/m2h_nostyle"
+  rm -rf "$M2H_NOSTYLE"
+  cp -R "$M2H_GAME" "$M2H_NOSTYLE"
+  python3 - "$M2H_NOSTYLE/system/GalBoxWindow.tjs" <<'PYEOF' || exit 1
+import sys
+p = sys.argv[1]
+with open(p, encoding='utf-8') as f:
+    src = f.read()
+if 'M2E8_STYLE_BEGIN' not in src or 'M2E8_STYLE_END' not in src:
+    raise SystemExit('M2e-8 style markers missing')
+out, skip = [], False
+for line in src.splitlines(True):
+    if 'M2E8_STYLE_BEGIN' in line:
+        skip = True
+        continue
+    if 'M2E8_STYLE_END' in line:
+        skip = False
+        continue
+    if not skip:
+        out.append(line)
+with open(p, 'w', encoding='utf-8', newline='') as f:
+    f.write(''.join(out))
+PYEOF
+  if grep -q "M2E8_STYLE_BEGIN" "$M2H_NOSTYLE/system/GalBoxWindow.tjs"; then
+    echo "[tjs2] M2e-8 负向对照没能删掉样式成员"
+    exit 1
+  fi
 
   if ! grep -q "function KAGWindow_config" "$M2H_GAME/system/Config.tjs"; then
     echo "[tjs2] M2e-5 夹具的 Config.tjs 里没有 KAGWindow_config（官方原文没拼进去？）"
@@ -571,12 +601,12 @@ if [ -f "$HOST/test_m2h.cpp" ] && [ -d "$M2G_GAME" ] \
     # 每个场景**独立进程**跑：run #40 出现过「同进程内第二次执行会破坏官方
     # 启动链」, 若三个场景挤在一个进程里, 后面的场景会被前面的污染,
     # 负向对照就会假红。独立进程 => 每个场景都是干净首跑。
-    for M2H_CASE in A B NOMENU LEAK LEAK2; do
-      OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" 2>&1)
-      diag_crash "M2h-$M2H_CASE" "$?" "$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU"
+    for M2H_CASE in A B NOMENU NOSTYLE LEAK LEAK2; do
+      OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" 2>&1)
+      diag_crash "M2h-$M2H_CASE" "$?" "$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE"
       echo "$OUTPUT_M2H" | sed 's/^/[tjs2]   /'
       case "$M2H_CASE" in
-        A|B|NOMENU)
+        A|B|NOMENU|NOSTYLE)
           if ! echo "$OUTPUT_M2H" | grep -q "M2H_RESULT=OK"; then
             echo "[tjs2] 场景 $M2H_CASE 未通过"; exit 1
           fi

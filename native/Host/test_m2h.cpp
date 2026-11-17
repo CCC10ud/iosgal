@@ -30,8 +30,10 @@
 //   NOMENU 负向对照（M2e-7）：同一套官方 Config，只去掉 Menu 骨架 ——
 //         必须复现菜单子系统缺口（Menu / MenuItem），否则 A 的「跨过
 //         MenuItem」就是恒真式自证。
+//   NOSTYLE 负向对照（M2e-8）：只删掉 Window 骨架里的三个样式成员 ——
+//         必须复现 `Member "borderStyle" does not exist`。
 //
-// A/B/NOMENU 全部通过打印 M2H_RESULT=OK。
+// A/B/NOMENU/NOSTYLE 全部通过打印 M2H_RESULT=OK。
 #include "HostBridge.h"
 #include "XP3Archive.hpp"
 
@@ -39,6 +41,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iterator>
 #include <string>
 
 static int Fail(const char *why, const char *json) {
@@ -207,10 +210,26 @@ static int RunCaseA(const char *game, const char *storage) {
         gapLine > 0 && gapLine <= 150)
         return Fail("the chain is still stuck at the old Menus.tjs:149 gap", j);
     if (scripts < 16)
-        return Fail("script chain regressed below the M2e-6 length", j);
+        return Fail("script chain regressed below the M2e-7 length", j);
+
+    // M2e-8 硬判据：run 44045387957 的下一缺口是 MainWindow.tjs:313 的
+    // `borderStyle = bsSingle;`（bsSingle 常量已在官方常量表里，缺的是
+    // Window 原生对象上的可写属性）。连同紧随的 innerSunken / showScrollBars
+    // 一起必须消失；链要真到 MainWindow.tjs，且不能停在那三行。
+    for (const char *gap : {"\"borderStyle\"", "\"innerSunken\"",
+                            "\"showScrollBars\""}) {
+        if (fatal.find(gap) != std::string::npos ||
+            inner.find(gap) != std::string::npos)
+            return Fail("M2e-8 gap (window style) not cleared", j);
+    }
+    if (trace.find("MainWindow.tjs") == std::string::npos)
+        return Fail("the chain did not reach MainWindow.tjs", j);
+    if (gapBlock.find("MainWindow.tjs") != std::string::npos &&
+        gapLine > 0 && gapLine <= 320)
+        return Fail("the chain is still stuck at the old MainWindow.tjs style lines", j);
 
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
-    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-7)\n",
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-8)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
 
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
@@ -349,6 +368,42 @@ static int RunCaseNoMenu(const char *nomenu, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOSTYLE：删掉 Window 样式成员的负向对照（M2e-8） -----------
+static int RunCaseNoStyle(const char *nostyle, const char *storage) {
+    if (!Exists(std::string(nostyle) + "/system/GalBoxWindow.tjs"))
+        return Fail("NOSTYLE fixture missing GalBoxWindow.tjs", NULL);
+    std::ifstream f((std::string(nostyle) + "/system/GalBoxWindow.tjs").c_str());
+    std::string body((std::istreambuf_iterator<char>(f)),
+                     std::istreambuf_iterator<char>());
+    if (body.find("M2E8_STYLE_BEGIN") != std::string::npos)
+        return Fail("NOSTYLE fixture must have the style block removed", NULL);
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(nostyle, storage, arc);
+    if (!j) return Fail("cannot run the NOSTYLE control", NULL);
+    DumpChain("NOSTYLE", j);
+
+    // Menu 骨架仍应装上 —— 唯一差异是 Window 的三个样式成员。
+    if (StrField(j, "shim").find("M2E7_MENU_SKELETON") == std::string::npos)
+        return Fail("NOSTYLE control lost the Menu skeleton", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string inner = StrField(j, "lastScriptError");
+    const std::string block = StrField(j, "fatalBlock");
+    const bool styleGap =
+        fatal.find("\"borderStyle\"") != std::string::npos ||
+        inner.find("\"borderStyle\"") != std::string::npos ||
+        fatal.find("\"innerSunken\"") != std::string::npos ||
+        inner.find("\"innerSunken\"") != std::string::npos;
+    if (!styleGap || block.find("MainWindow.tjs") == std::string::npos)
+        return Fail("NOSTYLE control did not reproduce the borderStyle gap", j);
+
+    std::printf("[m2h] NOSTYLE verdict: fatal=\"%s\" @ %s:%lld\n",
+                fatal.c_str(), block.c_str(), IntField(j, "fatalLine"));
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 int main(int argc, char **argv) {
     std::setbuf(stdout, NULL); // 崩溃诊断: 不丢已打印进度
     const char *which   = (argc > 1) ? argv[1] : "A";
@@ -356,6 +411,7 @@ int main(int argc, char **argv) {
     const char *ctrl    = (argc > 3) ? argv[3] : "native/TJS2/build/m2h_ctrl";
     const char *storage = (argc > 4) ? argv[4] : ".";
     const char *nomenu  = (argc > 5) ? argv[5] : "";
+    const char *nostyle = (argc > 6) ? argv[6] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -372,11 +428,16 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOSTYLE") == 0) {
+        if (RunCaseNoStyle(nostyle, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "LEAK") == 0)
         return RunLeak(game, storage, false);
     if (std::strcmp(which, "LEAK2") == 0)
         return RunLeak(game, storage, true);
 
-    std::printf("[m2h] unknown case '%s' (A / B / NOMENU / LEAK / LEAK2)\n", which);
+    std::printf("[m2h] unknown case '%s' (A / B / NOMENU / NOSTYLE / LEAK / LEAK2)\n", which);
     return 2;
 }
