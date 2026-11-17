@@ -41,6 +41,10 @@ jobs:
           clang++ --version
           python3 --version
           echo -n "zlib: "; pkg-config --modversion zlib || true
+          # M2b 自测在 Linux 上二次 ExecScript 段错误(139)，macOS 同码通过；
+          # 备 gdb 以便崩溃时脚本自动打 backtrace 定位（只在这台临时 runner 装）。
+          sudo apt-get update -qq && sudo apt-get install -y -qq gdb
+          gdb --version | head -1
 
       - name: 生成 XP3 夹具（M1a / M1c 自测要用）
         run: python3 tools/xp3_fixture.py
