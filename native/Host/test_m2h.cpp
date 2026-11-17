@@ -371,8 +371,25 @@ static int RunCaseA(const char *game, const char *storage) {
         (gapLine == 348 || gapLine == 349))
         return Fail("the chain is still stuck at the MainWindow.tjs background-layer image lines", j);
 
+    // M2e-16 硬判据：run 44090843151 的下一缺口是 GraphicLayer.tjs:422 的
+    // `face = dfAlpha;`，紧接 423 `fillRect(0, 0, imageWidth, imageHeight, 0xff000000);`。
+    // 这条路径由 MainWindow.tjs:356 的 `fore.base.freeImage()` →
+    // AnimationLayer.freeImage() → GraphicLayer.clearImage() 走到 —— 也就是说
+    // M2e-15 补上的图像面刚一生效，立刻撞上绘制面。两个成员各有独立负向对照：
+    //   NODRAWFACE -> 必须复现 face@422
+    //   NOFILLRECT -> 必须复现 fillRect@423
+    if (fatal.find("\"face\"") != std::string::npos ||
+        inner.find("\"face\"") != std::string::npos)
+        return Fail("M2e-16 gap (face) not cleared", j);
+    if (fatal.find("\"fillRect\"") != std::string::npos ||
+        inner.find("\"fillRect\"") != std::string::npos)
+        return Fail("M2e-16 gap (fillRect) not cleared", j);
+    if (gapBlock.find("GraphicLayer.tjs") != std::string::npos &&
+        (gapLine == 422 || gapLine == 423))
+        return Fail("the chain is still stuck at the GraphicLayer.tjs clearImage draw lines", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
-    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-15)\n",
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-16)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
 
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
@@ -927,6 +944,97 @@ static int RunCaseNoSizeToImageSize(const char *nosz, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NODRAWFACE：Layer 缺绘制面成员 face 的负向对照（M2e-16）---------
+// 精准对照：Layer 骨架保留（几何/图像面/命中面都在），只删 M2E16_FACE。
+// 必须复现 `Member "face" does not exist @ GraphicLayer.tjs:422`。
+static int RunCaseNoDrawFace(const char *noface, const char *storage) {
+    if (!Exists(std::string(noface) + "/system/Config.tjs"))
+        return Fail("NODRAWFACE fixture missing Config.tjs", NULL);
+    const std::string skel = std::string(noface) + "/system/GalBoxLayer.tjs";
+    if (!Exists(skel))
+        return Fail("NODRAWFACE fixture must keep the Layer skeleton", NULL);
+    {
+        std::ifstream f(skel.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E16_FACE_BEGIN") != std::string::npos)
+            return Fail("NODRAWFACE fixture must have the face member removed", NULL);
+        if (body.find("var face") != std::string::npos)
+            return Fail("NODRAWFACE fixture still declares face", NULL);
+        // 同段的 fillRect 必须还在 —— 否则测的就是"整段没补"，不是"只缺 face"。
+        if (body.find("function fillRect") == std::string::npos)
+            return Fail("NODRAWFACE fixture must keep fillRect", NULL);
+        for (const char *keep : {"var imageWidth", "var hitType", "class Layer"}) {
+            if (body.find(keep) == std::string::npos) {
+                std::printf("[m2h] NODRAWFACE fixture lost '%s'\n", keep);
+                return Fail("NODRAWFACE fixture lost unrelated Layer members", NULL);
+            }
+        }
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(noface, storage, arc);
+    if (!j) return Fail("cannot run the NODRAWFACE control", NULL);
+    DumpChain("NODRAWFACE", j);
+
+    if (StrField(j, "shim").find("M2E2_LAYER_SKELETON") == std::string::npos)
+        return Fail("NODRAWFACE control lost the Layer skeleton tag", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string inner = StrField(j, "lastScriptError");
+    const std::string block = StrField(j, "fatalBlock");
+    const long long line = IntField(j, "fatalLine");
+    const bool gap = (fatal + " || " + inner).find("\"face\"") != std::string::npos;
+    if (!gap || block.find("GraphicLayer.tjs") == std::string::npos || line != 422)
+        return Fail("NODRAWFACE control did not reproduce the face gap", j);
+
+    std::printf("[m2h] NODRAWFACE verdict: fatal=\"%s\" @ %s:%lld\n",
+                fatal.c_str(), block.c_str(), line);
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
+// ---- 场景 NOFILLRECT：只缺绘制入口 fillRect 的负向对照（M2e-16 第二半）----
+// 与 NODRAWFACE 的区别：face 仍在，只删 fillRect()。若把 fillRect 一起补是
+// 「顺手」，这个场景就会跟 A 一样跑过去 —— 必须复现
+// `Member "fillRect" does not exist @ GraphicLayer.tjs:423`。
+static int RunCaseNoFillRect(const char *nofr, const char *storage) {
+    if (!Exists(std::string(nofr) + "/system/Config.tjs"))
+        return Fail("NOFILLRECT fixture missing Config.tjs", NULL);
+    const std::string skel = std::string(nofr) + "/system/GalBoxLayer.tjs";
+    if (!Exists(skel))
+        return Fail("NOFILLRECT fixture must keep the Layer skeleton", NULL);
+    {
+        std::ifstream f(skel.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E16_FILLRECT_BEGIN") != std::string::npos)
+            return Fail("NOFILLRECT fixture must have the fillRect method removed", NULL);
+        if (body.find("function fillRect") != std::string::npos)
+            return Fail("NOFILLRECT fixture still declares fillRect", NULL);
+        if (body.find("var face") == std::string::npos)
+            return Fail("NOFILLRECT fixture must keep face", NULL);
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(nofr, storage, arc);
+    if (!j) return Fail("cannot run the NOFILLRECT control", NULL);
+    DumpChain("NOFILLRECT", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string inner = StrField(j, "lastScriptError");
+    const std::string block = StrField(j, "fatalBlock");
+    const long long line = IntField(j, "fatalLine");
+    const bool gap = (fatal + " || " + inner).find("\"fillRect\"") != std::string::npos;
+    if (!gap || block.find("GraphicLayer.tjs") == std::string::npos || line != 423)
+        return Fail("NOFILLRECT control did not reproduce the fillRect gap", j);
+
+    std::printf("[m2h] NOFILLRECT verdict: fatal=\"%s\" @ %s:%lld\n",
+                fatal.c_str(), block.c_str(), line);
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // 打开任意容器（目录 / .xp3）跑一次官方链，返回 JSON。
 // dirMode / entryCount 必须在 close() 之前取（close 会清掉它们）。
 static char *RunArchive(const char *path, const char *storage,
@@ -1033,15 +1141,16 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
     }
 
     // 停点必须与 A 场景同口径（目录侧的等价结论由 A 在独立进程里断言）：
-    // M2e-15 之后设备容器里也不许再出现 debugLevel / hitType / hitThreshold /
-    // setImageSize / setSizeToImageSize。
-    // 这几条判据非恒真 —— NODEBUGLEVEL / NOHITTYPE / NOHITTHRESHOLD /
-    // NOIMAGESIZE / NOSIZETOIMAGESIZE 五个负向对照在独立进程里分别证明了
-    // 「删掉成员 → 缺口复现」。
+    // M2e-16 之后设备容器里也不许再出现 debugLevel / hitType / hitThreshold /
+    // setImageSize / setSizeToImageSize / face / fillRect。
+    // 这几条判据非恒真 —— 七个对应负向对照（NODEBUGLEVEL / NOHITTYPE /
+    // NOHITTHRESHOLD / NOIMAGESIZE / NOSIZETOIMAGESIZE / NODRAWFACE /
+    // NOFILLRECT）在独立进程里分别证明了「删掉成员 → 缺口复现」。
     const std::string fatal = StrField(j, "fatal");
     const std::string inner = StrField(j, "lastScriptError");
     for (const char *closed : {"debugLevel", "\"hitType\"", "\"hitThreshold\"",
-                               "\"setImageSize\"", "\"setSizeToImageSize\""}) {
+                               "\"setImageSize\"", "\"setSizeToImageSize\"",
+                               "\"face\"", "\"fillRect\""}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -1051,7 +1160,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
 
     std::printf("[m2h] XP3 verdict: real .xp3 ran the same chain "
                 "(%lld scripts, debugLevel/hitType/hitThreshold/"
-                "setImageSize/setSizeToImageSize all cleared "
+                "setImageSize/setSizeToImageSize/face/fillRect all cleared "
                 "in the device container)\n", scripts);
     GalBoxTJS2Free(j);
     return 0;
@@ -1075,6 +1184,8 @@ int main(int argc, char **argv) {
     const char *noth    = (argc > 14) ? argv[14] : "";
     const char *noimg   = (argc > 15) ? argv[15] : "";
     const char *nosz    = (argc > 16) ? argv[16] : "";
+    const char *noface  = (argc > 17) ? argv[17] : "";
+    const char *nofr    = (argc > 18) ? argv[18] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -1141,6 +1252,16 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NODRAWFACE") == 0) {
+        if (RunCaseNoDrawFace(noface, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
+    if (std::strcmp(which, "NOFILLRECT") == 0) {
+        if (RunCaseNoFillRect(nofr, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -1154,6 +1275,7 @@ int main(int argc, char **argv) {
 
     std::printf("[m2h] unknown case '%s' (A / B / NOMENU / NOSTYLE / NOTIMER / NOFONT / "
                 "NOKAGPARSER / NOASYNCTRIGGER / NODEBUGLEVEL / NOHITTYPE / "
-                "NOHITTHRESHOLD / NOIMAGESIZE / NOSIZETOIMAGESIZE / XP3 / LEAK / LEAK2)\n", which);
+                "NOHITTHRESHOLD / NOIMAGESIZE / NOSIZETOIMAGESIZE / NODRAWFACE / "
+                "NOFILLRECT / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

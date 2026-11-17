@@ -92,6 +92,31 @@ class Layer
 	// M2E15_SIZETO_END
 	// M2E15_END
 
+	// M2E16_FACE_BEGIN —— NODRAWFACE 负向对照只删这一个成员
+	// 官方 LayerIntf.cpp 的**绘制面**成员 face（tTVPDrawFace）。
+	// GraphicLayer.tjs:422 在 clearImage() 里 `face = dfAlpha;`，紧接着
+	// 423 行 fillRect()。这条路径由 MainWindow.tjs:356 的
+	// `fore.base.freeImage()` → AnimationLayer.freeImage() → clearImage() 走到。
+	//
+	// 用法统计：**25 处赋值 / 1 处读取**。唯一的读是 KAGLayer.tjs:376
+	// `var lastface = face, lastha = holdAlpha;`（fillOperateRect 里存档-恢复），
+	// 所以它跟 hitThreshold 同型：主要被写，但**必须给真值**，
+	// 否则恢复回去的是 void，后续 `face = lastface` 就把 void 写回绘制面。
+	//
+	// 初值取 dfAuto(128) 的依据在官方脚本里：AnimationLayer.tjs:369-372 的
+	// clearImage() 是 `face = dfAlpha; fillRect(...); type = ltOpaque; face = dfAuto;`
+	// —— 画完就**回到 dfAuto**，说明 dfAuto 才是常态默认值（不是 dfAlpha）。
+	var face = dfAuto;
+	// M2E16_FACE_END
+
+	// M2E16_FILLRECT_BEGIN —— NOFILLRECT 负向对照只删这一个方法
+	// 官方 Layer 的绘制入口。全项目 13 处调用，5 个参数
+	// (left, top, width, height, color)，另有一个可选的合成模式。
+	// 骨架不渲染，所以这里只提供一个可被调用的空实现；参数名照官方签名写，
+	// 便于以后接真绘制时一眼对得上。
+	function fillRect(l, t, w, h, color, mode) {}
+	// M2E16_FILLRECT_END
+
 	var imageLeft = 0;
 	var imageTop = 0;
 	var isPrimary = false;

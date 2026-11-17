@@ -19,6 +19,8 @@ startup.tjs 只有一行注释 —— 自测全绿而设备上根本没跑过官
      官方 GraphicLayer.tjs:337-338 给它们赋值。
   8. Layer 骨架里带 `function setImageSize` / `function setSizeToImageSize`
      （M2e-15）—— 官方 MainWindow.tjs:348-353 建背景层时连调这两个方法。
+  9. Layer 骨架里带绘制面 `var face` / `function fillRect`（M2e-16）——
+     官方 GraphicLayer.tjs:422-423 的 clearImage() 先设绘制面再填色。
 """
 import os
 import sys
@@ -119,10 +121,21 @@ def main(argv):
             return fail("system/GalBoxLayer.tjs 里没有 %s："
                         "设备端会在 MainWindow.tjs:348 断链" % token.decode())
 
+    # M2e-16：Layer 骨架必须带绘制面（face + fillRect）。官方
+    # GraphicLayer.tjs:422-423 的 clearImage() 是 `face = dfAlpha;` 后紧接
+    # `fillRect(0, 0, imageWidth, imageHeight, 0xff000000)`，由
+    # MainWindow.tjs:356 的 freeImage() 触发。face 的初值必须是 dfAuto ——
+    # 官方 AnimationLayer.tjs:369-372 画完就 `face = dfAuto`，说明它才是常态。
+    for token in (b"var face = dfAuto", b"function fillRect"):
+        if token not in layer:
+            return fail("system/GalBoxLayer.tjs 里没有 %s："
+                        "设备端会在 GraphicLayer.tjs:422 断链" % token.decode())
+
     print("[m2e12b] 内置包核验通过: %d 个文件 / 解压后 %d B / "
           "Initialize.tjs %d B / startup.tjs 真调 Initialize / 九个骨架全在 / "
           "KAGParser 带 debugLevel(M2e-13) / Layer 带 hitType+hitThreshold(M2e-14) / "
-          "Layer 带 setImageSize+setSizeToImageSize(M2e-15)"
+          "Layer 带 setImageSize+setSizeToImageSize(M2e-15) / "
+          "Layer 带 face+fillRect(M2e-16)"
           % (parsed["count"], total, init_bytes))
     return 0
 

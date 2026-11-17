@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把十六个场景拆成独立进程跑（十一个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把十八个场景拆成独立进程跑（十三个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1206,6 +1206,53 @@ ok("function setImageSize" in verifier and "function setSizeToImageSize" in veri
    "M2e-15：出包核验器要求内置包的 Layer 带图像面（两个方法 + imageWidth）")
 ok('"\\"setImageSize\\"", "\\"setSizeToImageSize\\""' in m2h_test,
    "M2e-15：XP3 场景的「已关闭缺口」清单加上了 setImageSize/setSizeToImageSize")
+
+# ---- M2e-16：Layer 绘制面 face / fillRect（GraphicLayer.tjs:422-423）------
+_face_blk = layer_shim.split("M2E16_FACE_BEGIN", 1)[-1].split("M2E16_FACE_END", 1)[0]
+_fr_blk = layer_shim.split("M2E16_FILLRECT_BEGIN", 1)[-1].split("M2E16_FILLRECT_END", 1)[0]
+ok("var face = dfAuto;" in _face_blk,
+   "M2e-16：Layer 骨架声明 face，初值取官方常量 dfAuto（不是裸数字）")
+ok("function fillRect(l, t, w, h, color, mode) {}" in _fr_blk,
+   "M2e-16：Layer 骨架提供 fillRect 空实现，参数名照官方签名")
+# 两个成员各自独立成段：NODRAWFACE 只删 face，NOFILLRECT 只删 fillRect ——
+# 若两者写在同一段里，"只删一个"的对照就做不出来，证明不了第二个成员必要。
+ok(layer_shim.count("M2E16_FACE_BEGIN") == 1 and
+   layer_shim.count("M2E16_FILLRECT_BEGIN") == 1 and
+   layer_shim.find("M2E16_FACE_BEGIN") < layer_shim.find("M2E16_FILLRECT_BEGIN"),
+   "M2e-16：face 与 fillRect 是两段独立标记（两种「只删一个」的对照都成立）")
+# 默认值 dfAuto 的依据在**官方脚本里**，不是拍脑袋：clearImage() 先 dfAlpha
+# 画一版，画完立刻 `face = dfAuto` 回到常态。这条顺序钉住，防止有人改成 dfAlpha。
+_al_raw = raw("native/KAG/src/original/system/AnimationLayer.tjs")
+ok(_al_raw.find(b"face = dfAlpha;") != -1 and
+   _al_raw.find(b"face = dfAlpha;") < _al_raw.find(b"face = dfAuto;"),
+   "M2e-16：官方 clearImage 先 dfAlpha 后**回到 dfAuto** ⇒ 常态默认值是 dfAuto")
+# face 唯一的读点是 fillOperateRect 的存档-恢复 => 必须给真值（同 hitThreshold 型）。
+_kl_raw = raw("native/KAG/src/original/system/KAGLayer.tjs")
+ok(b"var lastface = face, lastha = holdAlpha;" in _kl_raw,
+   "M2e-16：face 唯一读点是 fillOperateRect 的存档-恢复 ⇒ 留 void 会被恢复回绘制面")
+# fillRect 在 20 个官方系统脚本里**没有定义** => 它是原生绘制入口。
+ok(not any(b"function fillRect" in raw("native/KAG/src/original/system/" + _n)
+           for _n in os.listdir(_kagsys) if _n.endswith(".tjs")),
+   "M2e-16：官方系统脚本里没有 function fillRect ⇒ 确认是原生方法，骨架只能给空实现")
+ok("M2e-16 gap (face) not cleared" in m2h_test and
+   "M2e-16 gap (fillRect) not cleared" in m2h_test and
+   "clearImage draw lines" in m2h_test,
+   "M2e-16：A 硬判据清掉 face/fillRect 且离开旧停点")
+ok("gapLine == 422 || gapLine == 423" in m2h_test,
+   "M2e-16：旧停点用精确行号（422/423），不用 <=N 宽范围")
+ok("NODRAWFACE control did not reproduce the face gap" in m2h_test and
+   "NOFILLRECT control did not reproduce the fillRect gap" in m2h_test,
+   "M2e-16：两个负向对照各自复现自己的缺口（证明 fillRect 不是顺手补的）")
+ok("M2H_NODRAWFACE" in test_sh and "M2H_NOFILLRECT" in test_sh and
+   "M2E16_FACE_BEGIN" in test_sh and "M2E16_FILLRECT_BEGIN" in test_sh,
+   "M2e-16：构建脚本用 drop_marked 生成两个负向对照夹具（各删各的）")
+ok("NODRAWFACE fixture must keep fillRect" in m2h_test and
+   "NOFILLRECT fixture must keep face" in m2h_test,
+   "M2e-16：负向对照各自校验夹具只删该删的（删多了会先报错，不会假绿）")
+ok("var face = dfAuto" in verifier and "function fillRect" in verifier,
+   "M2e-16：出包核验器要求内置包的 Layer 带 face + fillRect")
+ok('"\\"face\\"", "\\"fillRect\\""' in m2h_test,
+   "M2e-16：XP3 场景的「已关闭缺口」清单加上了 face/fillRect")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

@@ -13,6 +13,7 @@
 #                      + KAGParser 骨架补 debugLevel 槽位（Milestone 2e-13）
 #                      + Layer 骨架补命中测试面 hitType/hitThreshold（Milestone 2e-14）
 #                      + Layer 骨架补图像面 setImageSize/setSizeToImageSize（Milestone 2e-15）
+#                      + Layer 骨架补绘制面 face/fillRect（Milestone 2e-16）
 #
 # 由 CI 在 xcodebuild 之前调用。设计原则：
 #   - 源码尚未 vendoring 时直接跳过（exit 0），绝不破坏现有出包链路。
@@ -781,6 +782,37 @@ PYEOF
     exit 1
   fi
 
+  # M2e-16 负向对照（一）：只删绘制面成员 face，fillRect 保留。
+  # 必须复现 `Member "face" does not exist` @ GraphicLayer.tjs:422。
+  M2H_NODRAWFACE="$OUT/m2h_nodrawface"
+  rm -rf "$M2H_NODRAWFACE"
+  cp -R "$M2H_GAME" "$M2H_NODRAWFACE"
+  drop_marked "$M2H_NODRAWFACE/system/GalBoxLayer.tjs" M2E16_FACE_BEGIN M2E16_FACE_END
+  if grep -q "M2E16_FACE_BEGIN\|var face" "$M2H_NODRAWFACE/system/GalBoxLayer.tjs"; then
+    echo "[tjs2] M2e-16 NODRAWFACE 夹具里 face 还在"
+    exit 1
+  fi
+  if ! grep -q "function fillRect" "$M2H_NODRAWFACE/system/GalBoxLayer.tjs"; then
+    echo "[tjs2] M2e-16 NODRAWFACE 夹具把 fillRect 也删掉了"
+    exit 1
+  fi
+
+  # M2e-16 负向对照（二）：只删 fillRect，face 保留。
+  # 必须复现 `Member "fillRect" does not exist` @ GraphicLayer.tjs:423 ——
+  # 否则说明它是"顺手"补的。
+  M2H_NOFILLRECT="$OUT/m2h_nofillrect"
+  rm -rf "$M2H_NOFILLRECT"
+  cp -R "$M2H_GAME" "$M2H_NOFILLRECT"
+  drop_marked "$M2H_NOFILLRECT/system/GalBoxLayer.tjs" M2E16_FILLRECT_BEGIN M2E16_FILLRECT_END
+  if grep -q "M2E16_FILLRECT_BEGIN\|function fillRect" "$M2H_NOFILLRECT/system/GalBoxLayer.tjs"; then
+    echo "[tjs2] M2e-16 NOFILLRECT 夹具里 fillRect 还在"
+    exit 1
+  fi
+  if ! grep -q "var face" "$M2H_NOFILLRECT/system/GalBoxLayer.tjs"; then
+    echo "[tjs2] M2e-16 NOFILLRECT 夹具把 face 也删掉了"
+    exit 1
+  fi
+
   if ! grep -q "function KAGWindow_config" "$M2H_GAME/system/Config.tjs"; then
     echo "[tjs2] M2e-5 夹具的 Config.tjs 里没有 KAGWindow_config（官方原文没拼进去？）"
     exit 1
@@ -863,12 +895,12 @@ PYEOF
     # 每个场景**独立进程**跑：run #40 出现过「同进程内第二次执行会破坏官方
     # 启动链」, 若三个场景挤在一个进程里, 后面的场景会被前面的污染,
     # 负向对照就会假红。独立进程 => 每个场景都是干净首跑。
-    for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE XP3 LEAK LEAK2; do
-      OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER" "$GALBOX_KAG_XP3" "$M2H_NODEBUGLEVEL" "$M2H_NOHITTYPE" "$M2H_NOHITTHRESHOLD" "$M2H_NOIMAGESIZE" "$M2H_NOSIZETOIMAGESIZE" 2>&1)
-      diag_crash "M2h-$M2H_CASE" "$?" "$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER" "$GALBOX_KAG_XP3" "$M2H_NODEBUGLEVEL" "$M2H_NOHITTYPE" "$M2H_NOHITTHRESHOLD" "$M2H_NOIMAGESIZE" "$M2H_NOSIZETOIMAGESIZE"
+    for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT XP3 LEAK LEAK2; do
+      OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER" "$GALBOX_KAG_XP3" "$M2H_NODEBUGLEVEL" "$M2H_NOHITTYPE" "$M2H_NOHITTHRESHOLD" "$M2H_NOIMAGESIZE" "$M2H_NOSIZETOIMAGESIZE" "$M2H_NODRAWFACE" "$M2H_NOFILLRECT" 2>&1)
+      diag_crash "M2h-$M2H_CASE" "$?" "$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER" "$GALBOX_KAG_XP3" "$M2H_NODEBUGLEVEL" "$M2H_NOHITTYPE" "$M2H_NOHITTHRESHOLD" "$M2H_NOIMAGESIZE" "$M2H_NOSIZETOIMAGESIZE" "$M2H_NODRAWFACE" "$M2H_NOFILLRECT"
       echo "$OUTPUT_M2H" | sed 's/^/[tjs2]   /'
       case "$M2H_CASE" in
-        A|B|NOMENU|NOSTYLE|NOTIMER|NOFONT|NOKAGPARSER|NOASYNCTRIGGER|NODEBUGLEVEL|NOHITTYPE|NOHITTHRESHOLD|NOIMAGESIZE|NOSIZETOIMAGESIZE|XP3)
+        A|B|NOMENU|NOSTYLE|NOTIMER|NOFONT|NOKAGPARSER|NOASYNCTRIGGER|NODEBUGLEVEL|NOHITTYPE|NOHITTHRESHOLD|NOIMAGESIZE|NOSIZETOIMAGESIZE|NODRAWFACE|NOFILLRECT|XP3)
           if ! echo "$OUTPUT_M2H" | grep -q "M2H_RESULT=OK"; then
             echo "[tjs2] 场景 $M2H_CASE 未通过"; exit 1
           fi
@@ -882,6 +914,7 @@ PYEOF
     echo "[tjs2] M2e-13 自测通过（debugLevel 只写不读的槽位补齐 + NODEBUGLEVEL 负向对照）"
     echo "[tjs2] M2e-14 自测通过（Layer 命中面 hitType/hitThreshold + 两个独立负向对照）"
     echo "[tjs2] M2e-15 自测通过（Layer 图像面 setImageSize/setSizeToImageSize + 两个独立负向对照）"
+    echo "[tjs2] M2e-16 自测通过（Layer 绘制面 face/fillRect + 两个独立负向对照）"
     echo "[tjs2] M2e-12b 自测通过（内置 xp3 与目录夹具跑出同一条 trace、同一停点）"
   else
     echo "[tjs2] M2e-5 自测链接失败:"; cat "$OUT/link_m2h.log"; exit 1
