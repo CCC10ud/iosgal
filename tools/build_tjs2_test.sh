@@ -32,6 +32,15 @@ if [ ! -d "$SRC" ] || [ -z "$(ls -A "$SRC" 2>/dev/null | grep -E '\.(cpp|c)$')" 
 fi
 
 mkdir -p "$OUT"
+# iconv 链接参数按平台探测：macOS / iOS SDK 有独立的 libiconv；**glibc 把 iconv
+# 内建在 libc 里，没有 libiconv.so** —— Linux 上写死 -liconv 会链接失败。
+# （本脚本现在也会在 ubuntu runner 上跑，见 .github/workflows 里的自测 job。）
+if echo 'int main(){return 0;}' | clang++ -x c++ - -liconv -o /dev/null 2>/dev/null; then
+  ICONV_LIB="-liconv"
+else
+  ICONV_LIB=""
+  echo "[tjs2] 该平台没有独立 libiconv（glibc 内建），链接时省略 -liconv"
+fi
 echo "[tjs2] M0: 编译官方 TJS2 核心（含 GalBox 正则层）-> $OUT/libtjs2.a"
 ERR=0
 OBJS=()
@@ -91,7 +100,7 @@ if [ -f "$HOST/HostStreams.cpp" ] && [ -f "$ROOT/native/TJS2/test_m1.cpp" ]; the
   if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$ROOT/native/TJS2/test_m1.cpp" "$OUT/HostStreams.o" "$OUT/XP3Archive.o" \
-        "$OUT/libtjs2.a" -lz -liconv -lpthread -o "$OUT/tjs2test_m1" 2>"$OUT/link_m1.log"; then
+        "$OUT/libtjs2.a" -lz $ICONV_LIB -lpthread -o "$OUT/tjs2test_m1" 2>"$OUT/link_m1.log"; then
     OUTPUT_M1=$("$OUT/tjs2test_m1" "$ROOT/dist/fixtures/demo-game.xp3" "$OUT" 2>&1)
     echo "$OUTPUT_M1" | sed 's/^/[tjs2]   /'
     if echo "$OUTPUT_M1" | grep -q "M1_RESULT=OK"; then
@@ -121,7 +130,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m1c.cpp" ]; then
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m1c.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
-        -lz -liconv -lpthread -o "$OUT/tjs2test_m1c" 2>"$OUT/link_m1c.log"; then
+        -lz $ICONV_LIB -lpthread -o "$OUT/tjs2test_m1c" 2>"$OUT/link_m1c.log"; then
     OUTPUT_M1C=$("$OUT/tjs2test_m1c" "$ROOT/dist/fixtures/demo-game.xp3" "$OUT" 2>&1)
     echo "$OUTPUT_M1C" | sed 's/^/[tjs2]   /'
     if echo "$OUTPUT_M1C" | grep -q "M1C_RESULT=OK"; then
@@ -150,7 +159,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2a.cpp" ] \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m2a.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
-        -lz -liconv -lpthread -o "$OUT/tjs2test_m2a" 2>"$OUT/link_m2a.log"; then
+        -lz $ICONV_LIB -lpthread -o "$OUT/tjs2test_m2a" 2>"$OUT/link_m2a.log"; then
     OUTPUT_M2A=$("$OUT/tjs2test_m2a" "$M2A_GAME" "$OUT" 2>&1)
     echo "$OUTPUT_M2A" | sed 's/^/[tjs2]   /'
     if echo "$OUTPUT_M2A" | grep -q "M2A_RESULT=OK"; then
@@ -190,7 +199,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2b.cpp" ] \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m2b.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
-        -lz -liconv -lpthread -o "$OUT/tjs2test_m2b" 2>"$OUT/link_m2b.log"; then
+        -lz $ICONV_LIB -lpthread -o "$OUT/tjs2test_m2b" 2>"$OUT/link_m2b.log"; then
     OUTPUT_M2B=$("$OUT/tjs2test_m2b" "$M2B_GAME" "$OUT" 2>&1)
     echo "$OUTPUT_M2B" | sed 's/^/[tjs2]   /'
     if echo "$OUTPUT_M2B" | grep -q "M2B_RESULT=OK"; then
@@ -235,7 +244,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2c.cpp" ] \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m2c.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
-        -lz -liconv -lpthread -o "$OUT/tjs2test_m2c" 2>"$OUT/link_m2c.log"; then
+        -lz $ICONV_LIB -lpthread -o "$OUT/tjs2test_m2c" 2>"$OUT/link_m2c.log"; then
     OUTPUT_M2C=$("$OUT/tjs2test_m2c" "$M2C_A" "$M2C_B" "$OUT" 2>&1)
     echo "$OUTPUT_M2C" | sed 's/^/[tjs2]   /'
     if echo "$OUTPUT_M2C" | grep -q "M2C_RESULT=OK"; then
@@ -287,7 +296,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2d.cpp" ] \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m2d.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
-        -lz -liconv -lpthread -o "$OUT/tjs2test_m2d" 2>"$OUT/link_m2d.log"; then
+        -lz $ICONV_LIB -lpthread -o "$OUT/tjs2test_m2d" 2>"$OUT/link_m2d.log"; then
     OUTPUT_M2D=$("$OUT/tjs2test_m2d" "$M2D_A" "$M2D_B" "$OUT" 2>&1)
     echo "$OUTPUT_M2D" | sed 's/^/[tjs2]   /'
     if echo "$OUTPUT_M2D" | grep -q "M2D_RESULT=OK"; then
@@ -366,7 +375,7 @@ PYEOF
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m2e.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
-        -lz -liconv -lpthread -o "$OUT/tjs2test_m2e" 2>"$OUT/link_m2e.log"; then
+        -lz $ICONV_LIB -lpthread -o "$OUT/tjs2test_m2e" 2>"$OUT/link_m2e.log"; then
     OUTPUT_M2E=$("$OUT/tjs2test_m2e" "$M2E_GAME" "$M2E_MIN" "$OUT" 2>&1)
     echo "$OUTPUT_M2E" | sed 's/^/[tjs2]   /'
     if echo "$OUTPUT_M2E" | grep -q "M2E_RESULT=OK"; then
@@ -414,7 +423,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2f.cpp" ] \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m2f.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
-        -lz -liconv -lpthread -o "$OUT/tjs2test_m2f" 2>"$OUT/link_m2f.log"; then
+        -lz $ICONV_LIB -lpthread -o "$OUT/tjs2test_m2f" 2>"$OUT/link_m2f.log"; then
     OUTPUT_M2F=$("$OUT/tjs2test_m2f" "$M2F_GAME" "$M2F_NOSHIM" "$OUT" 2>&1)
     echo "$OUTPUT_M2F" | sed 's/^/[tjs2]   /'
     if echo "$OUTPUT_M2F" | grep -q "M2F_RESULT=OK"; then
@@ -459,7 +468,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2g.cpp" ] \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m2g.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
-        -lz -liconv -lpthread -o "$OUT/tjs2test_m2g" 2>"$OUT/link_m2g.log"; then
+        -lz $ICONV_LIB -lpthread -o "$OUT/tjs2test_m2g" 2>"$OUT/link_m2g.log"; then
     OUTPUT_M2G=$("$OUT/tjs2test_m2g" "$M2G_GAME" "$M2G_NOWIN" "$OUT" 2>&1)
     echo "$OUTPUT_M2G" | sed 's/^/[tjs2]   /'
     if echo "$OUTPUT_M2G" | grep -q "M2G_RESULT=OK"; then
@@ -509,14 +518,25 @@ if [ -f "$HOST/test_m2h.cpp" ] && [ -d "$M2G_GAME" ] \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m2h.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
-        -lz -liconv -lpthread -o "$OUT/tjs2test_m2h" 2>"$OUT/link_m2h.log"; then
-    OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_GAME" "$M2H_CTRL" "$OUT" 2>&1)
-    echo "$OUTPUT_M2H" | sed 's/^/[tjs2]   /'
-    if echo "$OUTPUT_M2H" | grep -q "M2H_RESULT=OK"; then
-      echo "[tjs2] M2e-5 自测通过（官方 Config.tjs 消掉 KAGWindow_config 缺口 + 负向对照）"
-    else
-      echo "[tjs2] M2e-5 自测未通过"; exit 1
-    fi
+        -lz $ICONV_LIB -lpthread -o "$OUT/tjs2test_m2h" 2>"$OUT/link_m2h.log"; then
+    # 每个场景**独立进程**跑：run #40 出现过「同进程内第二次执行会破坏官方
+    # 启动链」, 若三个场景挤在一个进程里, 后面的场景会被前面的污染,
+    # 负向对照就会假红。独立进程 => 每个场景都是干净首跑。
+    for M2H_CASE in A B LEAK LEAK2; do
+      OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" 2>&1)
+      echo "$OUTPUT_M2H" | sed 's/^/[tjs2]   /'
+      case "$M2H_CASE" in
+        A|B)
+          if ! echo "$OUTPUT_M2H" | grep -q "M2H_RESULT=OK"; then
+            echo "[tjs2] M2e-5 场景 $M2H_CASE 未通过"; exit 1
+          fi
+          ;;
+        *)
+          # LEAK / LEAK2 只是诊断, 不参与判定(它们的结论写在 verdict 里)
+          ;;
+      esac
+    done
+    echo "[tjs2] M2e-5 自测通过（官方 Config.tjs 消掉 KAGWindow_config 缺口 + 负向对照）"
   else
     echo "[tjs2] M2e-5 自测链接失败:"; cat "$OUT/link_m2h.log"; exit 1
   fi

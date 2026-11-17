@@ -709,6 +709,12 @@ ok("the official script chain got shorter than in M2e-2" not in m2g_test,
 ok("M2G_RESULT=OK" in test_sh and "test_m2g.cpp" in test_sh,
    "CI 运行 M2e-3 自测")
 ok("M2E3_WINDOW_SKELETON" in wf, "CI 核验 Window 骨架层真的进 app 二进制")
+# macOS runner 队列拥堵会把迭代卡死（实测排队 15 分钟+ 仍被 cancel）；
+# 而 TJS2 的真编译真运行自测**不需要 Xcode**，只要 clang++ 与 zlib。
+ok("ubuntu-latest" in wf and "build_tjs2_test.sh" in wf,
+   "workflow 里有一个 Linux runner 的 TJS2 自测 job（绕开 macOS runner 排队）")
+ok("ICONV_LIB" in test_sh and "glibc" in test_sh,
+   "自测脚本按平台探测 iconv 链接参数（glibc 没有独立 libiconv）")
 for tag in ("M1C_HOST_v1", "M2A_SCRIPTS_EXEC_STORAGE", "M2B_STORAGES_AUTOPATH",
             "M2C_SYSTEM_DEBUG", "M2D_REGEXP_STDREGEX",
             "M2E_SYSTEM_SCRIPTS_VENDORED", "M2E2_LAYER_SKELETON"):
@@ -781,8 +787,14 @@ ok("negative control did not reproduce the KAGWindow_config gap" in m2h_test,
    "自测有负向对照（探针版 Config 必须复现该缺口）")
 ok("scripts < 15" in m2h_test,
    "自测断言加载脚本数不比 M2e-4 的 15 个倒退")
-ok("A2 verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
+ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
    "自测带「同进程第二次执行」的诊断探针（状态泄漏定位用）")
+ok("LEAK2" in m2h_test and "warmup" in m2h_test,
+   "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
+# 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
+ok("M2H_CASE in A B LEAK LEAK2" in test_sh or
+   "for M2H_CASE in A B LEAK LEAK2" in test_sh,
+   "构建脚本把四个场景拆成独立进程跑（避免场景间污染）")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
