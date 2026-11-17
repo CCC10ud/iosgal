@@ -1,0 +1,42 @@
+// GalBoxTimer.tjs — GalBox 自写的 `Timer` 骨架（**非官方**，Milestone 2e-9）
+//
+// 官方 `Timer` 是 kirikiri2 核心里的原生类（TimerIntf.cpp，绑 Windows
+// 消息泵）。KAG 的官方 MainWindow.tjs:337 在构造主窗口时第一句就是：
+//     quakeTimer = new Timer(onQuakeTimerInterval, '');
+//     add(quakeTimer);
+//     quakeTimer.interval = 50;
+// run 44046384978（M2e-8）实测的下一缺口正是：
+//     Member "Timer" does not exist @ MainWindow.tjs:337
+//
+// 逐条统计官方 20 个系统脚本对 Timer 的用法，只有下面这些：
+//   new Timer(callback, name) —— callback 是函数（也可能为 void）
+//   .interval（读/写，单位毫秒；0 表示停止）
+//   .enabled（读/写）
+//   .capacity（写，MessageLayer.tjs:397）
+//   invalidate timer（走 finalize）
+// 官方 Conductor.tjs:31 的注释写明：第二参数传空字符串表示用宿主 tick 而非
+// 系统定时消息。骨架不做真实计时，只是把属性存下来，让官方脚本继续往下跑。
+//
+// ⚠️ TJS2 语法雷（M2e-3 踩过）：不要用 `...` 变参定义，也不要把 `invalidate`
+// 之类对象关键字当函数名 —— 任何一个都会让整个 shim 语法错误、连带类装不上。
+
+class Timer
+{
+	var callback;
+	var timerName = "";
+	var interval = 0;
+	var enabled = false;
+	var capacity = 0;
+
+	function Timer(cb, nm)
+	{
+		callback = cb;
+		timerName = nm;
+	}
+
+	function finalize() {}
+
+	// 官方语义由 enabled + interval 驱动；这里只保留可写状态，不真的触发。
+	function start() { enabled = true; }
+	function stop() { enabled = false; }
+}

@@ -532,6 +532,8 @@ if [ -f "$HOST/test_m2h.cpp" ] && [ -d "$M2G_GAME" ] \
   cp -R "$M2G_GAME" "$M2H_GAME"
   # M2e-6：把 Pad 骨架放进夹具，让 UpdateConfig.tjs:79 的 new Pad() 能实例化。
   cp "$KAG/src/system/GalBoxPad.tjs" "$M2H_GAME/system/GalBoxPad.tjs"
+  # M2e-9：把 Timer 骨架放进夹具，让 MainWindow.tjs:337 的 new Timer() 能实例化。
+  cp "$KAG/src/system/GalBoxTimer.tjs" "$M2H_GAME/system/GalBoxTimer.tjs"
   # 官方 Config.tjs = 原始 Shift-JIS 字节 + 前置一行 ASCII 版本号。
   # 版本号用来让 Initialize.tjs 跳过 UpdateConfig.tjs 分支；
   # ASCII 在 CP932 里恒等，和 SJIS 正文混排安全。
@@ -581,6 +583,16 @@ PYEOF
     echo "[tjs2] M2e-8 负向对照没能删掉样式成员"
     exit 1
   fi
+  # M2e-9 负向对照：唯一区别是**不放** Timer 骨架，其余全一样。
+  # 必须复现 `Member "Timer" does not exist` @ MainWindow.tjs:337。
+  M2H_NOTIMER="$OUT/m2h_notimer"
+  rm -rf "$M2H_NOTIMER"
+  cp -R "$M2H_GAME" "$M2H_NOTIMER"
+  rm -f "$M2H_NOTIMER/system/GalBoxTimer.tjs"
+  if [ -f "$M2H_NOTIMER/system/GalBoxTimer.tjs" ]; then
+    echo "[tjs2] M2e-9 负向对照夹具里不该有 GalBoxTimer.tjs"
+    exit 1
+  fi
 
   if ! grep -q "function KAGWindow_config" "$M2H_GAME/system/Config.tjs"; then
     echo "[tjs2] M2e-5 夹具的 Config.tjs 里没有 KAGWindow_config（官方原文没拼进去？）"
@@ -601,12 +613,12 @@ PYEOF
     # 每个场景**独立进程**跑：run #40 出现过「同进程内第二次执行会破坏官方
     # 启动链」, 若三个场景挤在一个进程里, 后面的场景会被前面的污染,
     # 负向对照就会假红。独立进程 => 每个场景都是干净首跑。
-    for M2H_CASE in A B NOMENU NOSTYLE LEAK LEAK2; do
-      OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" 2>&1)
-      diag_crash "M2h-$M2H_CASE" "$?" "$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE"
+    for M2H_CASE in A B NOMENU NOSTYLE NOTIMER LEAK LEAK2; do
+      OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" 2>&1)
+      diag_crash "M2h-$M2H_CASE" "$?" "$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER"
       echo "$OUTPUT_M2H" | sed 's/^/[tjs2]   /'
       case "$M2H_CASE" in
-        A|B|NOMENU|NOSTYLE)
+        A|B|NOMENU|NOSTYLE|NOTIMER)
           if ! echo "$OUTPUT_M2H" | grep -q "M2H_RESULT=OK"; then
             echo "[tjs2] 场景 $M2H_CASE 未通过"; exit 1
           fi
