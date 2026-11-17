@@ -17,6 +17,9 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstdarg>
+#include <cwchar>     // wcscmp 等宽字符函数：glibc 不会经 <cstdio> 隐式引入
+#include <climits>    // INT_MAX 等整数界限：glibc 需要显式 <climits>
+#include <string>     // std::string：glibc 不会经其他头隐式引入
 #include <stdlib.h>
 
 // 1) macOS 无 <malloc.h>（free/alloca 语义在 <stdlib.h> / <alloca.h>）。

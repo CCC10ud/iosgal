@@ -715,6 +715,12 @@ ok("ubuntu-latest" in wf and "build_tjs2_test.sh" in wf,
    "workflow 里有一个 Linux runner 的 TJS2 自测 job（绕开 macOS runner 排队）")
 ok("ICONV_LIB" in test_sh and "glibc" in test_sh,
    "自测脚本按平台探测 iconv 链接参数（glibc 没有独立 libiconv）")
+compat_h = read("native/TJS2/tjs2_compat.h")
+# run #47：Linux runner 首次真编译暴露 macOS libc++ 隐式引入的 3 个标准头。
+# glibc 不隐式给 std::string / wcscmp / INT_MAX，必须在注入头里显式补齐。
+for hdr in ("<cwchar>", "<climits>", "<string>"):
+    ok("#include " + hdr in compat_h,
+       "兼容头显式引入 " + hdr + "（Linux/glibc 编译必需，macOS 靠隐式引入会漏）")
 for tag in ("M1C_HOST_v1", "M2A_SCRIPTS_EXEC_STORAGE", "M2B_STORAGES_AUTOPATH",
             "M2C_SYSTEM_DEBUG", "M2D_REGEXP_STDREGEX",
             "M2E_SYSTEM_SCRIPTS_VENDORED", "M2E2_LAYER_SKELETON"):
