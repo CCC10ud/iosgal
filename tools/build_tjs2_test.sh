@@ -201,6 +201,8 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2b.cpp" ] \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
         -lz $ICONV_LIB -lpthread -o "$OUT/tjs2test_m2b" 2>"$OUT/link_m2b.log"; then
     OUTPUT_M2B=$("$OUT/tjs2test_m2b" "$M2B_GAME" "$OUT" 2>&1)
+    M2B_RC=$?
+    echo "[tjs2] M2b exit code: $M2B_RC"
     echo "$OUTPUT_M2B" | sed 's/^/[tjs2]   /'
     if echo "$OUTPUT_M2B" | grep -q "M2B_RESULT=OK"; then
       echo "[tjs2] M2b 自测通过（Storages autoPath + 官方 SJIS Utils.tjs 真跑）"

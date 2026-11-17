@@ -50,6 +50,8 @@ static bool Exists(const std::string &path) {
 }
 
 int main(int argc, char **argv) {
+    // 无缓冲：Linux 上若崩溃，已打印的进度不能丢在 stdio 缓冲里（run #48 诊断）
+    std::setbuf(stdout, NULL);
     const char *gameDir = (argc > 1) ? argv[1] : "native/TJS2/build/m2b_game";
     const char *storage = (argc > 2) ? argv[2] : ".";
 
