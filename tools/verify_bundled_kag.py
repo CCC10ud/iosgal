@@ -21,6 +21,8 @@ startup.tjs 只有一行注释 —— 自测全绿而设备上根本没跑过官
      （M2e-15）—— 官方 MainWindow.tjs:348-353 建背景层时连调这两个方法。
   9. Layer 骨架里带绘制面 `var face` / `function fillRect`（M2e-16）——
      官方 GraphicLayer.tjs:422-423 的 clearImage() 先设绘制面再填色。
+ 10. Layer 骨架里带 `var cursor = crDefault`（M2e-17）—— 官方
+     GraphicLayer.tjs:58 的 setDefaultCursor() 给该成员赋值。
 """
 import os
 import sys
@@ -131,11 +133,20 @@ def main(argv):
             return fail("system/GalBoxLayer.tjs 里没有 %s："
                         "设备端会在 GraphicLayer.tjs:422 断链" % token.decode())
 
+    # 第 10 条（M2e-17）：光标面 cursor。GraphicLayer.tjs:58 的 setDefaultCursor()
+    # 是 `cursor = defaultCursor = c;`，由 MainWindow.tjs:359-360 给表/裏两张
+    # 背景层各调一次。cursor 是原生 Layer 成员，全脚本没有 var 声明
+    # （GraphicLayer.tjs:13 那个属于 ProvinceContext）；初值必须是 crDefault ——
+    # 官方 GraphicLayer.tjs:31 自己就是 `var defaultCursor = crDefault;`。
+    if b"var cursor = crDefault" not in layer:
+        return fail("system/GalBoxLayer.tjs 里没有 var cursor = crDefault："
+                    "设备端会在 GraphicLayer.tjs:58 断链")
+
     print("[m2e12b] 内置包核验通过: %d 个文件 / 解压后 %d B / "
           "Initialize.tjs %d B / startup.tjs 真调 Initialize / 九个骨架全在 / "
           "KAGParser 带 debugLevel(M2e-13) / Layer 带 hitType+hitThreshold(M2e-14) / "
           "Layer 带 setImageSize+setSizeToImageSize(M2e-15) / "
-          "Layer 带 face+fillRect(M2e-16)"
+          "Layer 带 face+fillRect(M2e-16) / Layer 带 cursor(M2e-17)"
           % (parsed["count"], total, init_bytes))
     return 0
 

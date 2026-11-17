@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把十八个场景拆成独立进程跑（十三个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把十九个场景拆成独立进程跑（十四个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1253,6 +1253,45 @@ ok("var face = dfAuto" in verifier and "function fillRect" in verifier,
    "M2e-16：出包核验器要求内置包的 Layer 带 face + fillRect")
 ok('"\\"face\\"", "\\"fillRect\\""' in m2h_test,
    "M2e-16：XP3 场景的「已关闭缺口」清单加上了 face/fillRect")
+
+# ---- M2e-17：Layer 光标面 cursor（GraphicLayer.tjs:58）--------------------
+_cur_blk = layer_shim.split("M2E17_BEGIN", 1)[-1].split("M2E17_END", 1)[0]
+ok("var cursor = crDefault;" in _cur_blk,
+   "M2e-17：Layer 骨架声明 cursor，初值取官方常量 crDefault（不是裸数字）")
+# cursor 默认值的依据在官方脚本里：GraphicLayer.tjs:31 自己就是
+# `var defaultCursor = crDefault;`（注释「デフォルトのカーソル」），而
+# setDefaultCursor 把两个成员写成同一个值 ⇒ 没设过默认光标时 cursor == defaultCursor 初值。
+_gl_raw = raw("native/KAG/src/original/system/GraphicLayer.tjs")
+ok(b"var defaultCursor = crDefault;" in _gl_raw and
+   b"cursor = defaultCursor = c;" in _gl_raw,
+   "M2e-17：官方 setDefaultCursor 把 cursor 与 defaultCursor 写成同值 ⇒ 初值 crDefault")
+# ⚠️ 陷阱：GraphicLayer.tjs:13 的 `var cursor;` 属于 ProvinceContext，不是
+# GraphicLayer —— 别把它当成"已声明"（真当成已声明就会误判本缺口无需补）。
+_pc = _gl_raw.split(b"class ProvinceContext", 1)[1].split(b"}", 1)[0]
+_gl_class = _gl_raw.split(b"class GraphicLayer", 1)[1]
+ok(b"var cursor;" in _pc and
+   not any(l.strip().startswith(b"var cursor") for l in _gl_class.split(b"\n")),
+   "M2e-17：cursor 在 GraphicLayer 里没有任何 var 声明（第 13 行属于 ProvinceContext）")
+# 必须给真值而不是留 void：MessageLayer.tjs:2208 是**比较**，void 参与比较会
+# 静默走错分支（不抛异常），这也正是这类成员最难查的地方。
+_ml_raw = raw("native/KAG/src/original/system/MessageLayer.tjs")
+ok(b"if(cursor == window.cursorPointed)" in _ml_raw,
+   "M2e-17：cursor 被 MessageLayer 拿去做比较 ⇒ 留 void 会静默走错分支")
+ok("M2e-17 gap (cursor) not cleared" in m2h_test and
+   "setDefaultCursor line" in m2h_test and
+   "gapLine == 58" in m2h_test,
+   "M2e-17：A 硬判据清掉 cursor 且离开旧停点（精确行号 58，不用 <=N）")
+ok("NOCURSOR control did not reproduce the cursor gap" in m2h_test,
+   "M2e-17：NOCURSOR 负向对照必须复现 cursor@58")
+ok("M2H_NOCURSOR" in test_sh and "M2E17_BEGIN" in test_sh,
+   "M2e-17：构建脚本用 drop_marked 生成 NOCURSOR 夹具")
+ok("NOCURSOR fixture must keep the Layer skeleton" in m2h_test and
+   "NOCURSOR fixture still declares cursor" in m2h_test,
+   "M2e-17：负向对照校验夹具只删 cursor（骨架与其余成员都得在）")
+ok("var cursor = crDefault" in verifier,
+   "M2e-17：出包核验器要求内置包的 Layer 带 cursor")
+ok('"\\"face\\"", "\\"fillRect\\"", "\\"cursor\\""' in m2h_test,
+   "M2e-17：XP3 场景的「已关闭缺口」清单加上了 cursor")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

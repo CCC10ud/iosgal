@@ -117,6 +117,28 @@ class Layer
 	function fillRect(l, t, w, h, color, mode) {}
 	// M2E16_FILLRECT_END
 
+	// M2E17_BEGIN —— NOCURSOR 负向对照按此标记整段删除
+	// 官方 LayerIntf.cpp 的**光标面**成员 cursor（tTVPCursorType）。
+	// 官方 GraphicLayer.tjs:56 定义 setDefaultCursor(c) { cursor = defaultCursor = c; }
+	// —— `cursor` 是全脚本里**没有任何 var 声明**的那个（GraphicLayer.tjs:13 的
+	// `var cursor;` 属于上面的 ProvinceContext，不是 GraphicLayer，别误判成已声明）。
+	// MainWindow.tjs:359-360 给表/裏两张背景层各调一次 setDefaultCursor，
+	// 所以这一句是启动链必经之路。
+	//
+	// 用法统计：**19 处赋值 / 4 处读取**。读里有两处是真读值、不是读 defaultCursor：
+	//   GraphicLayer.tjs:138  `tmp = src.cursor; src.cursor = cursor;`（comp 图层互换）
+	//   MessageLayer.tjs:2208 `if(cursor == window.cursorPointed) cursor = crDefault;`
+	// 第二处是**比较** —— 留 void 就变成 `void == 0` 的假值语义，永远进不了分支，
+	// 且不报错。所以必须给真值。
+	//
+	// 初值取 crDefault(0) 的依据在官方脚本里：GraphicLayer.tjs:31
+	// `var defaultCursor = crDefault;`（注释「デフォルトのカーソル」），
+	// 而 setDefaultCursor 把 cursor 与 defaultCursor 写成同一个值 ——
+	// 没设过默认光标时，cursor 就应该是 defaultCursor 的初值。
+	// cr* 常量族来自官方常量表 GalBoxConsts.tjs:46（M2e-4），不在这里自造。
+	var cursor = crDefault;
+	// M2E17_END
+
 	var imageLeft = 0;
 	var imageTop = 0;
 	var isPrimary = false;
