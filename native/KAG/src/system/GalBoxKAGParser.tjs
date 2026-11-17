@@ -22,6 +22,22 @@
 
 class KAGParser
 {
+	// M2E13_BEGIN
+	// M2e-13：官方 Conductor.tjs:350 / AnimationLayer.tjs:266 在构造里给
+	// `debugLevel` 赋值（tkdlVerbose / tkdlNone）。TJS2 的类实例**不能**
+	// 凭空加成员，赋值会抛
+	//     Member "debugLevel" does not exist @ AnimationLayer.tjs:266
+	// （run 44057349589 实测，链在 AnimationLayer.tjs 上就断了）。
+	//
+	// 全项目统计：debugLevel 只有 2 处**赋值**、0 处**读取** —— 它只是官方
+	// 从 tTVPKAGDebugLevel 抄下来的调试等级槽位，没有任何行为挂在上面。
+	// 因此这里只声明不实现：给它一个可写成员，赋值不再抛异常即可。
+	//
+	// 为什么不改官方 Conductor.tjs：那是被测对象，改它等于把缺口「改掉」，
+	// 后面所有判据都失去意义。缺的东西只能补在 GalBox 侧的骨架上。
+	var debugLevel;
+	// M2E13_END
+
 	function KAGParser()
 	{
 	}

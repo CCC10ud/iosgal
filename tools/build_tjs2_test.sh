@@ -10,6 +10,7 @@
 #                      + GalBox 的 Layer 骨架能被官方脚本类继承（Milestone 2e-2）
 #                      + GalBox 的 Window 骨架能被官方脚本类继承（Milestone 2e-3）
 #                      + 夹具换成官方 Config.tjs（Milestone 2e-5）
+#                      + KAGParser 骨架补 debugLevel 槽位（Milestone 2e-13）
 #
 # 由 CI 在 xcodebuild 之前调用。设计原则：
 #   - 源码尚未 vendoring 时直接跳过（exit 0），绝不破坏现有出包链路。
@@ -656,6 +657,41 @@ PYEOF
     exit 1
   fi
 
+  # M2e-13 负向对照：KAGParser 骨架文件**保留**，只把 M2E13_BEGIN/END 之间
+  # 的 `var debugLevel;` 整段删掉。官方 AnimationLayer.tjs:266 / Conductor.tjs:350
+  # 给该成员赋值，缺了就必须复现 `Member "debugLevel" does not exist`。
+  M2H_NODEBUGLEVEL="$OUT/m2h_nodebuglevel"
+  rm -rf "$M2H_NODEBUGLEVEL"
+  cp -R "$M2H_GAME" "$M2H_NODEBUGLEVEL"
+  python3 - "$M2H_NODEBUGLEVEL/system/GalBoxKAGParser.tjs" <<'PYEOF' || exit 1
+import sys
+p = sys.argv[1]
+with open(p, encoding='utf-8') as f:
+    src = f.read()
+if 'M2E13_BEGIN' not in src or 'M2E13_END' not in src:
+    raise SystemExit('M2e-13 debugLevel markers missing')
+out, skip = [], False
+for line in src.splitlines(True):
+    if 'M2E13_BEGIN' in line:
+        skip = True
+        continue
+    if 'M2E13_END' in line:
+        skip = False
+        continue
+    if not skip:
+        out.append(line)
+with open(p, 'w', encoding='utf-8', newline='') as f:
+    f.write(''.join(out))
+PYEOF
+  if grep -q "M2E13_BEGIN" "$M2H_NODEBUGLEVEL/system/GalBoxKAGParser.tjs"; then
+    echo "[tjs2] M2e-13 负向对照没能删掉 debugLevel 成员"
+    exit 1
+  fi
+  if grep -q "var debugLevel" "$M2H_NODEBUGLEVEL/system/GalBoxKAGParser.tjs"; then
+    echo "[tjs2] M2e-13 负向对照里 debugLevel 还在"
+    exit 1
+  fi
+
   if ! grep -q "function KAGWindow_config" "$M2H_GAME/system/Config.tjs"; then
     echo "[tjs2] M2e-5 夹具的 Config.tjs 里没有 KAGWindow_config（官方原文没拼进去？）"
     exit 1
@@ -738,12 +774,12 @@ PYEOF
     # 每个场景**独立进程**跑：run #40 出现过「同进程内第二次执行会破坏官方
     # 启动链」, 若三个场景挤在一个进程里, 后面的场景会被前面的污染,
     # 负向对照就会假红。独立进程 => 每个场景都是干净首跑。
-    for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER XP3 LEAK LEAK2; do
-      OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER" "$GALBOX_KAG_XP3" 2>&1)
-      diag_crash "M2h-$M2H_CASE" "$?" "$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER" "$GALBOX_KAG_XP3"
+    for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL XP3 LEAK LEAK2; do
+      OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER" "$GALBOX_KAG_XP3" "$M2H_NODEBUGLEVEL" 2>&1)
+      diag_crash "M2h-$M2H_CASE" "$?" "$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER" "$GALBOX_KAG_XP3" "$M2H_NODEBUGLEVEL"
       echo "$OUTPUT_M2H" | sed 's/^/[tjs2]   /'
       case "$M2H_CASE" in
-        A|B|NOMENU|NOSTYLE|NOTIMER|NOFONT|NOKAGPARSER|NOASYNCTRIGGER|XP3)
+        A|B|NOMENU|NOSTYLE|NOTIMER|NOFONT|NOKAGPARSER|NOASYNCTRIGGER|NODEBUGLEVEL|XP3)
           if ! echo "$OUTPUT_M2H" | grep -q "M2H_RESULT=OK"; then
             echo "[tjs2] 场景 $M2H_CASE 未通过"; exit 1
           fi
@@ -754,6 +790,7 @@ PYEOF
       esac
     done
     echo "[tjs2] M2e-5 自测通过（官方 Config.tjs 消掉 KAGWindow_config 缺口 + 负向对照）"
+    echo "[tjs2] M2e-13 自测通过（debugLevel 只写不读的槽位补齐 + NODEBUGLEVEL 负向对照）"
     echo "[tjs2] M2e-12b 自测通过（内置 xp3 与目录夹具跑出同一条 trace、同一停点）"
   else
     echo "[tjs2] M2e-5 自测链接失败:"; cat "$OUT/link_m2h.log"; exit 1

@@ -166,8 +166,37 @@ static int RunCaseA(const char *game, const char *storage) {
     std::printf("[m2h] A (official Config.tjs) -> %s\n", j);
     DumpChain("A", j);
 
+    // ok:true 意味着整条官方启动链**跑通了** —— 那是 M2e 系列的终点，按成功收。
+    // 但「跑通」不能只是一句 ok：必须同时满足脚本数 / autoPath / 骨架 tag 三项
+    // 硬指标，否则就是半路静默跳过（run #38 的教训：状态串里有 tag ≠ 真装上）。
+    // ok:false 才走下面逐缺口的判据。
+    if (Has(j, "\"ok\":true")) {
+        const std::string traceOk = StrField(j, "scriptTrace");
+        const int nOk = CountTrace(traceOk);
+        const long long apOk = IntField(j, "autoPathCount");
+        const std::string shimOk = StrField(j, "shim");
+        std::printf("[m2h] A: startup chain COMPLETED (ok=true, %d scripts, "
+                    "autoPath=%lld)\n", nOk, apOk);
+        if (nOk < 16)
+            return Fail("startup reported success after reading too few scripts", j);
+        if (apOk < 5)
+            return Fail("startup reported success without registering autoPaths", j);
+        if (traceOk.find("MainWindow.tjs") == std::string::npos)
+            return Fail("startup reported success without reaching MainWindow.tjs", j);
+        for (const char *tag : {"M2E4_OFFICIAL_CONSTS", "M2E11_KAGPARSER_SKELETON",
+                                "M2E12_ASYNCTRIGGER_SKELETON"}) {
+            if (shimOk.find(tag) == std::string::npos) {
+                std::printf("[m2h] A: success path missing shim tag %s\n", tag);
+                return Fail("startup reported success without the expected skeletons", j);
+            }
+        }
+        if (shimOk.find("!failed:") != std::string::npos)
+            return Fail("startup reported success but a skeleton failed to load", j);
+        GalBoxTJS2Free(j);
+        return 0;
+    }
     if (!Has(j, "\"ok\":false"))
-        return Fail("official startup unexpectedly reported success", j);
+        return Fail("startup result JSON has neither ok:true nor ok:false", j);
 
     // 硬判据 1：run #45 的缺口（KAGWindow_config 缺失）必须消失 ——
     // 它来自游戏自带的 Config.tjs，夹具换成官方 Config.~new 后就该有。
@@ -290,8 +319,25 @@ static int RunCaseA(const char *game, const char *storage) {
         gapLine > 0 && gapLine <= 35)
         return Fail("the chain is still stuck at the old Conductor.tjs:33 AsyncTrigger lines", j);
 
+    // M2e-13 硬判据：run 44065648958（M2e-12b 出包后设备端与自测同口径）的
+    // 下一缺口是 AnimationLayer.tjs:266 的 `debugLevel = tkdlNone;`；同一轮
+    // audit 里 Conductor.tjs:350 的 `debugLevel = tkdlVerbose;` 是同类赋值。
+    // 这两处都是**只写不读**的调试等级槽位（全项目 2 处赋值、0 处读取），
+    // 官方原生 KAGParser 有该成员，GalBox 骨架漏了 —— 赋值时 TJS2 直接抛
+    // `Member "debugLevel" does not exist`，整个 AnimationConductor 构造失败。
+    if (fatal.find("debugLevel") != std::string::npos ||
+        inner.find("debugLevel") != std::string::npos)
+        return Fail("M2e-13 gap (debugLevel) not cleared", j);
+    // 精确行号：AnimationLayer.tjs 265-266（ignoreCR / debugLevel 两行紧邻，
+    // 报错行落在哪一行取决于求值顺序，两行都算旧停点）；Conductor.tjs 350。
+    if (gapBlock.find("AnimationLayer.tjs") != std::string::npos &&
+        (gapLine == 265 || gapLine == 266))
+        return Fail("the chain is still stuck at the old AnimationLayer.tjs debugLevel line", j);
+    if (gapBlock.find("Conductor.tjs") != std::string::npos && gapLine == 350)
+        return Fail("the chain is still stuck at the old Conductor.tjs:350 debugLevel line", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
-    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-12)\n",
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-13)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
 
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
@@ -322,8 +368,7 @@ static int RunCaseA(const char *game, const char *storage) {
 
     std::printf("[m2h] A verdict: official Config.tjs took effect, UpdateConfig.tjs "
                 "gaps cleared, advanced to %s:%lld (%d scripts read)\n",
-                gapBlock.c_str(), gapLine, scripts);
-    GalBoxTJS2Free(j);
+                gapBlock.c_str(), gapLine, scripts);    GalBoxTJS2Free(j);
     return 0;
 }
 
@@ -606,6 +651,57 @@ static int RunCaseNoAsyncTrigger(const char *noat, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NODEBUGLEVEL：KAGParser 骨架缺 debugLevel 的负向对照（M2e-13）
+// 精准对照：KAGParser 骨架文件**保留**（M2E11 tag 仍应出现），只把
+// M2E13_BEGIN/END 之间那几行（`var debugLevel;` 与注释）整段删掉。
+// 它必须复现同一处停点，否则 A 场景「跨过 debugLevel」就是恒真式自证。
+static int RunCaseNoDebugLevel(const char *nodl, const char *storage) {
+    if (!Exists(std::string(nodl) + "/system/Config.tjs"))
+        return Fail("NODEBUGLEVEL fixture missing Config.tjs", NULL);
+    const std::string skel = std::string(nodl) + "/system/GalBoxKAGParser.tjs";
+    if (!Exists(skel))
+        return Fail("NODEBUGLEVEL fixture must keep the KAGParser skeleton", NULL);
+    {
+        std::ifstream f(skel.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E13_BEGIN") != std::string::npos)
+            return Fail("NODEBUGLEVEL fixture must have the debugLevel block removed", NULL);
+        if (body.find("var debugLevel") != std::string::npos)
+            return Fail("NODEBUGLEVEL fixture still declares debugLevel", NULL);
+        if (body.find("class KAGParser") == std::string::npos)
+            return Fail("NODEBUGLEVEL fixture lost the KAGParser class itself", NULL);
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(nodl, storage, arc);
+    if (!j) return Fail("cannot run the NODEBUGLEVEL control", NULL);
+    DumpChain("NODEBUGLEVEL", j);
+
+    // 骨架文件仍在、tag 仍应出现 —— 唯一差异就是 debugLevel 这一个成员。
+    if (StrField(j, "shim").find("M2E11_KAGPARSER_SKELETON") == std::string::npos)
+        return Fail("NODEBUGLEVEL control lost the KAGParser skeleton tag", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string inner = StrField(j, "lastScriptError");
+    const std::string block = StrField(j, "fatalBlock");
+    const long long line = IntField(j, "fatalLine");
+    const std::string both = fatal + " || " + inner;
+    // 报错行可能落在 266（debugLevel 赋值）或紧邻的 265（ignoreCR，同一构造里
+    // 前一行）—— 两行都属于这一处缺口，只认精确行号，不用 <=N 宽范围。
+    const bool atGapLine =
+        (block.find("AnimationLayer.tjs") != std::string::npos &&
+         (line == 265 || line == 266)) ||
+        (block.find("Conductor.tjs") != std::string::npos && line == 350);
+    if (both.find("does not exist") == std::string::npos || !atGapLine)
+        return Fail("NODEBUGLEVEL control did not reproduce the debugLevel gap", j);
+
+    std::printf("[m2h] NODEBUGLEVEL verdict: fatal=\"%s\" @ %s:%lld\n",
+                fatal.c_str(), block.c_str(), line);
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // 打开任意容器（目录 / .xp3）跑一次官方链，返回 JSON。
 // dirMode / entryCount 必须在 close() 之前取（close 会清掉它们）。
 static char *RunArchive(const char *path, const char *storage,
@@ -711,15 +807,17 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
         }
     }
 
-    // 停点必须与 A 场景同口径（目录侧的等价结论由 A 在独立进程里断言）。
+    // 停点必须与 A 场景同口径（目录侧的等价结论由 A 在独立进程里断言）：
+    // M2e-13 之后设备容器里也不许再出现 debugLevel 这个缺口。这条判据非恒真
+    // —— NODEBUGLEVEL 场景在独立进程里证明了「删掉成员 → 缺口复现」。
     const std::string fatal = StrField(j, "fatal");
     const std::string inner = StrField(j, "lastScriptError");
-    if (fatal.find("debugLevel") == std::string::npos &&
-        inner.find("debugLevel") == std::string::npos)
-        return Fail("packed xp3 did not stop at the current gap (debugLevel)", j);
+    if (fatal.find("debugLevel") != std::string::npos ||
+        inner.find("debugLevel") != std::string::npos)
+        return Fail("packed xp3 is still stuck at the debugLevel gap", j);
 
     std::printf("[m2h] XP3 verdict: real .xp3 ran the same chain "
-                "(%lld scripts, same gap as the directory fixture)\n", scripts);
+                "(%lld scripts, debugLevel cleared in the device container)\n", scripts);
     GalBoxTJS2Free(j);
     return 0;
 }
@@ -737,6 +835,7 @@ int main(int argc, char **argv) {
     const char *nokagparser = (argc > 9) ? argv[9] : "";
     const char *noat    = (argc > 10) ? argv[10] : "";
     const char *kagxp3  = (argc > 11) ? argv[11] : "";
+    const char *nodl    = (argc > 12) ? argv[12] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -778,6 +877,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NODEBUGLEVEL") == 0) {
+        if (RunCaseNoDebugLevel(nodl, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -789,6 +893,7 @@ int main(int argc, char **argv) {
     if (std::strcmp(which, "LEAK2") == 0)
         return RunLeak(game, storage, true);
 
-    std::printf("[m2h] unknown case '%s' (A / B / NOMENU / NOSTYLE / NOTIMER / NOFONT / NOKAGPARSER / NOASYNCTRIGGER / XP3 / LEAK / LEAK2)\n", which);
+    std::printf("[m2h] unknown case '%s' (A / B / NOMENU / NOSTYLE / NOTIMER / NOFONT / "
+                "NOKAGPARSER / NOASYNCTRIGGER / NODEBUGLEVEL / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

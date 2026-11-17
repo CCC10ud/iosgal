@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把十一个场景拆成独立进程跑（六个负向对照 + XP3 容器等价场景）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把十二个场景拆成独立进程跑（七个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1038,11 +1038,54 @@ ok(_xp3_case.count("RunArchive(") == 1,
 ok("some skeleton failed to load from the packed xp3" in m2h_test and
    "packed xp3 did not load a skeleton that the fixture has" in m2h_test,
    "M2e-12b：九个骨架必须全部从 .xp3 装载成功（状态串不许有 !failed:）")
-ok("packed xp3 did not stop at the current gap (debugLevel)" in m2h_test and
+ok("packed xp3 is still stuck at the debugLevel gap" in m2h_test and
    "XP3 missing shim tag" in m2h_test,
-   "M2e-12b：等价不够，还要求 .xp3 真跑到当前缺口、且逐个骨架 tag 都在")
+   "M2e-12b：等价不够，还要求 .xp3 离开当前缺口（M2e-13 后 debugLevel 已清）、且逐个骨架 tag 都在")
 ok("从 demo-game.xp3 取到设备端资产" in test_sh and "scenario/first.ks" in test_sh,
    "M2e-12b：内置包带上设备端要播的剧本/图（否则 app 落「没有剧本」兜底分支）")
+
+# ---- M2e-13：debugLevel —— 只写不读的调试等级槽位（AnimationLayer.tjs:266）----
+kp_shim = read("native/KAG/src/system/GalBoxKAGParser.tjs")
+_kp_block = kp_shim.split("M2E13_BEGIN", 1)[-1].split("M2E13_END", 1)[0]
+ok("var debugLevel;" in _kp_block,
+   "M2e-13：KAGParser 骨架在 M2E13 标记段内声明 var debugLevel")
+
+# 「只声明不实现」的前提是官方脚本**从不读**它。这条断言把这个前提钉住：
+# 一旦上游改成真读，骨架就必须给初值，判据也得跟着重估。
+# 只统计非注释行（AnimationLayer.tjs:267 有一行被注释掉的 tkdlVerbose）。
+_assigns, _reads = 0, 0
+for _n in ("AnimationLayer.tjs", "Conductor.tjs"):
+    for _line in raw("native/KAG/src/original/system/" + _n).split(b"\n"):
+        _s = _line.strip()
+        if b"debugLevel" not in _s or _s.startswith(b"//"):
+            continue
+        if b"debugLevel =" in _s:
+            _assigns += 1
+        else:
+            _reads += 1
+ok(_assigns == 2 and _reads == 0,
+   "M2e-13：官方脚本对 debugLevel 只有 2 处赋值、0 处读取（%d/%d）"
+   "（只写不读槽位的前提）" % (_assigns, _reads))
+
+ok("M2e-13 gap (debugLevel) not cleared" in m2h_test and
+   "old AnimationLayer.tjs debugLevel line" in m2h_test,
+   "M2e-13：A 硬判据清掉 debugLevel 缺口且离开旧停点")
+ok("gapLine == 265 || gapLine == 266" in m2h_test and
+   "gapLine == 350" in m2h_test,
+   "M2e-13：旧停点用精确行号（AnimationLayer 265/266 + Conductor 350），"
+   "不用 <=N 宽范围（run 44057349589 的教训）")
+ok("NODEBUGLEVEL control did not reproduce the debugLevel gap" in m2h_test and
+   "M2E13_BEGIN" in test_sh,
+   "M2e-13：NODEBUGLEVEL 负向对照 —— 删掉 var debugLevel 必须复现同一停点")
+ok("M2H_NODEBUGLEVEL" in test_sh and "var debugLevel" in test_sh,
+   "M2e-13：构建脚本生成 NODEBUGLEVEL 夹具并断言 var debugLevel 真被删掉")
+ok("packed xp3 is still stuck at the debugLevel gap" in m2h_test,
+   "M2e-13：设备容器（真 .xp3）同口径 —— debugLevel 不许再出现")
+ok("var debugLevel" in verifier,
+   "M2e-13：出包核验器要求内置包的 KAGParser 带 var debugLevel")
+ok("startup chain COMPLETED" in m2h_test and 'ok\\":true' in m2h_test,
+   "M2e-13：A 场景补 ok:true 成功分支（链真跑通时不许被判成失败），"
+   "但仍要求脚本数 / autoPath / 骨架 tag 三项硬指标")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

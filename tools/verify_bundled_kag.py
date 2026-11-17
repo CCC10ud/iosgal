@@ -12,7 +12,9 @@ startup.tjs 只有一行注释 —— 自测全绿而设备上根本没跑过官
   3. 九个 GalBox 骨架文件全在包内（LoadEngineShim 靠 IsExistentStorage 找它们，
      少一个就在设备上悄悄退回缺类状态）；
   4. 官方 Config.tjs 在包内（KAGWindow_config 定义在它里面）；
-  5. 条目数与总体积达到下限 —— 防止「文件都在但内容被截断」。
+  5. 条目数与总体积达到下限 —— 防止「文件都在但内容被截断」；
+  6. KAGParser 骨架里带 `var debugLevel`（M2e-13）—— 官方 AnimationLayer.tjs:266
+     给该成员赋值，缺了设备端就停在动画层构造。
 """
 import os
 import sys
@@ -85,8 +87,18 @@ def main(argv):
         return fail("system/Config.tjs 里没有 KAGWindow_config：不是官方配置，"
                     "会在 MainWindow.tjs 撞缺类")
 
+    # M2e-13：KAGParser 骨架必须带 `debugLevel` 这个**只写不读**的槽位。
+    # 官方 AnimationLayer.tjs:266 / Conductor.tjs:350 在构造里给它赋值，缺了
+    # 就抛 `Member "debugLevel" does not exist`，动画层构造整个失败。
+    # 骨架是 UTF-8（ASCII 兼容），直接在解出的字节里搜子串即可。
+    kp = by_name["system/GalBoxKAGParser.tjs"]["data"]
+    if b"var debugLevel" not in kp:
+        return fail("system/GalBoxKAGParser.tjs 里没有 var debugLevel："
+                    "设备端会在 AnimationLayer.tjs:266 断链")
+
     print("[m2e12b] 内置包核验通过: %d 个文件 / 解压后 %d B / "
-          "Initialize.tjs %d B / startup.tjs 真调 Initialize / 九个骨架全在"
+          "Initialize.tjs %d B / startup.tjs 真调 Initialize / 九个骨架全在 / "
+          "KAGParser 带 debugLevel(M2e-13)"
           % (parsed["count"], total, init_bytes))
     return 0
 
