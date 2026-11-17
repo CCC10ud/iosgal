@@ -1054,6 +1054,7 @@ static bool LoadEngineShim(tTJS *engine) {
     // —— 否则后面骨架里的 global.xxx = ... 与同名常量冲突。
     static const char *kShims[] = {
         "system/GalBoxConsts.tjs",  // M2e-4：官方常量表（摘自 ScriptMgnIntf.cpp）
+        "system/GalBoxFont.tjs",    // M2e-10：Layer.font 用到的 Font 骨架（Layer 构造会 new Font）
         "system/GalBoxLayer.tjs",   // M2e-2
         "system/GalBoxWindow.tjs",  // M2e-3
         "system/GalBoxPad.tjs",     // M2e-6：UpdateConfig.tjs 配置升级路径
@@ -1062,6 +1063,7 @@ static bool LoadEngineShim(tTJS *engine) {
     };
     static const char *kTags[] = {
         "M2E4_OFFICIAL_CONSTS",
+        "M2E10_FONT_SKELETON",
         "M2E2_LAYER_SKELETON",
         "M2E3_WINDOW_SKELETON",
         "M2E6_PAD_SKELETON",

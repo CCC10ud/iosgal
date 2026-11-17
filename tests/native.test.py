@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER LEAK LEAK2" in test_sh,
-   "构建脚本把七个场景拆成独立进程跑（NOMENU / NOSTYLE / NOTIMER 三个负向对照）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT LEAK LEAK2" in test_sh,
+   "构建脚本把八个场景拆成独立进程跑（NOMENU / NOSTYLE / NOTIMER / NOFONT 四个负向对照）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -921,6 +921,35 @@ ok("NOTIMER control did not reproduce the Timer gap" in m2h_test,
    "M2e-9：NOTIMER 负向对照必须复现 Timer 缺口")
 ok("old MainWindow.tjs Timer lines" in m2h_test,
    "M2e-9：自测要求离开 MainWindow.tjs:337 的旧停点")
+
+# ---- M2e-10：Layer.font / Font 骨架（AnimationLayer.tjs:343）----
+font_shim = read("native/KAG/src/system/GalBoxFont.tjs")
+layer_shim = read("native/KAG/src/system/GalBoxLayer.tjs")
+ok("class Font" in font_shim and "function Font()" in font_shim,
+   "M2e-10：Font 骨架提供官方 Layer.font 返回的 Font 类")
+ok("var face" in font_shim and "var height" in font_shim and
+   "var angle" in font_shim and "var italic" in font_shim and
+   "var bold" in font_shim,
+   "M2e-10：Font 骨架覆盖官方脚本用到的 face/height/angle/italic/bold 可写属性")
+ok("function getTextWidth" in font_shim and "function getTextHeight" in font_shim and
+   "function doUserSelect" in font_shim and "function mapPrerenderedFont" in font_shim,
+   "M2e-10：Font 骨架覆盖 getTextWidth/getTextHeight/doUserSelect/mapPrerenderedFont")
+ok("new Font()" in layer_shim and "M2E10_FONT_BEGIN" in layer_shim and
+   "M2E10_FONT_END" in layer_shim,
+   "M2e-10：Layer 构造里 new Font()，font 段带标记供负向对照整段删除")
+ok("GalBoxFont.tjs" in bridge_cpp and "M2E10_FONT_SKELETON" in bridge_cpp,
+   "M2e-10：Font 骨架进 LoadEngineShim 序列且带 shim tag")
+ok("cp \"$KAG/src/system/GalBoxFont.tjs\"" in test_sh and
+   "M2H_NOFONT" in test_sh and "m2h_nofont" in test_sh,
+   "M2e-10：构建脚本把 Font 骨架放进夹具并生成 NOFONT 负向对照")
+ok("M2e-10 gap (Layer.font) not cleared" in m2h_test and
+   "M2e-10 regression: Font skeleton was not loaded" in m2h_test,
+   "M2e-10：A 硬判据清掉 font 缺口 + Font 骨架真的装进引擎")
+ok("NOFONT control did not reproduce the Layer.font gap" in m2h_test,
+   "M2e-10：NOFONT 负向对照必须复现 AnimationLayer.tjs:343 的 font 缺口")
+ok("the chain did not reach AnimationLayer.tjs" in m2h_test and
+   "old AnimationLayer.tjs font lines" in m2h_test,
+   "M2e-10：自测要求链真到 AnimationLayer.tjs 且离开旧 font 停点")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

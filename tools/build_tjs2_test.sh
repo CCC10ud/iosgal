@@ -435,6 +435,9 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2f.cpp" ] \
   rm -rf "$M2F_GAME" "$M2F_NOSHIM"
   cp -R "$M2E_GAME" "$M2F_GAME"
   cp "$KAG/src/system/GalBoxLayer.tjs" "$M2F_GAME/system/GalBoxLayer.tjs"
+  # M2e-10：Layer 构造会 new Font()，Font 骨架必须和 Layer 一起进夹具，
+  # 否则早期里程碑（M2F/M2G/M2H 逐层 cp -R 继承）会因缺 Font 而回归失败。
+  cp "$KAG/src/system/GalBoxFont.tjs"  "$M2F_GAME/system/GalBoxFont.tjs"
   cp "$KAG/src/m2f_layer_probe.tjs"    "$M2F_GAME/m2f_layer_probe.tjs"
   # 负向对照：同一套夹具，唯一区别就是**不放** Layer 骨架。
   cp -R "$M2F_GAME" "$M2F_NOSHIM"
@@ -593,6 +596,41 @@ PYEOF
     echo "[tjs2] M2e-9 负向对照夹具里不该有 GalBoxTimer.tjs"
     exit 1
   fi
+  # M2e-10 负向对照：Font 骨架文件**保留**，只把 Layer 里的 font 属性段
+  # （M2E10_FONT_BEGIN/END 之间）整段删掉 —— 这样 Layer 构造不再 new Font，
+  # 官方 AnimationLayer.tjs:343 读 font.face 时必须复现
+  # `Member "font" does not exist`。这是精准对照：唯一差异是 Layer.font。
+  M2H_NOFONT="$OUT/m2h_nofont"
+  rm -rf "$M2H_NOFONT"
+  cp -R "$M2H_GAME" "$M2H_NOFONT"
+  python3 - "$M2H_NOFONT/system/GalBoxLayer.tjs" <<'PYEOF' || exit 1
+import sys
+p = sys.argv[1]
+with open(p, encoding='utf-8') as f:
+    src = f.read()
+if 'M2E10_FONT_BEGIN' not in src or 'M2E10_FONT_END' not in src:
+    raise SystemExit('M2e-10 font markers missing')
+out, skip = [], False
+for line in src.splitlines(True):
+    if 'M2E10_FONT_BEGIN' in line:
+        skip = True
+        continue
+    if 'M2E10_FONT_END' in line:
+        skip = False
+        continue
+    # 构造函数里的调用行也要删, 否则 initFont 未定义会先报别的错,
+    # 盖住我们要复现的 `font` 缺口。
+    if 'initFont();' in line:
+        continue
+    if not skip:
+        out.append(line)
+with open(p, 'w', encoding='utf-8', newline='') as f:
+    f.write(''.join(out))
+PYEOF
+  if grep -q "M2E10_FONT_BEGIN" "$M2H_NOFONT/system/GalBoxLayer.tjs"; then
+    echo "[tjs2] M2e-10 负向对照没能删掉 Layer.font 段"
+    exit 1
+  fi
 
   if ! grep -q "function KAGWindow_config" "$M2H_GAME/system/Config.tjs"; then
     echo "[tjs2] M2e-5 夹具的 Config.tjs 里没有 KAGWindow_config（官方原文没拼进去？）"
@@ -613,12 +651,12 @@ PYEOF
     # 每个场景**独立进程**跑：run #40 出现过「同进程内第二次执行会破坏官方
     # 启动链」, 若三个场景挤在一个进程里, 后面的场景会被前面的污染,
     # 负向对照就会假红。独立进程 => 每个场景都是干净首跑。
-    for M2H_CASE in A B NOMENU NOSTYLE NOTIMER LEAK LEAK2; do
-      OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" 2>&1)
-      diag_crash "M2h-$M2H_CASE" "$?" "$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER"
+    for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT LEAK LEAK2; do
+      OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" 2>&1)
+      diag_crash "M2h-$M2H_CASE" "$?" "$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT"
       echo "$OUTPUT_M2H" | sed 's/^/[tjs2]   /'
       case "$M2H_CASE" in
-        A|B|NOMENU|NOSTYLE|NOTIMER)
+        A|B|NOMENU|NOSTYLE|NOTIMER|NOFONT)
           if ! echo "$OUTPUT_M2H" | grep -q "M2H_RESULT=OK"; then
             echo "[tjs2] 场景 $M2H_CASE 未通过"; exit 1
           fi

@@ -44,10 +44,22 @@ class Layer
 	var parent;
 	var window;
 
+	// M2E10_FONT_BEGIN —— M2e-10 负向对照按此标记整段删除
+	// 官方 LayerIntf.cpp 的 `font` 是原生属性，返回 Font 实例。
+	// AnimationLayer.tjs:343 构造时读 font.face / font.height。
+	var font;
+
+	function initFont()
+	{
+		font = new Font();
+	}
+	// M2E10_FONT_END
+
 	function Layer(win, par)
 	{
 		window = win;
 		parent = par;
+		initFont();
 	}
 
 	function finalize() {}

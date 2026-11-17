@@ -1,0 +1,65 @@
+// GalBoxFont.tjs — GalBox 自写的 `Font` 骨架（**非官方**，Milestone 2e-10）
+//
+// 官方 `Font` 是 kirikiri2 核心里的原生类（FontIntf.cpp，绑 GDI/DirectWrite），
+// 由 `Layer.font` 这样的原生属性返回。KAG 官方 AnimationLayer.tjs:343 在
+// 构造动画图层时第一句就是：
+//     Anim_defaultFontInfo.face   = font.face;
+//     Anim_defaultFontInfo.height = font.height;
+// run 44047626865（M2e-9）实测的下一缺口正是：
+//     Member "font" does not exist @ AnimationLayer.tjs:343
+//
+// 逐条统计官方 20 个系统脚本对 font 的用法，只有下面这些成员：
+//   可写属性：face / height / angle / italic / bold
+//   方法：getTextWidth(str) / getTextHeight(str) / doUserSelect(...) /
+//         mapPrerenderedFont(storage)
+// （脚本里出现的 `substring` 是 String 的，不是 Font 的 —— 别误加。）
+//
+// 骨架只存属性、按字宽粗算文本尺寸，不真测量字形、不弹字体对话框。
+// 官方 Layer 的 `font` 属性由 LayerIntf.cpp 提供；这里给 GalBoxLayer.tjs
+// 的 Layer 骨架加一个同名只读属性，实例在 Layer 构造时创建。
+//
+// ⚠️ TJS2 语法雷（M2e-3 踩过）：不要用 `...` 变参定义，也不要把 `invalidate`
+// 之类对象关键字当函数名 —— 任何一个都会让整个 shim 语法错误、连带类装不上。
+
+class Font
+{
+	var face = "";
+	var height = 0;
+	var angle = 0;
+	var italic = false;
+	var bold = false;
+
+	function Font()
+	{
+	}
+
+	// 没有字形度量，按「每字一个 height」粗算；只为让布局脚本不除零/不死循环。
+	function getTextWidth(text)
+	{
+		var n = 0;
+		if(text !== void) n = text.length;
+		var h = height;
+		if(h < 0) h = -h;
+		if(h < 1) h = 16;
+		return n * h;
+	}
+
+	function getTextHeight(text)
+	{
+		var h = height;
+		if(h < 0) h = -h;
+		if(h < 1) h = 16;
+		return h;
+	}
+
+	function doUserSelect()
+	{
+		// 官方返回 bool 表示用户是否选了字体；没有 GUI，一律返回「没选」。
+		return false;
+	}
+
+	function mapPrerenderedFont(storage)
+	{
+		// 官方按 storage 注册预渲染字体；骨架不渲染，留空操作。
+	}
+}
