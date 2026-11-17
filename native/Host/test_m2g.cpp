@@ -98,6 +98,7 @@ static int CountTrace(const std::string &trace) {
 }
 
 int main(int argc, char **argv) {
+    std::setbuf(stdout, NULL); // 崩溃诊断: 不丢已打印进度
     const char *game   = (argc > 1) ? argv[1] : "native/TJS2/build/m2g_game";
     const char *noWin  = (argc > 2) ? argv[2] : "native/TJS2/build/m2g_nowindow";
     const char *storage = (argc > 3) ? argv[3] : ".";

@@ -256,6 +256,7 @@ static int RunLeak(const char *game, const char *storage, bool withExceptionFirs
 }
 
 int main(int argc, char **argv) {
+    std::setbuf(stdout, NULL); // 崩溃诊断: 不丢已打印进度
     const char *which   = (argc > 1) ? argv[1] : "A";
     const char *game    = (argc > 2) ? argv[2] : "native/TJS2/build/m2h_game";
     const char *ctrl    = (argc > 3) ? argv[3] : "native/TJS2/build/m2h_ctrl";

@@ -109,6 +109,7 @@ static std::string ExpectedLockKey(const std::string &exePath) {
 }
 
 int main(int argc, char **argv) {
+    std::setbuf(stdout, NULL); // 崩溃诊断: 不丢已打印进度
     const char *regexGame = (argc > 1) ? argv[1] : "native/TJS2/build/m2d_regex";
     const char *initGame = (argc > 2) ? argv[2] : "native/TJS2/build/m2d_init";
     const char *storage = (argc > 3) ? argv[3] : ".";

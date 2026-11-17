@@ -620,6 +620,13 @@ for forbidden in ("gExecStorageAttempts", "gScriptTrace +=", "gLastScriptError =
        "加载骨架不污染官方加载序列的判据: " + forbidden)
 ok("CaptureCurrentException" not in _shim_fn,
    "骨架自身的失败不占用 fatalBlock/fatalLine（那是入口脚本的定位）")
+# run #52：所有自测统一无缓冲 stdout + 通用崩溃诊断（退出码 + gdb 栈）
+ok("diag_crash()" in test_sh and "crash backtrace (gdb)" in test_sh,
+   "构建脚本有通用崩溃诊断函数（每段自测崩了都能拿栈）")
+import glob as _glob
+_tsrcs=_glob.glob("native/Host/test_*.cpp")
+ok(len(_tsrcs) >= 8 and all("setbuf(stdout" in read(x) for x in _tsrcs),
+   "所有自测源文件都设无缓冲 stdout（崩溃不丢进度）")
 for tag in ("M1C_HOST_v1", "M2A_SCRIPTS_EXEC_STORAGE", "M2B_STORAGES_AUTOPATH",
             "M2C_SYSTEM_DEBUG", "M2D_REGEXP_STDREGEX",
             "M2E_SYSTEM_SCRIPTS_VENDORED"):

@@ -101,6 +101,7 @@ static int OpenDir(const char *dir, galbox::XP3Archive &arc) {
 }
 
 int main(int argc, char **argv) {
+    std::setbuf(stdout, NULL); // 崩溃诊断: 不丢已打印进度
     const char *gameA = (argc > 1) ? argv[1] : "native/TJS2/build/m2c_game";
     const char *gameB = (argc > 2) ? argv[2] : "native/TJS2/build/m2c_game_cfg";
     const char *storage = (argc > 3) ? argv[3] : ".";

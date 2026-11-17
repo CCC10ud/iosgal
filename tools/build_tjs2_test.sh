@@ -41,6 +41,21 @@ else
   ICONV_LIB=""
   echo "[tjs2] 该平台没有独立 libiconv（glibc 内建），链接时省略 -liconv"
 fi
+
+# 通用崩溃诊断（run #52）：每个自测运行后调用，打印退出码；段错误(>=128)时
+# 用 gdb 打 backtrace。诊断写 stdout 但不进 OUTPUT_* 变量（调用点在命令替换
+# 之后才调用本函数），因此不干扰 M*_RESULT 判据。macOS runner 无 gdb 时只打印退出码。
+diag_crash() {
+  local label="$1" rc="$2" bin="$3"; shift 3
+  echo "[tjs2] $label exit code: $rc"
+  if [ "$rc" -ge 128 ] && command -v gdb >/dev/null 2>&1; then
+    echo "[tjs2] $label crash backtrace (gdb):"
+    gdb -q -batch -ex run -ex bt --args "$bin" "$@" 2>&1 \
+      | grep -vE '^\[New Thread|^\[Thread' \
+      | sed 's/^/[tjs2][gdb] /' | head -40
+  fi
+}
+
 echo "[tjs2] M0: 编译官方 TJS2 核心（含 GalBox 正则层）-> $OUT/libtjs2.a"
 ERR=0
 OBJS=()
@@ -102,6 +117,7 @@ if [ -f "$HOST/HostStreams.cpp" ] && [ -f "$ROOT/native/TJS2/test_m1.cpp" ]; the
         "$ROOT/native/TJS2/test_m1.cpp" "$OUT/HostStreams.o" "$OUT/XP3Archive.o" \
         "$OUT/libtjs2.a" -lz $ICONV_LIB -lpthread -o "$OUT/tjs2test_m1" 2>"$OUT/link_m1.log"; then
     OUTPUT_M1=$("$OUT/tjs2test_m1" "$ROOT/dist/fixtures/demo-game.xp3" "$OUT" 2>&1)
+    diag_crash "M1" "$?" "$OUT/tjs2test_m1" "$ROOT/dist/fixtures/demo-game.xp3" "$OUT"
     echo "$OUTPUT_M1" | sed 's/^/[tjs2]   /'
     if echo "$OUTPUT_M1" | grep -q "M1_RESULT=OK"; then
       echo "[tjs2] M1 自测通过（官方 TJS2 经宿主读到 XP3 内文件）"
@@ -132,6 +148,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m1c.cpp" ]; then
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
         -lz $ICONV_LIB -lpthread -o "$OUT/tjs2test_m1c" 2>"$OUT/link_m1c.log"; then
     OUTPUT_M1C=$("$OUT/tjs2test_m1c" "$ROOT/dist/fixtures/demo-game.xp3" "$OUT" 2>&1)
+    diag_crash "M1c" "$?" "$OUT/tjs2test_m1c" "$ROOT/dist/fixtures/demo-game.xp3" "$OUT"
     echo "$OUTPUT_M1C" | sed 's/^/[tjs2]   /'
     if echo "$OUTPUT_M1C" | grep -q "M1C_RESULT=OK"; then
       echo "[tjs2] M1c 自测通过（app 侧 C 边界真跑 TJS2 + 宿主读写）"
@@ -161,6 +178,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2a.cpp" ] \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
         -lz $ICONV_LIB -lpthread -o "$OUT/tjs2test_m2a" 2>"$OUT/link_m2a.log"; then
     OUTPUT_M2A=$("$OUT/tjs2test_m2a" "$M2A_GAME" "$OUT" 2>&1)
+    diag_crash "M2a" "$?" "$OUT/tjs2test_m2a" "$M2A_GAME" "$OUT"
     echo "$OUTPUT_M2A" | sed 's/^/[tjs2]   /'
     if echo "$OUTPUT_M2A" | grep -q "M2A_RESULT=OK"; then
       echo "[tjs2] M2a 自测通过（官方 KAG3 Utils.tjs 经 TJS2 真跑，intrandom(5,5)==5）"
@@ -257,6 +275,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2c.cpp" ] \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
         -lz $ICONV_LIB -lpthread -o "$OUT/tjs2test_m2c" 2>"$OUT/link_m2c.log"; then
     OUTPUT_M2C=$("$OUT/tjs2test_m2c" "$M2C_A" "$M2C_B" "$OUT" 2>&1)
+    diag_crash "M2c" "$?" "$OUT/tjs2test_m2c" "$M2C_A" "$M2C_B" "$OUT"
     echo "$OUTPUT_M2C" | sed 's/^/[tjs2]   /'
     if echo "$OUTPUT_M2C" | grep -q "M2C_RESULT=OK"; then
       echo "[tjs2] M2c 自测通过（官方 Initialize.tjs 真跑，推过 Config 检查与 createAppLock）"
@@ -309,6 +328,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2d.cpp" ] \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
         -lz $ICONV_LIB -lpthread -o "$OUT/tjs2test_m2d" 2>"$OUT/link_m2d.log"; then
     OUTPUT_M2D=$("$OUT/tjs2test_m2d" "$M2D_A" "$M2D_B" "$OUT" 2>&1)
+    diag_crash "M2d" "$?" "$OUT/tjs2test_m2d" "$M2D_A" "$M2D_B" "$OUT"
     echo "$OUTPUT_M2D" | sed 's/^/[tjs2]   /'
     if echo "$OUTPUT_M2D" | grep -q "M2D_RESULT=OK"; then
       echo "[tjs2] M2d 自测通过（RegExp 语义 + 官方脚本推过正则阻塞点）"
@@ -388,6 +408,7 @@ PYEOF
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
         -lz $ICONV_LIB -lpthread -o "$OUT/tjs2test_m2e" 2>"$OUT/link_m2e.log"; then
     OUTPUT_M2E=$("$OUT/tjs2test_m2e" "$M2E_GAME" "$M2E_MIN" "$OUT" 2>&1)
+    diag_crash "M2e" "$?" "$OUT/tjs2test_m2e" "$M2E_GAME" "$M2E_MIN" "$OUT"
     echo "$OUTPUT_M2E" | sed 's/^/[tjs2]   /'
     if echo "$OUTPUT_M2E" | grep -q "M2E_RESULT=OK"; then
       echo "[tjs2] M2e 自测通过（缺文件 → 缺 Layer 原生类，三场景含负向对照）"
@@ -436,6 +457,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2f.cpp" ] \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
         -lz $ICONV_LIB -lpthread -o "$OUT/tjs2test_m2f" 2>"$OUT/link_m2f.log"; then
     OUTPUT_M2F=$("$OUT/tjs2test_m2f" "$M2F_GAME" "$M2F_NOSHIM" "$OUT" 2>&1)
+    diag_crash "M2f" "$?" "$OUT/tjs2test_m2f" "$M2F_GAME" "$M2F_NOSHIM" "$OUT"
     echo "$OUTPUT_M2F" | sed 's/^/[tjs2]   /'
     if echo "$OUTPUT_M2F" | grep -q "M2F_RESULT=OK"; then
       echo "[tjs2] M2f 自测通过（官方脚本类成功继承 Layer 骨架 + 负向对照）"
@@ -481,6 +503,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2g.cpp" ] \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
         -lz $ICONV_LIB -lpthread -o "$OUT/tjs2test_m2g" 2>"$OUT/link_m2g.log"; then
     OUTPUT_M2G=$("$OUT/tjs2test_m2g" "$M2G_GAME" "$M2G_NOWIN" "$OUT" 2>&1)
+    diag_crash "M2g" "$?" "$OUT/tjs2test_m2g" "$M2G_GAME" "$M2G_NOWIN" "$OUT"
     echo "$OUTPUT_M2G" | sed 's/^/[tjs2]   /'
     if echo "$OUTPUT_M2G" | grep -q "M2G_RESULT=OK"; then
       echo "[tjs2] M2g 自测通过（官方 KAGWindow 不再缺 Window 父类 + 负向对照）"
@@ -535,6 +558,7 @@ if [ -f "$HOST/test_m2h.cpp" ] && [ -d "$M2G_GAME" ] \
     # 负向对照就会假红。独立进程 => 每个场景都是干净首跑。
     for M2H_CASE in A B LEAK LEAK2; do
       OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" 2>&1)
+      diag_crash "M2h-$M2H_CASE" "$?" "$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT"
       echo "$OUTPUT_M2H" | sed 's/^/[tjs2]   /'
       case "$M2H_CASE" in
         A|B)

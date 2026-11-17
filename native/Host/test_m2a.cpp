@@ -37,6 +37,7 @@ static bool Exists(const std::string &path) {
 }
 
 int main(int argc, char **argv) {
+    std::setbuf(stdout, NULL); // 崩溃诊断: 不丢已打印进度
     const char *gameDir = (argc > 1) ? argv[1] : "native/TJS2/build/m2a_game";
     const char *storage = (argc > 2) ? argv[2] : ".";
 
