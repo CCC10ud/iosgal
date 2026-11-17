@@ -17,6 +17,8 @@ startup.tjs 只有一行注释 —— 自测全绿而设备上根本没跑过官
      给该成员赋值，缺了设备端就停在动画层构造；
   7. Layer 骨架里带 `var hitType` / `var hitThreshold`（M2e-14）——
      官方 GraphicLayer.tjs:337-338 给它们赋值。
+  8. Layer 骨架里带 `function setImageSize` / `function setSizeToImageSize`
+     （M2e-15）—— 官方 MainWindow.tjs:348-353 建背景层时连调这两个方法。
 """
 import os
 import sys
@@ -106,9 +108,21 @@ def main(argv):
             return fail("system/GalBoxLayer.tjs 里没有 %s："
                         "设备端会在 GraphicLayer.tjs:337 断链" % token.decode())
 
+    # M2e-15：Layer 骨架必须带图像面（imageWidth/imageHeight + 两个方法）。
+    # 官方 MainWindow.tjs:348-353 建表/裏两张背景层：先 setImageSize() 写图像
+    # 尺寸，再 setSizeToImageSize() 把图层尺寸对齐过去。两者缺一，MainWindow
+    # 构造就断在 348/349。imageWidth/imageHeight 也必须真存在 —— KAGLayer 的
+    # store() 会原样拷走它们（void 会一路污染 restore()）。
+    for token in (b"var imageWidth", b"var imageHeight",
+                  b"function setImageSize", b"function setSizeToImageSize"):
+        if token not in layer:
+            return fail("system/GalBoxLayer.tjs 里没有 %s："
+                        "设备端会在 MainWindow.tjs:348 断链" % token.decode())
+
     print("[m2e12b] 内置包核验通过: %d 个文件 / 解压后 %d B / "
           "Initialize.tjs %d B / startup.tjs 真调 Initialize / 九个骨架全在 / "
-          "KAGParser 带 debugLevel(M2e-13) / Layer 带 hitType+hitThreshold(M2e-14)"
+          "KAGParser 带 debugLevel(M2e-13) / Layer 带 hitType+hitThreshold(M2e-14) / "
+          "Layer 带 setImageSize+setSizeToImageSize(M2e-15)"
           % (parsed["count"], total, init_bytes))
     return 0
 

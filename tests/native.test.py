@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把十四个场景拆成独立进程跑（九个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把十六个场景拆成独立进程跑（十一个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1143,6 +1143,69 @@ ok("var hitType" in verifier and "var hitThreshold" in verifier,
    "M2e-14：出包核验器要求内置包的 Layer 带 hitType + hitThreshold")
 ok('"\\"hitType\\"", "\\"hitThreshold\\""' in m2h_test,
    "M2e-14：XP3 场景按「本轮已关闭缺口」清单检查，hitType/hitThreshold 也在内")
+
+# ---- M2e-15：Layer 图像面 setImageSize / setSizeToImageSize（MainWindow.tjs:348-349）
+_img_block = layer_shim.split("M2E15_BEGIN", 1)[-1].split("M2E15_END", 1)[0]
+ok("var imageWidth = 0;" in _img_block and "var imageHeight = 0;" in _img_block and
+   "function setImageSize(w, h)" in _img_block and
+   "function setSizeToImageSize()" in _img_block,
+   "M2e-15：Layer 骨架在 M2E15 段内声明 imageWidth/imageHeight 与两个方法")
+# 图像尺寸与图层尺寸是**两个概念**：官方 setImageSize 只写图像缓冲尺寸，
+# setSizeToImageSize 才把图层框对齐过去。若骨架把 setImageSize 写成
+# width = w（把两者合并），后续 setSizeToImageSize 就成了空操作 ——
+# 在真引擎里会表现为「图层尺寸永远等于上一次 setPos」，静默错。
+ok("imageWidth = w;" in _img_block and "imageHeight = h;" in _img_block,
+   "M2e-15：setImageSize 写的是 imageWidth/imageHeight，不是 width/height")
+ok("width = imageWidth;" in _img_block and "height = imageHeight;" in _img_block,
+   "M2e-15：setSizeToImageSize 才把图层尺寸对齐到图像尺寸")
+# 初值必须是 0 不能是 void：KAGLayer.tjs:334-335 的 store() 会原样拷走
+# imageWidth/imageHeight，void 会被 restore() 的 setImageSize 再写回，
+# 之后所有尺寸算术静默出错（不抛异常，最难查的那类）。
+ok("var imageWidth = 0;" in _img_block and "var imageHeight = 0;" in _img_block,
+   "M2e-15：imageWidth/imageHeight 给真值 0（store()/restore() 会原样搬运，void 会静默污染）")
+_mk2 = ["M2E15_BEGIN", "M2E15_SIZETO_BEGIN", "M2E15_SIZETO_END", "M2E15_END"]
+ok(all(layer_shim.count(m) == 1 for m in _mk2) and
+   layer_shim.find(_mk2[0]) < layer_shim.find(_mk2[1]) <
+   layer_shim.find(_mk2[2]) < layer_shim.find(_mk2[3]),
+   "M2e-15：M2E15 与内层 SIZETO 标记是真嵌套（整段删 / 只删一个方法两种对照都成立）")
+# 官方用法统计（侦察依据）：setImageSize 18 处 / setSizeToImageSize 15 处，
+# 分布在 8 个官方脚本里 —— 这不是「只为了 MainWindow 一行」的顺手补，
+# 而是整条图层体系都要用的面。数字写进断言，防止有人以为可以省掉。
+_im_n = _sz_n = 0
+for _name in sorted(os.listdir(_kagsys)):
+    if not _name.endswith(".tjs"):
+        continue
+    for _line in raw("native/KAG/src/original/system/" + _name).split(b"\n"):
+        _s = _line.strip()
+        if _s.startswith(b"//"):
+            continue
+        if b"setImageSize" in _s:
+            _im_n += 1
+        if b"setSizeToImageSize" in _s:
+            _sz_n += 1
+ok((_im_n, _sz_n) == (18, 15),
+   "M2e-15：官方用法统计 setImageSize 18 处 / setSizeToImageSize 15 处"
+   "（%d/%d）" % (_im_n, _sz_n))
+ok("M2e-15 gap (setImageSize) not cleared" in m2h_test and
+   "M2e-15 gap (setSizeToImageSize) not cleared" in m2h_test and
+   "background-layer image lines" in m2h_test,
+   "M2e-15：A 硬判据清掉两个图像面方法且离开旧停点")
+ok("gapLine == 348 || gapLine == 349" in m2h_test,
+   "M2e-15：旧停点用精确行号（348/349），不用 <=N 宽范围")
+ok("NOIMAGESIZE control did not reproduce the setImageSize gap" in m2h_test and
+   "NOSIZETOIMAGESIZE control did not reproduce the setSizeToImageSize gap" in m2h_test,
+   "M2e-15：两个负向对照各自复现自己的缺口（证明第二个方法也不是顺手补的）")
+ok("M2H_NOIMAGESIZE" in test_sh and "M2H_NOSIZETOIMAGESIZE" in test_sh and
+   "M2E15_SIZETO_BEGIN" in test_sh,
+   "M2e-15：构建脚本用 drop_marked 生成两个负向对照夹具（整段 / 只删一个方法）")
+ok("NOIMAGESIZE fixture must keep the Layer skeleton" in m2h_test and
+   "NOSIZETOIMAGESIZE fixture must keep setImageSize" in m2h_test,
+   "M2e-15：负向对照各自校验夹具只删该删的（删多了会先报错，不会假绿）")
+ok("function setImageSize" in verifier and "function setSizeToImageSize" in verifier and
+   "var imageWidth" in verifier,
+   "M2e-15：出包核验器要求内置包的 Layer 带图像面（两个方法 + imageWidth）")
+ok('"\\"setImageSize\\"", "\\"setSizeToImageSize\\""' in m2h_test,
+   "M2e-15：XP3 场景的「已关闭缺口」清单加上了 setImageSize/setSizeToImageSize")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

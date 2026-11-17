@@ -352,8 +352,27 @@ static int RunCaseA(const char *game, const char *storage) {
         (gapLine == 337 || gapLine == 338))
         return Fail("the chain is still stuck at the old GraphicLayer.tjs hit-test lines", j);
 
+    // M2e-15 硬判据：run 44082272762 的下一缺口是 MainWindow.tjs:348 的
+    // `fore.base.setImageSize(scWidth, scHeight);`，紧接着 349 是
+    // `setSizeToImageSize();`。两者是官方 LayerIntf.cpp 的**图像面**
+    // （imageWidth/imageHeight + 这两个方法），而 Layer 骨架（M2e-2/M2e-14）
+    // 只给了几何、可见性、字体、命中面，没给图像面。
+    // 348-353 是同一段「建表/裏背景层」初始化，本轮一并补；但两个方法各有
+    // 独立负向对照，证明后补的那个也不是摆设：
+    //   NOIMAGESIZE       -> 必须复现 setImageSize@348
+    //   NOSIZETOIMAGESIZE -> 必须复现 setSizeToImageSize@349
+    if (fatal.find("setImageSize") != std::string::npos ||
+        inner.find("setImageSize") != std::string::npos)
+        return Fail("M2e-15 gap (setImageSize) not cleared", j);
+    if (fatal.find("setSizeToImageSize") != std::string::npos ||
+        inner.find("setSizeToImageSize") != std::string::npos)
+        return Fail("M2e-15 gap (setSizeToImageSize) not cleared", j);
+    if (gapBlock.find("MainWindow.tjs") != std::string::npos &&
+        (gapLine == 348 || gapLine == 349))
+        return Fail("the chain is still stuck at the MainWindow.tjs background-layer image lines", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
-    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-14)\n",
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-15)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
 
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
@@ -810,6 +829,104 @@ static int RunCaseNoHitThreshold(const char *noth, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOIMAGESIZE：Layer 缺整块图像面的负向对照（M2e-15）-------------
+// 精准对照：Layer 骨架文件保留（几何/字体/命中面都在），只删 M2E15_BEGIN/END。
+// 必须复现 `Member "setImageSize" does not exist @ MainWindow.tjs:348`。
+static int RunCaseNoImageSize(const char *noimg, const char *storage) {
+    if (!Exists(std::string(noimg) + "/system/Config.tjs"))
+        return Fail("NOIMAGESIZE fixture missing Config.tjs", NULL);
+    const std::string skel = std::string(noimg) + "/system/GalBoxLayer.tjs";
+    if (!Exists(skel))
+        return Fail("NOIMAGESIZE fixture must keep the Layer skeleton", NULL);
+    {
+        std::ifstream f(skel.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E15_BEGIN") != std::string::npos)
+            return Fail("NOIMAGESIZE fixture must have the M2E15 block removed", NULL);
+        for (const char *gone : {"var imageWidth", "var imageHeight",
+                                 "function setImageSize",
+                                 "function setSizeToImageSize"}) {
+            if (body.find(gone) != std::string::npos) {
+                std::printf("[m2h] NOIMAGESIZE fixture still has '%s'\n", gone);
+                return Fail("NOIMAGESIZE fixture still declares the image-surface members", NULL);
+            }
+        }
+        // 除图像面外，Layer 的其余成员必须完好 —— 否则测的就不是这一处缺口。
+        for (const char *keep : {"var visible", "var hitType", "var font", "class Layer"}) {
+            if (body.find(keep) == std::string::npos) {
+                std::printf("[m2h] NOIMAGESIZE fixture lost '%s'\n", keep);
+                return Fail("NOIMAGESIZE fixture lost unrelated Layer members", NULL);
+            }
+        }
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(noimg, storage, arc);
+    if (!j) return Fail("cannot run the NOIMAGESIZE control", NULL);
+    DumpChain("NOIMAGESIZE", j);
+
+    if (StrField(j, "shim").find("M2E2_LAYER_SKELETON") == std::string::npos)
+        return Fail("NOIMAGESIZE control lost the Layer skeleton tag", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string inner = StrField(j, "lastScriptError");
+    const std::string block = StrField(j, "fatalBlock");
+    const long long line = IntField(j, "fatalLine");
+    const bool gap = (fatal + " || " + inner).find("\"setImageSize\"") != std::string::npos;
+    if (!gap || block.find("MainWindow.tjs") == std::string::npos || line != 348)
+        return Fail("NOIMAGESIZE control did not reproduce the setImageSize gap", j);
+
+    std::printf("[m2h] NOIMAGESIZE verdict: fatal=\"%s\" @ %s:%lld\n",
+                fatal.c_str(), block.c_str(), line);
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
+// ---- 场景 NOSIZETOIMAGESIZE：只缺 setSizeToImageSize 的负向对照（M2e-15 第二半）
+// 与 NOIMAGESIZE 的区别：imageWidth/imageHeight 与 setImageSize 都还在，
+// 只删 setSizeToImageSize()。若把第二个方法一起补是「顺手」，这个场景就会跟 A
+// 一样跑过去 —— 必须复现 `Member "setSizeToImageSize" does not exist @
+// MainWindow.tjs:349`。
+static int RunCaseNoSizeToImageSize(const char *nosz, const char *storage) {
+    if (!Exists(std::string(nosz) + "/system/Config.tjs"))
+        return Fail("NOSIZETOIMAGESIZE fixture missing Config.tjs", NULL);
+    const std::string skel = std::string(nosz) + "/system/GalBoxLayer.tjs";
+    if (!Exists(skel))
+        return Fail("NOSIZETOIMAGESIZE fixture must keep the Layer skeleton", NULL);
+    {
+        std::ifstream f(skel.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E15_SIZETO_BEGIN") != std::string::npos)
+            return Fail("NOSIZETOIMAGESIZE fixture must have the setSizeToImageSize method removed", NULL);
+        if (body.find("function setSizeToImageSize") != std::string::npos)
+            return Fail("NOSIZETOIMAGESIZE fixture still declares setSizeToImageSize", NULL);
+        if (body.find("function setImageSize") == std::string::npos)
+            return Fail("NOSIZETOIMAGESIZE fixture must keep setImageSize", NULL);
+        if (body.find("var imageWidth") == std::string::npos)
+            return Fail("NOSIZETOIMAGESIZE fixture must keep imageWidth", NULL);
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(nosz, storage, arc);
+    if (!j) return Fail("cannot run the NOSIZETOIMAGESIZE control", NULL);
+    DumpChain("NOSIZETOIMAGESIZE", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string inner = StrField(j, "lastScriptError");
+    const std::string block = StrField(j, "fatalBlock");
+    const long long line = IntField(j, "fatalLine");
+    const bool gap = (fatal + " || " + inner).find("\"setSizeToImageSize\"") != std::string::npos;
+    if (!gap || block.find("MainWindow.tjs") == std::string::npos || line != 349)
+        return Fail("NOSIZETOIMAGESIZE control did not reproduce the setSizeToImageSize gap", j);
+
+    std::printf("[m2h] NOSIZETOIMAGESIZE verdict: fatal=\"%s\" @ %s:%lld\n",
+                fatal.c_str(), block.c_str(), line);
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // 打开任意容器（目录 / .xp3）跑一次官方链，返回 JSON。
 // dirMode / entryCount 必须在 close() 之前取（close 会清掉它们）。
 static char *RunArchive(const char *path, const char *storage,
@@ -916,12 +1033,15 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
     }
 
     // 停点必须与 A 场景同口径（目录侧的等价结论由 A 在独立进程里断言）：
-    // M2e-14 之后设备容器里也不许再出现 debugLevel / hitType / hitThreshold。
-    // 这几条判据非恒真 —— NODEBUGLEVEL / NOHITTYPE / NOHITTHRESHOLD 三个负向
-    // 对照在独立进程里分别证明了「删掉成员 → 缺口复现」。
+    // M2e-15 之后设备容器里也不许再出现 debugLevel / hitType / hitThreshold /
+    // setImageSize / setSizeToImageSize。
+    // 这几条判据非恒真 —— NODEBUGLEVEL / NOHITTYPE / NOHITTHRESHOLD /
+    // NOIMAGESIZE / NOSIZETOIMAGESIZE 五个负向对照在独立进程里分别证明了
+    // 「删掉成员 → 缺口复现」。
     const std::string fatal = StrField(j, "fatal");
     const std::string inner = StrField(j, "lastScriptError");
-    for (const char *closed : {"debugLevel", "\"hitType\"", "\"hitThreshold\""}) {
+    for (const char *closed : {"debugLevel", "\"hitType\"", "\"hitThreshold\"",
+                               "\"setImageSize\"", "\"setSizeToImageSize\""}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -930,7 +1050,8 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
     }
 
     std::printf("[m2h] XP3 verdict: real .xp3 ran the same chain "
-                "(%lld scripts, debugLevel/hitType/hitThreshold all cleared "
+                "(%lld scripts, debugLevel/hitType/hitThreshold/"
+                "setImageSize/setSizeToImageSize all cleared "
                 "in the device container)\n", scripts);
     GalBoxTJS2Free(j);
     return 0;
@@ -952,6 +1073,8 @@ int main(int argc, char **argv) {
     const char *nodl    = (argc > 12) ? argv[12] : "";
     const char *nohit   = (argc > 13) ? argv[13] : "";
     const char *noth    = (argc > 14) ? argv[14] : "";
+    const char *noimg   = (argc > 15) ? argv[15] : "";
+    const char *nosz    = (argc > 16) ? argv[16] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -1008,6 +1131,16 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOIMAGESIZE") == 0) {
+        if (RunCaseNoImageSize(noimg, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
+    if (std::strcmp(which, "NOSIZETOIMAGESIZE") == 0) {
+        if (RunCaseNoSizeToImageSize(nosz, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -1021,6 +1154,6 @@ int main(int argc, char **argv) {
 
     std::printf("[m2h] unknown case '%s' (A / B / NOMENU / NOSTYLE / NOTIMER / NOFONT / "
                 "NOKAGPARSER / NOASYNCTRIGGER / NODEBUGLEVEL / NOHITTYPE / "
-                "NOHITTHRESHOLD / XP3 / LEAK / LEAK2)\n", which);
+                "NOHITTHRESHOLD / NOIMAGESIZE / NOSIZETOIMAGESIZE / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

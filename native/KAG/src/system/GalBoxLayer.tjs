@@ -57,6 +57,41 @@ class Layer
 	var hitThreshold = 0;
 	// M2E14_THRESHOLD_END
 	// M2E14_END
+
+	// M2E15_BEGIN —— M2e-15 负向对照（NOIMAGESIZE）按此标记整段删除
+	// 官方 LayerIntf.cpp 的**图像面**：imageWidth/imageHeight 是原生属性，
+	// setImageSize() 写它们，setSizeToImageSize() 再把图层尺寸对齐到图像尺寸。
+	//
+	// MainWindow.tjs:348-353 建表/裏两张背景层时连着调这几个方法：
+	//     fore.base.setImageSize(scWidth, scHeight);
+	//     fore.base.setSizeToImageSize();
+	// 两者是**两个不同的概念**，不能合并成一个：图像尺寸是源图缓冲的大小，
+	// 图层尺寸是显示框的大小（KAG 会先在图像里画，再按图层框裁切/缩放）。
+	// 这里不做渲染，所以只把两个尺寸各自存住，让脚本层的算术自洽。
+	//
+	// 为什么要给真值 0 而不是留 void：KAGLayer.tjs:334-335 的 store() 会
+	// `dic.imageWidth = imageWidth;` 原样拷走 —— void 会被一路带进
+	// restore() 的 setImageSize(dic.imageWidth, dic.imageHeight)，之后
+	// width/height 就算出 NaN 级污染，且不会报错（静默错）。
+	var imageWidth = 0;
+	var imageHeight = 0;
+
+	function setImageSize(w, h)
+	{
+		imageWidth = w;
+		imageHeight = h;
+	}
+
+	// M2E15_SIZETO_BEGIN —— NOSIZETOIMAGESIZE 负向对照只删这一个方法
+	// 官方语义：把图层尺寸直接对齐到图像尺寸（不含 imageLeft/imageTop 偏移）。
+	function setSizeToImageSize()
+	{
+		width = imageWidth;
+		height = imageHeight;
+	}
+	// M2E15_SIZETO_END
+	// M2E15_END
+
 	var imageLeft = 0;
 	var imageTop = 0;
 	var isPrimary = false;
