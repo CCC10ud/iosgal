@@ -232,8 +232,9 @@ static int RunCaseA(const char *game, const char *storage) {
     }
     if (trace.find("MainWindow.tjs") == std::string::npos)
         return Fail("the chain did not reach MainWindow.tjs", j);
+    // 精确行号 313-320（borderStyle 等样式赋值区），不用 <=320 宽范围，避免误伤同文件新缺口。
     if (gapBlock.find("MainWindow.tjs") != std::string::npos &&
-        gapLine > 0 && gapLine <= 320)
+        gapLine >= 313 && gapLine <= 320)
         return Fail("the chain is still stuck at the old MainWindow.tjs style lines", j);
 
     // M2e-9 硬判据：run 44046384978 的下一缺口是 MainWindow.tjs:337 的
@@ -242,8 +243,9 @@ static int RunCaseA(const char *game, const char *storage) {
     if (fatal.find("\"Timer\"") != std::string::npos ||
         inner.find("\"Timer\"") != std::string::npos)
         return Fail("M2e-9 gap (Timer) not cleared", j);
+    // 同样只用精确行号（Timer 缺口在 337-339），不用 <=340 宽范围，避免误伤同文件新缺口。
     if (gapBlock.find("MainWindow.tjs") != std::string::npos &&
-        gapLine > 0 && gapLine <= 340)
+        gapLine >= 337 && gapLine <= 339)
         return Fail("the chain is still stuck at the old MainWindow.tjs Timer lines", j);
 
     // M2e-10 硬判据：run 44047626865 的下一缺口是 AnimationLayer.tjs:343 的
@@ -252,8 +254,11 @@ static int RunCaseA(const char *game, const char *storage) {
     if (fatal.find("\"font\"") != std::string::npos ||
         inner.find("\"font\"") != std::string::npos)
         return Fail("M2e-10 gap (Layer.font) not cleared", j);
+    // ⚠️ 判据不能用 `gapLine <= 345` 这种宽范围：脚本执行顺序与源码行号无关，
+    // run 44057349589 的新缺口 debugLevel 落在同一文件 266 行（比旧停点还小），
+    // 被宽判据误判成「还卡在旧 font」。只精确匹配旧缺口那两行。
     if (gapBlock.find("AnimationLayer.tjs") != std::string::npos &&
-        gapLine > 0 && gapLine <= 345)
+        (gapLine == 343 || gapLine == 344))
         return Fail("the chain is still stuck at the old AnimationLayer.tjs font lines", j);
     if (trace.find("AnimationLayer.tjs") == std::string::npos)
         return Fail("the chain did not reach AnimationLayer.tjs", j);

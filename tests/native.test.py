@@ -998,6 +998,11 @@ ok("NOASYNCTRIGGER control did not reproduce the AsyncTrigger gap" in m2h_test,
    "M2e-12：NOASYNCTRIGGER 负向对照必须复现 Conductor.tjs:33 缺口")
 ok("old Conductor.tjs:33 AsyncTrigger lines" in m2h_test,
    "M2e-12：自测要求离开 Conductor.tjs:33 旧停点")
+ok("gapLine == 343 || gapLine == 344" in m2h_test and
+   "gapLine >= 337 && gapLine <= 339" in m2h_test and
+   "gapLine >= 313 && gapLine <= 320" in m2h_test,
+   "判据防回归(M2e-12 修复)：旧停点检查用精确行号，不用 <=N 宽范围"
+   "(run 44057349589 的 debugLevel@266 曾被 font 判据 <=345 误伤)")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
