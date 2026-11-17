@@ -1,0 +1,26 @@
+// GalBoxPad.tjs — GalBox 自写的 `Pad` 骨架（**非官方**，Milestone 2e-6）
+//
+// 官方 `Pad` 是 kirikiri2 核心里的原生「文本垫窗口」类（PadIntf.cpp，
+// 绑 Windows tp_stub）。KAG 的 UpdateConfig.tjs 在版本升级路径上用它显示
+// 「从旧 Config.tjs 继承后的设置文本」，run #56 把根因钉死在：
+//     UpdateConfig.tjs:79   global.configPad = new Pad();
+//     fatal: Member "Pad" does not exist
+//
+// 官方对该实例的**全部用法**（UpdateConfig.tjs:79-84）只有 5 个可写属性，
+// 没有方法调用、没有继承：
+//     new Pad(); .text / .color / .title / .fileName / .visible
+// ⇒ 一份纯 TJS2 骨架即可让这段配置升级逻辑走通，和 Layer/Window 骨架同理：
+// 它**不创建窗口、不显示文本、不接受鼠标右键「保存」**，只为把下一批缺口逼出来。
+//
+// ⚠️ TJS2 语法雷（M2e-3 踩过）：不要用 `...` 变参定义，也不要把 `invalidate`
+// 之类对象关键字当函数名 —— 任何一个都会让整个 shim 语法错误、连带 Pad 装不上。
+
+class Pad
+{
+	// UpdateConfig.tjs 实际写入的 5 个成员（全部可写，纯占位）
+	var text = "";
+	var color = 0;
+	var title = "";
+	var fileName = "";
+	var visible = false;
+}

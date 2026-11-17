@@ -829,6 +829,29 @@ ok("M2H_CASE in A B LEAK LEAK2" in test_sh or
    "for M2H_CASE in A B LEAK LEAK2" in test_sh,
    "构建脚本把四个场景拆成独立进程跑（避免场景间污染）")
 
+# ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
+pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
+ok("class Pad" in pad_shim and "var text" in pad_shim and
+   "var fileName" in pad_shim,
+   "M2e-6：Pad 骨架提供 UpdateConfig.tjs 用到的 5 个可写属性")
+ok("GalBoxPad.tjs" in bridge_cpp and "M2E6_PAD_SKELETON" in bridge_cpp,
+   "M2e-6：Pad 骨架进 LoadEngineShim 装载序列且带 shim tag")
+ok("TJS_BEGIN_NATIVE_METHOD_DECL(getLocalName)" in bridge_cpp and
+   "TJS_END_NATIVE_STATIC_METHOD_DECL(getLocalName)" in bridge_cpp,
+   "M2e-6：Storages.getLocalName 原生方法已注册（UpdateConfig.tjs:83）")
+ok("TJS_BEGIN_NATIVE_METHOD_DECL(exec)" in bridge_cpp and
+   "TJS_END_NATIVE_STATIC_METHOD_DECL(exec)" in bridge_cpp and
+   "TJS_W(\"Scripts.exec\")" in bridge_cpp,
+   "M2e-6：Scripts.exec 原生方法已注册（UpdateConfig.tjs:93，重执行 Config）")
+ok("cp \"$KAG/src/system/GalBoxPad.tjs\"" in test_sh,
+   "M2e-6：构建脚本把 Pad 骨架放进 M2h 夹具（否则 new Pad() 仍失败）")
+ok("M2e-6 gap not cleared" in m2h_test and
+   "M2e-6 regression: Pad skeleton was not loaded" in m2h_test,
+   "M2e-6：自测硬判据——三处缺口全清 + Pad 骨架真的装进引擎")
+ok("Scripts.exec" in m2h_test and "getLocalName" in m2h_test and
+   "const char *gap" in m2h_test,
+   "M2e-6：自测逐个校验 Pad / getLocalName / Scripts.exec 不再出现在 fatal")
+
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
 sys.exit(0 if F == 0 else 1)

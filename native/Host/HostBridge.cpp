@@ -492,6 +492,31 @@ public:
             return TJS_S_OK;
         }
         TJS_END_NATIVE_STATIC_METHOD_DECL(eval)
+
+        // M2e-6：官方 UpdateConfig.tjs:93 `Scripts.exec(lines)` 执行一段
+        // **脚本文本**（不是文件名）—— 把继承合并后的新 Config 内容当脚本
+        // 再跑一遍，使其中 KAGWindow_config 等函数定义重新生效。
+        // 与 Scripts.eval 的差别只在语义命名；底层同样是 ExecScript。
+        TJS_BEGIN_NATIVE_METHOD_DECL(exec)
+        {
+            if (numparams < 1) return TJS_E_BADPARAMCOUNT;
+            if (!gActiveEngine) {
+                gLastScriptError = "no active TJS2 engine for Scripts.exec";
+                return TJS_E_FAIL;
+            }
+            ttstr code(*param[0]);
+            try {
+                gActiveEngine->ExecScript(code.c_str(), NULL, NULL,
+                                          TJS_W("Scripts.exec"), 0);
+            } catch (...) {
+                CaptureCurrentException();
+                if (gLastScriptError.empty())
+                    gLastScriptError = "Scripts.exec threw";
+                return TJS_E_FAIL;
+            }
+            return TJS_S_OK;
+        }
+        TJS_END_NATIVE_STATIC_METHOD_DECL(exec)
         TJS_END_NATIVE_MEMBERS
     }
 private:
@@ -553,6 +578,22 @@ public:
             return TJS_S_OK;
         }
         TJS_END_NATIVE_STATIC_METHOD_DECL(chopStorageExt)
+
+        // M2e-6：官方 UpdateConfig.tjs:83 用 Storages.getLocalName(path) 取
+        // 「本地文件名」（basename，去掉目录）。官方语义见 StoragesIntf.cpp：
+        // 返回路径最后一段。这里对 / 和 \ 都切，覆盖 Windows/POSIX 两种来源。
+        TJS_BEGIN_NATIVE_METHOD_DECL(getLocalName)
+        {
+            if (numparams < 1) return TJS_E_BADPARAMCOUNT;
+            ttstr name(*param[0]);
+            std::string p = WideToUtf8(name.c_str());
+            size_t slash = p.find_last_of("/\\");
+            std::string base = (slash == std::string::npos)
+                                   ? p : p.substr(slash + 1);
+            if (result) *result = ttstr(Utf8ToWide(base.c_str()).c_str());
+            return TJS_S_OK;
+        }
+        TJS_END_NATIVE_STATIC_METHOD_DECL(getLocalName)
         TJS_END_NATIVE_MEMBERS
     }
 private:
@@ -1015,11 +1056,13 @@ static bool LoadEngineShim(tTJS *engine) {
         "system/GalBoxConsts.tjs",  // M2e-4：官方常量表（摘自 ScriptMgnIntf.cpp）
         "system/GalBoxLayer.tjs",   // M2e-2
         "system/GalBoxWindow.tjs",  // M2e-3
+        "system/GalBoxPad.tjs",     // M2e-6：UpdateConfig.tjs 配置升级路径
     };
     static const char *kTags[] = {
         "M2E4_OFFICIAL_CONSTS",
         "M2E2_LAYER_SKELETON",
         "M2E3_WINDOW_SKELETON",
+        "M2E6_PAD_SKELETON",
     };
     if (!engine) { gShimStatus = "error: no engine"; return false; }
     // tag 只在**真正装载成功**时进 status —— run #38 里 Window 骨架是语法

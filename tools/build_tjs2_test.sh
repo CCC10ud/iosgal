@@ -528,6 +528,8 @@ if [ -f "$HOST/test_m2h.cpp" ] && [ -d "$M2G_GAME" ] \
   M2H_CTRL="$OUT/m2h_ctrl"
   rm -rf "$M2H_GAME" "$M2H_CTRL"
   cp -R "$M2G_GAME" "$M2H_GAME"
+  # M2e-6：把 Pad 骨架放进夹具，让 UpdateConfig.tjs:79 的 new Pad() 能实例化。
+  cp "$KAG/src/system/GalBoxPad.tjs" "$M2H_GAME/system/GalBoxPad.tjs"
   # 官方 Config.tjs = 原始 Shift-JIS 字节 + 前置一行 ASCII 版本号。
   # 版本号用来让 Initialize.tjs 跳过 UpdateConfig.tjs 分支；
   # ASCII 在 CP932 里恒等，和 SJIS 正文混排安全。

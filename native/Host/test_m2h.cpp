@@ -175,22 +175,41 @@ static int RunCaseA(const char *game, const char *storage) {
     if (trace.find("Config.tjs") == std::string::npos)
         return Fail("Config.tjs was never read", j);
 
-    // 新缺口记录（M2e-6 的起点）：UpdateConfig.tjs:79 的 `new Pad()` 是
-    // Kirikiri 的原生 Pad 窗口类，GalBox 尚未实现。这是**预期推进**，不再是回归。
-    if (fatal.find("Pad") != std::string::npos) {
-        std::printf("[m2h] A next gap: '%s' @ %s:%lld (Pad native class, M2e-6)\n",
-                    fatal.c_str(), StrField(j, "fatalBlock").c_str(),
-                    IntField(j, "fatalLine"));
+    // M2e-6 硬判据：UpdateConfig.tjs 的 3 处缺口必须全部跨过（不再是回归，
+    // 而是本轮的出口）。run #56 停在 79 行 new Pad()；补完 Pad 骨架 +
+    // Storages.getLocalName(83) + Scripts.exec(93) 后，这三处都不该再出现在
+    // fatal / inner 里。若仍报其中之一，说明本轮改动没生效。
+    const std::string gapBlock = StrField(j, "fatalBlock");
+    const long long gapLine = IntField(j, "fatalLine");
+    for (const char *gap : {"\"Pad\"", "getLocalName", "Scripts.exec"}) {
+        if (fatal.find(gap) != std::string::npos ||
+            inner.find(gap) != std::string::npos) {
+            std::printf("[m2h] A still stuck at %s (%s:%lld)\n",
+                        gap, gapBlock.c_str(), gapLine);
+            return Fail("M2e-6 gap not cleared", j);
+        }
     }
+
+    // 新缺口记录（M2e-7 的起点）：本轮推进后 UpdateConfig.tjs 应当走完，
+    // Initialize.tjs 继续到 15 脚本链 / createAppLock 或更后面。这里只记录
+    // 真实停点，**不预设下一缺口的名字**——避免判据变成自我实现的预言。
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-6)\n",
+                fatal.c_str(), gapBlock.c_str(), gapLine);
+
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
     // run #55：M2E4_OFFICIAL_CONSTS 在 GalBoxTJS2Install 的 shim 字段里
     // （形如 "M2E4_OFFICIAL_CONSTS+..."），不是带引号的顶层 JSON 字段。
-    if (StrField(j, "shim").find("M2E4_OFFICIAL_CONSTS") == std::string::npos &&
+    const std::string shim = StrField(j, "shim");
+    if (shim.find("M2E4_OFFICIAL_CONSTS") == std::string::npos &&
         !Has(j, "\"M2E4_OFFICIAL_CONSTS\""))
         return Fail("M2e-4 regression: official constants missing", j);
+    // M2e-6：Pad 骨架必须真的装进引擎（shim tag 只在 ExecScript 成功后写入）。
+    if (shim.find("M2E6_PAD_SKELETON") == std::string::npos)
+        return Fail("M2e-6 regression: Pad skeleton was not loaded", j);
 
-    std::printf("[m2h] A verdict: official Config.tjs took effect, reached UpdateConfig.tjs "
-                "(%d scripts read)\n", scripts);
+    std::printf("[m2h] A verdict: official Config.tjs took effect, UpdateConfig.tjs "
+                "gaps cleared, advanced to %s:%lld (%d scripts read)\n",
+                gapBlock.c_str(), gapLine, scripts);
     GalBoxTJS2Free(j);
     return 0;
 }
