@@ -922,6 +922,18 @@ void tTJSInterCodeContext::ExecuteAsFunction(iTJSDispatch2 *objthis,
 void tTJSInterCodeContext::DisplayExceptionGeneratedCode(tjs_int codepos,
 	const tTJSVariant *ra)
 {
+	// P9 (GalBox, run #51): 官方这个「异常时打印 VM 反汇编 + 全寄存器 dump」
+	// 是**纯调试诊断**, 对异常语义无任何作用 —— 真正抛错的是紧随其后的
+	// TJS_eTJSScriptError, 宿主也通过 CaptureCurrentException 独立拿到了
+	// fatal/fatalBlock/fatalLine。但它遍历**全部**寄存器槽位(含未初始化的
+	// 垃圾 object 槽), TJSVariantToReadableString 处理坏闭包时是 UB:
+	// macOS clang 侥幸不 fault, Linux/glibc 下 gdb 栈稳定崩在
+	// DisplayExceptionGeneratedCode -> TJSVariantToReadableString。
+	// 商业游戏一旦 throw 就会命中, 等于「报个错就把进程带崩」。短路掉它,
+	// 异常照常抛出、诊断由宿主负责, 与官方行为等价且跨平台安全。
+	(void)codepos;
+	(void)ra;
+	return;
 	tTJS *tjs = Block->GetTJS();
 	ttstr info(
 		TJS_W("==== An exception occured at ") +

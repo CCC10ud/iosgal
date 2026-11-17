@@ -727,6 +727,13 @@ variant_cpp = read("native/TJS2/src/tjsVariant.cpp")
 ok("const tjs_char *p1 = s1 ?" in variant_cpp and
    "TJSAllocVariantString(p1, p2)" in variant_cpp,
    "operator+= 修掉 void+string 时空引用解引用（P8，Linux 段错误根因）")
+# run #51：Linux M2b 第三次 ExecScript(故意 throw)崩溃，gdb 栈崩在异常调试转储
+# DisplayExceptionGeneratedCode(遍历垃圾寄存器槽)。纯诊断函数，短路掉。
+exec_cpp = read("native/TJS2/src/tjsInterCodeExec.cpp")
+ok("P9" in exec_cpp and
+   "DisplayExceptionGeneratedCode(tjs_int codepos," in exec_cpp and
+   "// P9" in exec_cpp,
+   "异常调试转储 DisplayExceptionGeneratedCode 跨平台短路（P9，避免 throw 带崩进程）")
 for tag in ("M1C_HOST_v1", "M2A_SCRIPTS_EXEC_STORAGE", "M2B_STORAGES_AUTOPATH",
             "M2C_SYSTEM_DEBUG", "M2D_REGEXP_STDREGEX",
             "M2E_SYSTEM_SCRIPTS_VENDORED", "M2E2_LAYER_SKELETON"):
