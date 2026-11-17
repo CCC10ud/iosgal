@@ -203,6 +203,15 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2b.cpp" ] \
     OUTPUT_M2B=$("$OUT/tjs2test_m2b" "$M2B_GAME" "$OUT" 2>&1)
     M2B_RC=$?
     echo "[tjs2] M2b exit code: $M2B_RC"
+    # 诊断（run #49）：Linux 上第二次 ExecScript 段错误(139)，macOS 同码通过。
+    # 崩溃时若有 gdb，打一份 backtrace 供定位进程级状态泄漏根因。
+    if [ "$M2B_RC" -ge 128 ] && command -v gdb >/dev/null 2>&1; then
+      echo "[tjs2] M2b crash backtrace (gdb):"
+      gdb -q -batch -ex run -ex bt --args \
+          "$OUT/tjs2test_m2b" "$M2B_GAME" "$OUT" 2>&1 \
+          | grep -vE '^\[New Thread|^\[Thread' \
+          | sed 's/^/[tjs2][gdb] /' | head -60
+    fi
     echo "$OUTPUT_M2B" | sed 's/^/[tjs2]   /'
     if echo "$OUTPUT_M2B" | grep -q "M2B_RESULT=OK"; then
       echo "[tjs2] M2b 自测通过（Storages autoPath + 官方 SJIS Utils.tjs 真跑）"
