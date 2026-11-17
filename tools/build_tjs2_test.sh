@@ -63,7 +63,7 @@ for f in "$SRC"/*.cpp; do
   [ -e "$f" ] || continue
   b="$(basename "$f")"
   o="$OUT/${b%.cpp}.o"
-  if ! clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
+  if ! clang++ -std=c++14 -O1 -g -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -include "$COMPAT" \
         -c "$f" -o "$o" 2>"$o.log"; then
     echo "[tjs2] 编译失败: $b"; cat "$o.log"; ERR=1
@@ -79,7 +79,7 @@ echo "[tjs2] libtjs2.a 构建成功 ($(wc -c < "$OUT/libtjs2.a" | tr -d ' ') byt
 # eval 自测
 if [ -f "$ROOT/native/TJS2/test_m0.cpp" ]; then
   echo "[tjs2] 编译并运行 eval 自测"
-  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
+  if clang++ -std=c++14 -O1 -g -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -include "$COMPAT" \
         "$ROOT/native/TJS2/test_m0.cpp" "$OUT/libtjs2.a" -lpthread -o "$OUT/tjs2test" 2>"$OUT/link.log"; then
     OUTPUT=$("$OUT/tjs2test" 2>&1)
@@ -98,7 +98,7 @@ fi
 HOST="$ROOT/native/Host"
 if [ -f "$HOST/HostStreams.cpp" ] && [ -f "$ROOT/native/TJS2/test_m1.cpp" ]; then
   echo "[tjs2] M1: 编译 GalBox 宿主流实现"
-  if ! clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
+  if ! clang++ -std=c++14 -O1 -g -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         -c "$HOST/HostStreams.cpp" -o "$OUT/HostStreams.o" 2>"$OUT/host_m1.log"; then
     echo "[tjs2] M1 宿主编译失败:"; cat "$OUT/host_m1.log"; exit 1
@@ -112,7 +112,7 @@ if [ -f "$HOST/HostStreams.cpp" ] && [ -f "$ROOT/native/TJS2/test_m1.cpp" ]; the
   fi
 
   echo "[tjs2] M1: 编译并运行宿主自测（读 XP3 内文件 / Array.load）"
-  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
+  if clang++ -std=c++14 -O1 -g -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$ROOT/native/TJS2/test_m1.cpp" "$OUT/HostStreams.o" "$OUT/XP3Archive.o" \
         "$OUT/libtjs2.a" -lz $ICONV_LIB -lpthread -o "$OUT/tjs2test_m1" 2>"$OUT/link_m1.log"; then
@@ -134,7 +134,7 @@ fi
 # iOS 侧只负责「用同一套 flags 编译 + 链接进 app」。
 if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m1c.cpp" ]; then
   echo "[tjs2] M1c: 编译 app 侧适配层 HostBridge.cpp"
-  if ! clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
+  if ! clang++ -std=c++14 -O1 -g -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         -c "$HOST/HostBridge.cpp" -o "$OUT/HostBridge.o" 2>"$OUT/host_m1c.log"; then
     echo "[tjs2] M1c HostBridge 编译失败:"; cat "$OUT/host_m1c.log"; exit 1
@@ -142,7 +142,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m1c.cpp" ]; then
   echo "[tjs2] HostBridge.o OK"
 
   echo "[tjs2] M1c: 编译并运行冒烟自测（eval / Array.load / Array.save / 卸载）"
-  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
+  if clang++ -std=c++14 -O1 -g -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m1c.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
@@ -172,7 +172,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2a.cpp" ] \
   cp "$KAG/src/system/Utils.tjs" "$M2A_GAME/system/Utils.tjs"
 
   echo "[tjs2] M2a: 编译并运行官方 KAG3 脚本自测（Scripts.execStorage）"
-  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
+  if clang++ -std=c++14 -O1 -g -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m2a.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
@@ -213,7 +213,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2b.cpp" ] \
   echo "[tjs2] M2b fixture: ${M2B_BYTES}B 官方原始 Shift-JIS blob"
 
   echo "[tjs2] M2b: 编译并运行 Storages autoPath / Shift-JIS 自测"
-  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
+  if clang++ -std=c++14 -O1 -g -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m2b.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
@@ -269,7 +269,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2c.cpp" ] \
   echo "[tjs2] M2c fixture: 官方 startup.tjs + Initialize.tjs (${INIT_BYTES}B SJIS) + Utils.tjs"
 
   echo "[tjs2] M2c: 编译并运行官方 Initialize.tjs 原文自测（System / Debug）"
-  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
+  if clang++ -std=c++14 -O1 -g -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m2c.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
@@ -322,7 +322,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2d.cpp" ] \
   echo "[tjs2] M2d fixture: 正则探针(UTF-8) + 官方 startup/Initialize(${INIT_BYTES_M2D}B SJIS)/Utils + 探针 Config"
 
   echo "[tjs2] M2d: 编译并运行正则自测（RegExp 语义 + 官方 createAppLock 正则）"
-  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
+  if clang++ -std=c++14 -O1 -g -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m2d.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
@@ -402,7 +402,7 @@ PYEOF
   echo "[tjs2] M2e fixture: 官方 system/ 28 文件 + Config 探针；负向对照 4 文件"
 
   echo "[tjs2] M2e: 编译并运行全量系统脚本自测（清单 / 启动链 / 负向对照）"
-  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
+  if clang++ -std=c++14 -O1 -g -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m2e.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
@@ -451,7 +451,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2f.cpp" ] \
   echo "[tjs2] M2f fixture: 官方 28 文件 + GalBox Layer 骨架；负向对照去掉骨架"
 
   echo "[tjs2] M2f: 编译并运行 Layer 骨架自测（继承 / 启动链 / 负向对照）"
-  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
+  if clang++ -std=c++14 -O1 -g -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m2f.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
@@ -497,7 +497,7 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2g.cpp" ] \
   echo "[tjs2] M2g fixture: Layer+Window 骨架；负向对照只有 Layer 骨架"
 
   echo "[tjs2] M2g: 编译并运行 Window 骨架自测（继承 / 启动链 / 负向对照）"
-  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
+  if clang++ -std=c++14 -O1 -g -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m2g.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
@@ -548,7 +548,7 @@ if [ -f "$HOST/test_m2h.cpp" ] && [ -d "$M2G_GAME" ] \
   echo "[tjs2] M2e-5 fixture: 官方 Config.tjs（含 KAGWindow_config）；负向对照用探针版"
 
   echo "[tjs2] M2e-5: 编译并运行自测（官方 Config.tjs / 二次执行诊断 / 负向对照）"
-  if clang++ -std=c++14 -O1 -fexceptions -DTJS2_POSIX \
+  if clang++ -std=c++14 -O1 -g -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
         "$HOST/test_m2h.cpp" "$OUT/HostBridge.o" "$OUT/HostStreams.o" \
         "$OUT/XP3Archive.o" "$OUT/libtjs2.a" \
