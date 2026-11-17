@@ -42,6 +42,32 @@
 - **P6 `tjsArray.cpp:917`** — `i - ni->Items.begin()` 得到 `ptrdiff_t`(long)，
   赋给 `tTJSVariant` 时多个 `operator=` 重载歧义。显式 `(tjs_int)` 转换。
 
+### P8–P10：Linux/glibc 暴露的「官方空指针解引用靠 UB 侥幸工作」（run #47–53）
+
+新增 `ubuntu-latest` 自测 job 后，同一份源码在 macOS clang 全绿、Linux clang++
+却连续段错误。gdb（`-g` 编译）定位出三处**同源**问题：官方代码在非 `__CODEGUARD__`
+构建下解引用空指针/空引用，macOS clang 把这些解引用优化掉（非虚成员只读固定偏移、
+空引用读到地址 0 附近未 fault），Linux clang++ -O1 真的访存 → SIGSEGV。三处都在
+**报错/诊断路径**，宿主已独立捕获 fatal 信息，修复不改变正常游戏语义：
+
+- **P8 `tjsVariant.cpp:1114` `tTJSVariant::operator+=`** — lhs 为 void 时
+  `AsString()` 返回 NULL，`val.String = TJSAllocVariantString(*s1, *s2)` 解引用空引用
+  （`res += "0"` 首次拼接即触发）。改为先判 NULL 取 `const tjs_char*`，直接传指针；
+  `TJSAllocVariantString(const tjs_char*, const tjs_char*)` 重载本身就接受 NULL。
+  gdb 栈：`operator+=` → `ExecuteCode` → `FuncCall(str2num)`。
+- **P9 `tjsInterCodeExec.cpp:922` `DisplayExceptionGeneratedCode`** — 官方「异常时打印
+  VM 反汇编 + 全寄存器 dump」的纯调试函数，遍历全部寄存器槽位（含未初始化的垃圾
+  object 槽），`TJSVariantToReadableString` 处理坏闭包时崩。它对异常语义零作用
+  （真正抛错的是紧随的 `TJS_eTJSScriptError`，宿主也独立拿到 fatal），移植版直接
+  短路返回。商业游戏一 throw 就会命中此路径。
+- **P10 `tjsString.h:410` `tTJSString::GetLen`** — 官方只在 `__CODEGUARD__` 宏下才有
+  `if(!Ptr) return 0`，正常构建里空串（Ptr=NULL）调 GetLen 会 `NULL->GetLength()`。
+  空串长度为 0 是官方明确语义（CODEGUARD 分支自证），对所有构建启用该保护。
+  gdb 栈：`eTJSScriptError::AddTrace` → `tTJSString::GetLen`。
+
+配套诊断基础设施（仍在演进）：`build_tjs2_test.sh` 的 `diag_crash()` 在所有自测崩溃时
+打退出码 + gdb backtrace；所有 `test_*.cpp` 设无缓冲 stdout；Linux job 装 gdb、编译加 `-g`。
+
 ## P7 正则层整体重写（M2d，`tjsRegExp.h` / `tjsRegExp.cpp`）
 
 这两个文件**已不是上游原文**，是 GalBox 用标准库 `std::basic_regex` 重写的整份

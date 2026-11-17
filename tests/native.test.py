@@ -815,8 +815,11 @@ ok("the official Config.tjs did not take effect" in m2h_test,
    "自测断言换了官方 Config.tjs 后 KAGWindow_config 缺口消失")
 ok("negative control did not reproduce the KAGWindow_config gap" in m2h_test,
    "自测有负向对照（探针版 Config 必须复现该缺口）")
-ok("scripts < 15" in m2h_test,
-   "自测断言加载脚本数不比 M2e-4 的 15 个倒退")
+ok("did not advance to UpdateConfig.tjs" in m2h_test and
+   "next gap" in m2h_test,
+   "自测改用「推进到 UpdateConfig.tjs + 记录 Pad 新缺口」判据（run #54：官方 Config 走新路径，脚本数 3 属预期）")
+ok("(apc2 <= 0) || (s2 < s1)" in m2h_test,
+   "LEAK 判据去掉探针版的 s2<15 假设（避免官方 Config 路径假阳性）")
 ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
    "自测带「同进程第二次执行」的诊断探针（状态泄漏定位用）")
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,

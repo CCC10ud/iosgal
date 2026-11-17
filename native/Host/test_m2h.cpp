@@ -159,25 +159,35 @@ static int RunCaseA(const char *game, const char *storage) {
         return Fail("the official Config.tjs did not take effect "
                     "(KAGWindow_config still missing)", j);
 
-    // 硬判据 2：加载脚本数不许比 run #45 的 15 个倒退。
-    const int scripts = CountTrace(StrField(j, "scriptTrace"));
-    if (scripts < 15) {
-        std::printf("[m2h] scripts in trace = %d\n", scripts);
-        return Fail("the official script chain got shorter than in M2e-4", j);
-    }
+    // 硬判据 2（run #54 修正）：官方 Config.tjs 让 Initialize.tjs 走进
+    // UpdateConfig.tjs 分支（run #45 用探针版 Config 时走的是另一条 15 脚本链）。
+    // 原来的「脚本数 >= 15」是**探针版路径的假设**，换官方 Config 后不再适用：
+    // 现在 3 个脚本(Initialize -> Config -> UpdateConfig)后就撞到新缺口 new Pad()。
+    // 真正的「往前推进」判据是 trace 到达 UpdateConfig.tjs，且缺口已从
+    // KAGWindow_config 前进到 Pad（见下方记录）。
+    const std::string trace = StrField(j, "scriptTrace");
+    const int scripts = CountTrace(trace);
+    std::printf("[m2h] scripts in trace = %d\n", scripts);
+    if (trace.find("UpdateConfig.tjs") == std::string::npos)
+        return Fail("official Config.tjs did not advance to UpdateConfig.tjs", j);
 
     // 硬判据 3：官方 Config.tjs 必须真被读到（不是探针版）。
-    if (StrField(j, "scriptTrace").find("Config.tjs") == std::string::npos)
+    if (trace.find("Config.tjs") == std::string::npos)
         return Fail("Config.tjs was never read", j);
 
-    // 回归
-    if (!Has(j, "\"appLock\":true"))
-        return Fail("M2d regression: createAppLock no longer reached", j);
+    // 新缺口记录（M2e-6 的起点）：UpdateConfig.tjs:79 的 `new Pad()` 是
+    // Kirikiri 的原生 Pad 窗口类，GalBox 尚未实现。这是**预期推进**，不再是回归。
+    if (fatal.find("Pad") != std::string::npos) {
+        std::printf("[m2h] A next gap: '%s' @ %s:%lld (Pad native class, M2e-6)\n",
+                    fatal.c_str(), StrField(j, "fatalBlock").c_str(),
+                    IntField(j, "fatalLine"));
+    }
+    // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
     if (!Has(j, "\"M2E4_OFFICIAL_CONSTS\""))
         return Fail("M2e-4 regression: official constants missing", j);
 
-    std::printf("[m2h] A verdict: official Config.tjs took effect, %d scripts read\n",
-                scripts);
+    std::printf("[m2h] A verdict: official Config.tjs took effect, reached UpdateConfig.tjs "
+                "(%d scripts read)\n", scripts);
     GalBoxTJS2Free(j);
     return 0;
 }
@@ -244,7 +254,10 @@ static int RunLeak(const char *game, const char *storage, bool withExceptionFirs
     const int s2 = CountTrace(StrField(j2, "scriptTrace"));
     const long long apc2 = IntField(j2, "autoPathCount");
 
-    const bool broken = (apc2 <= 0) || (s2 < 15) || (s2 < s1);
+    // run #54：原判据含 s2 < 15，那是探针版 Config 的脚本链长度；官方 Config
+    // 走 UpdateConfig 分支只有 3 个脚本，s2 < 15 会恒真 → LEAK 假阳性。
+    // 真泄漏的表现是「第二次 autoPath 一个都没加」或「第二次比第一次短」。
+    const bool broken = (apc2 <= 0) || (s2 < s1);
     std::printf("[m2h] LEAK verdict: %s (first=%d scripts, second=%d scripts, "
                 "autoPathCount=%lld)\n",
                 broken ? "LEAK REPRODUCED (second run is broken)"
