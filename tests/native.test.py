@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把十二个场景拆成独立进程跑（七个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把十四个场景拆成独立进程跑（九个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1038,9 +1038,9 @@ ok(_xp3_case.count("RunArchive(") == 1,
 ok("some skeleton failed to load from the packed xp3" in m2h_test and
    "packed xp3 did not load a skeleton that the fixture has" in m2h_test,
    "M2e-12b：九个骨架必须全部从 .xp3 装载成功（状态串不许有 !failed:）")
-ok("packed xp3 is still stuck at the debugLevel gap" in m2h_test and
+ok("packed xp3 is still stuck at a gap this milestone closed" in m2h_test and
    "XP3 missing shim tag" in m2h_test,
-   "M2e-12b：等价不够，还要求 .xp3 离开当前缺口（M2e-13 后 debugLevel 已清）、且逐个骨架 tag 都在")
+   "M2e-12b：等价不够，还要求 .xp3 离开本轮已关闭的缺口、且逐个骨架 tag 都在")
 ok("从 demo-game.xp3 取到设备端资产" in test_sh and "scenario/first.ks" in test_sh,
    "M2e-12b：内置包带上设备端要播的剧本/图（否则 app 落「没有剧本」兜底分支）")
 
@@ -1079,13 +1079,70 @@ ok("NODEBUGLEVEL control did not reproduce the debugLevel gap" in m2h_test and
    "M2e-13：NODEBUGLEVEL 负向对照 —— 删掉 var debugLevel 必须复现同一停点")
 ok("M2H_NODEBUGLEVEL" in test_sh and "var debugLevel" in test_sh,
    "M2e-13：构建脚本生成 NODEBUGLEVEL 夹具并断言 var debugLevel 真被删掉")
-ok("packed xp3 is still stuck at the debugLevel gap" in m2h_test,
-   "M2e-13：设备容器（真 .xp3）同口径 —— debugLevel 不许再出现")
+ok('"debugLevel", "\\"hitType\\""' in m2h_test,
+   "M2e-13：设备容器（真 .xp3）同口径 —— debugLevel 进了「已关闭缺口」清单，"
+   "XP3 场景不许再停在它上面")
 ok("var debugLevel" in verifier,
    "M2e-13：出包核验器要求内置包的 KAGParser 带 var debugLevel")
 ok("startup chain COMPLETED" in m2h_test and 'ok\\":true' in m2h_test,
    "M2e-13：A 场景补 ok:true 成功分支（链真跑通时不许被判成失败），"
    "但仍要求脚本数 / autoPath / 骨架 tag 三项硬指标")
+
+# ---- M2e-14：Layer 命中测试面 hitType / hitThreshold（GraphicLayer.tjs:337-338）----
+layer_shim = read("native/KAG/src/system/GalBoxLayer.tjs")
+_hit_block = layer_shim.split("M2E14_BEGIN", 1)[-1].split("M2E14_END", 1)[0]
+ok("var hitType = htMask;" in _hit_block and "var hitThreshold = 0;" in _hit_block,
+   "M2e-14：Layer 骨架在 M2E14 段内声明 hitType(=htMask) / hitThreshold(=0)")
+# 嵌套标记：外层 M2E14 用于 NOHITTYPE（整段删），内层 THRESHOLD 用于
+# NOHITTHRESHOLD（只删一行）—— 两层必须是真的嵌套，顺序错了对照就失效。
+_mk = ["M2E14_BEGIN", "M2E14_THRESHOLD_BEGIN", "M2E14_THRESHOLD_END", "M2E14_END"]
+ok(all(layer_shim.count(m) == 1 for m in _mk) and
+   layer_shim.find(_mk[0]) < layer_shim.find(_mk[1]) <
+   layer_shim.find(_mk[2]) < layer_shim.find(_mk[3]),
+   "M2e-14：M2E14 与外层/内层标记是真嵌套（整段删 / 只删一行两种对照都成立）")
+# 官方用法统计：hitType 全写无读；hitThreshold 有 1 处**跨对象读**
+# （ButtonLayer.tjs:53 `hitThreshold = src.hitThreshold;`）=> 必须给真值 0，
+# 不能只声明留 void。这条统计是"给不给初值"的唯一依据，钉住它。
+_ht_a = _ht_r = _th_a = _th_r = 0
+_kagsys = os.path.join(ROOT, "native/KAG/src/original/system")
+for _name in sorted(os.listdir(_kagsys)):
+    if not _name.endswith(".tjs"):
+        continue
+    for _line in raw("native/KAG/src/original/system/" + _name).split(b"\n"):
+        _s = _line.strip()
+        if _s.startswith(b"//"):
+            continue
+        _rhs = _s.split(b"=", 1)[1] if b"=" in _s else b""
+        if b"hitType" in _s:
+            if b"hitType" in _rhs: _ht_r += 1
+            else: _ht_a += 1
+        if b"hitThreshold" in _s:
+            if b"hitThreshold" in _rhs: _th_r += 1
+            else: _th_a += 1
+ok((_ht_a, _ht_r, _th_a, _th_r) == (12, 0, 11, 1),
+   "M2e-14：官方用法统计 hitType 12 写 0 读 / hitThreshold 11 写 1 读"
+   "（%d/%d, %d/%d）—— 后者被读，必须给初值" % (_ht_a, _ht_r, _th_a, _th_r))
+ok("htMask=0, htProvince=1" in read("native/KAG/src/system/GalBoxConsts.tjs"),
+   "M2e-14：tTVPHitType 常量（htMask/htProvince）在官方常量表里，骨架直接用常量名")
+ok("M2e-14 gap (hitType) not cleared" in m2h_test and
+   "M2e-14 gap (hitThreshold) not cleared" in m2h_test and
+   "old GraphicLayer.tjs hit-test lines" in m2h_test,
+   "M2e-14：A 硬判据清掉两个命中面成员且离开旧停点")
+ok("gapLine == 337 || gapLine == 338" in m2h_test,
+   "M2e-14：旧停点用精确行号（337/338），不用 <=N 宽范围")
+ok("NOHITTYPE control did not reproduce the hitType gap" in m2h_test and
+   "NOHITTHRESHOLD control did not reproduce the hitThreshold gap" in m2h_test,
+   "M2e-14：两个负向对照各自复现自己的缺口（不是一条覆盖两条）")
+ok("M2H_NOHITTYPE" in test_sh and "M2H_NOHITTHRESHOLD" in test_sh and
+   "M2E14_THRESHOLD_BEGIN" in test_sh and "drop_marked()" in test_sh,
+   "M2e-14：构建脚本用统一的 drop_marked 生成两个负向对照夹具")
+ok("NOHITTYPE fixture must keep the Layer skeleton" in m2h_test and
+   "NOHITTHRESHOLD fixture must keep hitType" in m2h_test,
+   "M2e-14：负向对照各自校验夹具只删该删的（删多了会先报错，不会假绿）")
+ok("var hitType" in verifier and "var hitThreshold" in verifier,
+   "M2e-14：出包核验器要求内置包的 Layer 带 hitType + hitThreshold")
+ok('"\\"hitType\\"", "\\"hitThreshold\\""' in m2h_test,
+   "M2e-14：XP3 场景按「本轮已关闭缺口」清单检查，hitType/hitThreshold 也在内")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

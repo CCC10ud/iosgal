@@ -14,7 +14,9 @@ startup.tjs 只有一行注释 —— 自测全绿而设备上根本没跑过官
   4. 官方 Config.tjs 在包内（KAGWindow_config 定义在它里面）；
   5. 条目数与总体积达到下限 —— 防止「文件都在但内容被截断」；
   6. KAGParser 骨架里带 `var debugLevel`（M2e-13）—— 官方 AnimationLayer.tjs:266
-     给该成员赋值，缺了设备端就停在动画层构造。
+     给该成员赋值，缺了设备端就停在动画层构造；
+  7. Layer 骨架里带 `var hitType` / `var hitThreshold`（M2e-14）——
+     官方 GraphicLayer.tjs:337-338 给它们赋值。
 """
 import os
 import sys
@@ -96,9 +98,17 @@ def main(argv):
         return fail("system/GalBoxKAGParser.tjs 里没有 var debugLevel："
                     "设备端会在 AnimationLayer.tjs:266 断链")
 
+    # M2e-14：Layer 骨架必须带命中测试面（hitType / hitThreshold）。
+    # 官方 GraphicLayer.tjs:337-338 在 BaseLayer 构造里连写这两个成员。
+    layer = by_name["system/GalBoxLayer.tjs"]["data"]
+    for token in (b"var hitType", b"var hitThreshold"):
+        if token not in layer:
+            return fail("system/GalBoxLayer.tjs 里没有 %s："
+                        "设备端会在 GraphicLayer.tjs:337 断链" % token.decode())
+
     print("[m2e12b] 内置包核验通过: %d 个文件 / 解压后 %d B / "
           "Initialize.tjs %d B / startup.tjs 真调 Initialize / 九个骨架全在 / "
-          "KAGParser 带 debugLevel(M2e-13)"
+          "KAGParser 带 debugLevel(M2e-13) / Layer 带 hitType+hitThreshold(M2e-14)"
           % (parsed["count"], total, init_bytes))
     return 0
 

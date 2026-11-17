@@ -38,6 +38,25 @@ class Layer
 	var opacity = 255;
 	var absolute = 0;
 	var type = 0;
+
+	// M2E14_BEGIN —— M2e-14 负向对照（NOHITTYPE）按此标记整段删除
+	// 官方 LayerIntf.cpp 的**命中测试面**：hitType + hitThreshold。
+	// GraphicLayer.tjs:337-338 里 BaseLayer 构造连着写这两行：
+	//     hitType = htMask;  hitThreshold = 0;
+	// 其他子类还会**跨对象**写（MessageLayer.tjs:528 `lineLayer.hitType = htMask;`），
+	// 说明它必须是实例成员而不是全局变量，否则所有图层会共用一个值。
+	//
+	// hitType = htMask 用的是官方常量表（M2e-4）里的 tTVPHitType：htMask=0 /
+	// htProvince=1。这里刻意写常量名而不是 0 —— 常量表一旦回归，这一行会立刻
+	// 报错，比只写裸数字多一层自检。
+	var hitType = htMask;
+	// M2E14_THRESHOLD_BEGIN —— NOHITTHRESHOLD 负向对照只删这一行
+	// hitThreshold 与 hitType 不同：ButtonLayer.tjs:53 有 `hitThreshold = src.hitThreshold;`
+	// ——它是**被读的**。所以不能留 void，必须给官方默认值 0（0 = 全域不透明；
+	// 256 = 完全透过鼠标消息，见 AnimationLayer.tjs:1186）。
+	var hitThreshold = 0;
+	// M2E14_THRESHOLD_END
+	// M2E14_END
 	var imageLeft = 0;
 	var imageTop = 0;
 	var isPrimary = false;

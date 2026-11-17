@@ -336,8 +336,24 @@ static int RunCaseA(const char *game, const char *storage) {
     if (gapBlock.find("Conductor.tjs") != std::string::npos && gapLine == 350)
         return Fail("the chain is still stuck at the old Conductor.tjs:350 debugLevel line", j);
 
+    // M2e-14 硬判据：run 44075552094 的下一缺口是 GraphicLayer.tjs:337 的
+    // `hitType = htMask;`（紧邻 338 `hitThreshold = 0;`）。两者都是官方
+    // LayerIntf.cpp 的命中测试面成员，而 Layer 骨架（M2e-2）只给了几何与可见性。
+    // 337-338 是同一个赋值块，因此本轮一并补上，但分别有独立负向对照：
+    //   NOHITTYPE      -> 必须复现 hitType@337
+    //   NOHITTHRESHOLD -> 必须复现 hitThreshold@338（证明第二个成员也不是摆设）
+    if (fatal.find("\"hitType\"") != std::string::npos ||
+        inner.find("\"hitType\"") != std::string::npos)
+        return Fail("M2e-14 gap (hitType) not cleared", j);
+    if (fatal.find("\"hitThreshold\"") != std::string::npos ||
+        inner.find("\"hitThreshold\"") != std::string::npos)
+        return Fail("M2e-14 gap (hitThreshold) not cleared", j);
+    if (gapBlock.find("GraphicLayer.tjs") != std::string::npos &&
+        (gapLine == 337 || gapLine == 338))
+        return Fail("the chain is still stuck at the old GraphicLayer.tjs hit-test lines", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
-    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-13)\n",
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-14)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
 
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
@@ -702,6 +718,98 @@ static int RunCaseNoDebugLevel(const char *nodl, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOHITTYPE：Layer 缺命中面（hitType + hitThreshold）的负向对照（M2e-14）
+// 精准对照：Layer 骨架文件保留（其余成员都在），只删 M2E14_BEGIN/END 整段。
+// 必须复现 `Member "hitType" does not exist @ GraphicLayer.tjs:337`。
+static int RunCaseNoHitType(const char *nohit, const char *storage) {
+    if (!Exists(std::string(nohit) + "/system/Config.tjs"))
+        return Fail("NOHITTYPE fixture missing Config.tjs", NULL);
+    const std::string skel = std::string(nohit) + "/system/GalBoxLayer.tjs";
+    if (!Exists(skel))
+        return Fail("NOHITTYPE fixture must keep the Layer skeleton", NULL);
+    {
+        std::ifstream f(skel.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E14_BEGIN") != std::string::npos)
+            return Fail("NOHITTYPE fixture must have the M2E14 block removed", NULL);
+        if (body.find("var hitType") != std::string::npos ||
+            body.find("var hitThreshold") != std::string::npos)
+            return Fail("NOHITTYPE fixture still declares the hit-test members", NULL);
+        // 除命中面外，Layer 的其余成员必须完好 —— 否则我们测的就不是这一处缺口。
+        for (const char *keep : {"var visible", "var width", "var font", "class Layer"}) {
+            if (body.find(keep) == std::string::npos) {
+                std::printf("[m2h] NOHITTYPE fixture lost '%s'\n", keep);
+                return Fail("NOHITTYPE fixture lost unrelated Layer members", NULL);
+            }
+        }
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(nohit, storage, arc);
+    if (!j) return Fail("cannot run the NOHITTYPE control", NULL);
+    DumpChain("NOHITTYPE", j);
+
+    if (StrField(j, "shim").find("M2E2_LAYER_SKELETON") == std::string::npos)
+        return Fail("NOHITTYPE control lost the Layer skeleton tag", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string inner = StrField(j, "lastScriptError");
+    const std::string block = StrField(j, "fatalBlock");
+    const long long line = IntField(j, "fatalLine");
+    const bool gap = (fatal + " || " + inner).find("\"hitType\"") != std::string::npos;
+    if (!gap || block.find("GraphicLayer.tjs") == std::string::npos ||
+        line != 337)
+        return Fail("NOHITTYPE control did not reproduce the hitType gap", j);
+
+    std::printf("[m2h] NOHITTYPE verdict: fatal=\"%s\" @ %s:%lld\n",
+                fatal.c_str(), block.c_str(), line);
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
+// ---- 场景 NOHITTHRESHOLD：只缺 hitThreshold 的负向对照（M2e-14 第二半）---
+// 与 NOHITTYPE 的区别：hitType 仍在，只有 hitThreshold 被删。若这一轮把
+// hitThreshold 一起补上是「顺手」而非必要，这个场景就会跟 A 一样跑过去 ——
+// 必须复现 `Member "hitThreshold" does not exist @ GraphicLayer.tjs:338`。
+static int RunCaseNoHitThreshold(const char *noth, const char *storage) {
+    if (!Exists(std::string(noth) + "/system/Config.tjs"))
+        return Fail("NOHITTHRESHOLD fixture missing Config.tjs", NULL);
+    const std::string skel = std::string(noth) + "/system/GalBoxLayer.tjs";
+    if (!Exists(skel))
+        return Fail("NOHITTHRESHOLD fixture must keep the Layer skeleton", NULL);
+    {
+        std::ifstream f(skel.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E14_THRESHOLD_BEGIN") != std::string::npos)
+            return Fail("NOHITTHRESHOLD fixture must have the threshold line removed", NULL);
+        if (body.find("var hitThreshold") != std::string::npos)
+            return Fail("NOHITTHRESHOLD fixture still declares hitThreshold", NULL);
+        if (body.find("var hitType") == std::string::npos)
+            return Fail("NOHITTHRESHOLD fixture must keep hitType", NULL);
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(noth, storage, arc);
+    if (!j) return Fail("cannot run the NOHITTHRESHOLD control", NULL);
+    DumpChain("NOHITTHRESHOLD", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string inner = StrField(j, "lastScriptError");
+    const std::string block = StrField(j, "fatalBlock");
+    const long long line = IntField(j, "fatalLine");
+    const bool gap = (fatal + " || " + inner).find("\"hitThreshold\"") != std::string::npos;
+    if (!gap || block.find("GraphicLayer.tjs") == std::string::npos ||
+        line != 338)
+        return Fail("NOHITTHRESHOLD control did not reproduce the hitThreshold gap", j);
+
+    std::printf("[m2h] NOHITTHRESHOLD verdict: fatal=\"%s\" @ %s:%lld\n",
+                fatal.c_str(), block.c_str(), line);
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // 打开任意容器（目录 / .xp3）跑一次官方链，返回 JSON。
 // dirMode / entryCount 必须在 close() 之前取（close 会清掉它们）。
 static char *RunArchive(const char *path, const char *storage,
@@ -808,16 +916,22 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
     }
 
     // 停点必须与 A 场景同口径（目录侧的等价结论由 A 在独立进程里断言）：
-    // M2e-13 之后设备容器里也不许再出现 debugLevel 这个缺口。这条判据非恒真
-    // —— NODEBUGLEVEL 场景在独立进程里证明了「删掉成员 → 缺口复现」。
+    // M2e-14 之后设备容器里也不许再出现 debugLevel / hitType / hitThreshold。
+    // 这几条判据非恒真 —— NODEBUGLEVEL / NOHITTYPE / NOHITTHRESHOLD 三个负向
+    // 对照在独立进程里分别证明了「删掉成员 → 缺口复现」。
     const std::string fatal = StrField(j, "fatal");
     const std::string inner = StrField(j, "lastScriptError");
-    if (fatal.find("debugLevel") != std::string::npos ||
-        inner.find("debugLevel") != std::string::npos)
-        return Fail("packed xp3 is still stuck at the debugLevel gap", j);
+    for (const char *closed : {"debugLevel", "\"hitType\"", "\"hitThreshold\""}) {
+        if (fatal.find(closed) != std::string::npos ||
+            inner.find(closed) != std::string::npos) {
+            std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
+            return Fail("packed xp3 is still stuck at a gap this milestone closed", j);
+        }
+    }
 
     std::printf("[m2h] XP3 verdict: real .xp3 ran the same chain "
-                "(%lld scripts, debugLevel cleared in the device container)\n", scripts);
+                "(%lld scripts, debugLevel/hitType/hitThreshold all cleared "
+                "in the device container)\n", scripts);
     GalBoxTJS2Free(j);
     return 0;
 }
@@ -836,6 +950,8 @@ int main(int argc, char **argv) {
     const char *noat    = (argc > 10) ? argv[10] : "";
     const char *kagxp3  = (argc > 11) ? argv[11] : "";
     const char *nodl    = (argc > 12) ? argv[12] : "";
+    const char *nohit   = (argc > 13) ? argv[13] : "";
+    const char *noth    = (argc > 14) ? argv[14] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -882,6 +998,16 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOHITTYPE") == 0) {
+        if (RunCaseNoHitType(nohit, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
+    if (std::strcmp(which, "NOHITTHRESHOLD") == 0) {
+        if (RunCaseNoHitThreshold(noth, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -894,6 +1020,7 @@ int main(int argc, char **argv) {
         return RunLeak(game, storage, true);
 
     std::printf("[m2h] unknown case '%s' (A / B / NOMENU / NOSTYLE / NOTIMER / NOFONT / "
-                "NOKAGPARSER / NOASYNCTRIGGER / NODEBUGLEVEL / XP3 / LEAK / LEAK2)\n", which);
+                "NOKAGPARSER / NOASYNCTRIGGER / NODEBUGLEVEL / NOHITTYPE / "
+                "NOHITTHRESHOLD / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }
