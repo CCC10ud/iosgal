@@ -163,6 +163,15 @@ jobs:
           echo "[m1c] tTJS 符号数:       $(nm "$APP" 2>/dev/null | grep -c 'tTJS' || true)"
           nm "$APP" 2>/dev/null | grep -E "GalBoxTJS2(SmokeTest|Install)" | head -6 || true
 
+      # M2e-12b：字符串标记只能证明代码进包，证明不了「包里有脚本可跑」。
+      # 之前内置的 demo-game.xp3 只有一行注释 startup.tjs，M2e 各轮的骨架
+      # 全部只活在自测夹具里。这里直接解包查内容（判据写在脚本里，可本地跑）。
+      - name: M2e-12b 核验内置包真的含官方系统脚本与骨架
+        run: |
+          XP3="build-native/GalBoxNative.xcarchive/Products/Applications/GalBoxNative.app/demo-game.xp3"
+          echo "内置包: $XP3 ($(wc -c < "$XP3" | tr -d ' ') bytes)"
+          python3 tools/verify_bundled_kag.py "$XP3"
+
       - name: 上传 xcodebuild 完整日志（失败时也在）
         if: always()
         uses: actions/upload-artifact@v4

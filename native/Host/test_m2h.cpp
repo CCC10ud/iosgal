@@ -40,8 +40,11 @@
 //         必须复现 `Member "KAGParser" does not exist` @ Conductor.tjs:13。
 //   NOASYNCTRIGGER 负向对照（M2e-12）：唯一区别是不放 AsyncTrigger 骨架 ——
 //         必须复现 `Member "AsyncTrigger" does not exist` @ Conductor.tjs:33。
+//   XP3（M2e-12b）：同一份内容分别以目录 / .xp3 两种容器跑官方链 ——
+//         trace / 脚本数 / 停点必须逐字相同，且真的推进到当前缺口。
+//         设备端只认 .xp3，这是「自测结果 == 设备结果」的等价证明。
 //
-// A/B/NOMENU/NOSTYLE/NOTIMER/NOFONT/NOKAGPARSER/NOASYNCTRIGGER 全部通过打印 M2H_RESULT=OK。
+// A/B/NOMENU/NOSTYLE/NOTIMER/NOFONT/NOKAGPARSER/NOASYNCTRIGGER/XP3 全部通过打印 M2H_RESULT=OK。
 #include "HostBridge.h"
 #include "XP3Archive.hpp"
 
@@ -51,6 +54,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <sys/stat.h>   // M2e-12b：XP3 场景要给两次运行各建一个独立 storage
 
 static int Fail(const char *why, const char *json) {
     std::printf("[m2h] FAIL: %s\n[m2h] json=%s\n", why, json ? json : "(null)");
@@ -601,6 +605,103 @@ static int RunCaseNoAsyncTrigger(const char *noat, const char *storage) {
     return 0;
 }
 
+// ---- 场景 XP3：内置包与目录夹具必须跑出同一条链（M2e-12b） ---------------
+// 设备端只认 .xp3，而此前所有自测都跑目录虚拟归档 —— 于是「自测全绿」和
+// 「设备上跑得动」其实是两件没被验证过的事（M2e-2~M2e-12 的骨架确实只进了
+// 自测、没进内置包）。唯一可靠的证明：同一份内容放进两种容器，跑出来的
+// trace / 脚本数 / 停点必须逐字相同，且真的推进到当前缺口。
+static char *RunArchive(const char *path, const char *storage,
+                        galbox::XP3Archive &arc, bool *opened,
+                        bool *dirMode, size_t *entryCount) {
+    *opened = false;
+    *dirMode = false;
+    *entryCount = 0;
+    std::string err;
+    if (!arc.open(path, &err)) {
+        std::printf("[m2h] open archive failed: %s (%s)\n", path, err.c_str());
+        return NULL;
+    }
+    *opened = true;
+    // close() 会把 dirMode_ / entries_ 清掉，必须在跑链之前记下来。
+    *dirMode = arc.isDirectoryMode();
+    *entryCount = arc.count();
+    if (!GalBoxTJS2Install(&arc, storage, "")) return NULL;
+    char *j = GalBoxTJS2ExecScript("startup.tjs", NULL);
+    GalBoxTJS2Uninstall();
+    arc.close();
+    return j;
+}
+
+static int RunCasePacked(const char *dir_game, const char *xp3,
+                         const char *storage) {
+    if (!Exists(std::string(xp3)))
+        return Fail("packed xp3 not found (build script did not pack it?)", NULL);
+
+    // 两次运行用**不同** storage：官方 Initialize 会往 storage 写文件，
+    // 共用一个目录会让第二次启动走另一条分支，比较就退化成「假等价」。
+    std::string sa = std::string(storage) + "/xp3_dir_storage";
+    std::string sb = std::string(storage) + "/xp3_pack_storage";
+    mkdir(sa.c_str(), 0755);
+    mkdir(sb.c_str(), 0755);
+
+    galbox::XP3Archive arcDir, arcXp3;
+    bool okDir = false, okXp3 = false;
+    bool dirModeDir = false, dirModeXp3 = false;
+    size_t cntDir = 0, cntXp3 = 0;
+
+    char *jd = RunArchive(dir_game, sa.c_str(), arcDir, &okDir, &dirModeDir, &cntDir);
+    if (!jd) return Fail("cannot run the directory fixture", NULL);
+    DumpChain("XP3-dir", jd);
+    if (!okDir || !dirModeDir)
+        return Fail("directory fixture did not open in directory mode", jd);
+
+    char *jx = RunArchive(xp3, sb.c_str(), arcXp3, &okXp3, &dirModeXp3, &cntXp3);
+    if (!jx) return Fail("cannot open/run the packed xp3", NULL);
+    DumpChain("XP3-pack", jx);
+    if (!okXp3 || dirModeXp3)
+        return Fail("packed fixture must be a real .xp3, not a folder", jx);
+    std::printf("[m2h] XP3 entries: dir=%zu pack=%zu\n", cntDir, cntXp3);
+    if (cntXp3 < 30)
+        return Fail("packed xp3 holds too few files to be the KAG fixture", jx);
+    if (cntXp3 != cntDir)
+        return Fail("packed xp3 and the directory fixture differ in file count", jx);
+
+    // 逐字段比较：只比 ok/fatal 会漏掉「两边都失败在同一入口」这种假等价。
+    const std::string td = StrField(jd, "scriptTrace");
+    const std::string tx = StrField(jx, "scriptTrace");
+    if (td.empty()) return Fail("directory run read no script at all", jd);
+    if (td != tx)
+        return Fail("packed xp3 produced a different script trace", jx);
+    if (IntField(jd, "scriptsRead") != IntField(jx, "scriptsRead"))
+        return Fail("packed xp3 read a different number of scripts", jx);
+    if (IntField(jd, "autoPathCount") != IntField(jx, "autoPathCount"))
+        return Fail("packed xp3 registered a different autoPath count", jx);
+    if (StrField(jd, "fatal") != StrField(jx, "fatal"))
+        return Fail("packed xp3 stopped at a different line", jx);
+
+    // 内容等价还不够 —— 必须证明它真的推进到了当前缺口，而不是两边一起
+    // 卡在入口（那种「一致」对设备毫无价值）。
+    if (tx.find("Conductor.tjs") == std::string::npos)
+        return Fail("packed xp3 did not reach Conductor.tjs", jx);
+    if (tx.find("AnimationLayer.tjs") == std::string::npos)
+        return Fail("packed xp3 did not reach AnimationLayer.tjs", jx);
+    if (IntField(jx, "scriptsRead") < 15)
+        return Fail("packed xp3 read too few scripts to prove the chain works", jx);
+    if (StrField(jx, "shim").find("M2E12_ASYNCTRIGGER_SKELETON") == std::string::npos)
+        return Fail("packed xp3 lost the AsyncTrigger shim (skeletons not packed?)", jx);
+    const std::string fatal = StrField(jx, "fatal");
+    const std::string inner = StrField(jx, "lastScriptError");
+    if (fatal.find("debugLevel") == std::string::npos &&
+        inner.find("debugLevel") == std::string::npos)
+        return Fail("packed xp3 did not stop at the current gap (debugLevel)", jx);
+
+    std::printf("[m2h] XP3 verdict: pack == dir (trace %d scripts, same stop point)\n",
+                static_cast<int>(IntField(jx, "scriptsRead")));
+    GalBoxTJS2Free(jd);
+    GalBoxTJS2Free(jx);
+    return 0;
+}
+
 int main(int argc, char **argv) {
     std::setbuf(stdout, NULL); // 崩溃诊断: 不丢已打印进度
     const char *which   = (argc > 1) ? argv[1] : "A";
@@ -613,6 +714,7 @@ int main(int argc, char **argv) {
     const char *nofont  = (argc > 8) ? argv[8] : "";
     const char *nokagparser = (argc > 9) ? argv[9] : "";
     const char *noat    = (argc > 10) ? argv[10] : "";
+    const char *kagxp3  = (argc > 11) ? argv[11] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -654,11 +756,17 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "XP3") == 0) {
+        // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
+        if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "LEAK") == 0)
         return RunLeak(game, storage, false);
     if (std::strcmp(which, "LEAK2") == 0)
         return RunLeak(game, storage, true);
 
-    std::printf("[m2h] unknown case '%s' (A / B / NOMENU / NOSTYLE / NOTIMER / NOFONT / NOKAGPARSER / NOASYNCTRIGGER / LEAK / LEAK2)\n", which);
+    std::printf("[m2h] unknown case '%s' (A / B / NOMENU / NOSTYLE / NOTIMER / NOFONT / NOKAGPARSER / NOASYNCTRIGGER / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

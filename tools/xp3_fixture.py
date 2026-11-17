@@ -126,8 +126,13 @@ def find_chunk(b, name, cursor, limit):
     return None
 
 
-def parse_xp3(data):
-    """Independent reader; raises ValueError on malformed input."""
+def parse_xp3(data, collect_data=False):
+    """Independent reader; raises ValueError on malformed input.
+
+    collect_data=True 时每个 entry 额外带 "data"(bytes)：只有需要**比对脚本
+    正文**的调用方（如 verify_bundled_kag.py）才付这份内存代价，其余场景
+    （数量/大小/哈希断言）仍旧只读元信息。
+    """
     if len(data) < 19:
         raise ValueError("文件过短")
     base = 0
@@ -206,7 +211,7 @@ def parse_xp3(data):
             parts.append(bool(sf & 0x07))
         if len(plain) != org:
             raise ValueError("文件长度不符 %s" % name)
-        entries.append({
+        entry = {
             "name": name,
             "orgSize": org,
             "arcSize": arc,
@@ -217,7 +222,10 @@ def parse_xp3(data):
             "adler": zlib.adler32(bytes(plain)) & 0xFFFFFFFF,
             "head": bytes(plain[:16]).hex(),
             "sha256": hashlib.sha256(bytes(plain)).hexdigest()[:16],
-        })
+        }
+        if collect_data:
+            entry["data"] = bytes(plain)
+        entries.append(entry)
         cursor = payload + size
     return {"base": base, "indexCompressed": bool(method == 1),
             "indexContinue": bool(flag & 0x80), "count": len(entries),
@@ -290,7 +298,65 @@ def fixture_defs():
     ]
 
 
-def main():
+def pack_dir(src, out_path):
+    """目录树 → 真实 XP3（压缩索引 + 每文件 zlib 单段）。
+
+    M2e-12b：这是「自测夹具 → 设备内置包」的唯一通道。设备端只能读
+    demo-game.xp3，而自测跑的是目录虚拟归档；两边内容若各写一份必然漂移，
+    所以内置包必须由**同一份**目录现场打包，不做第二次手工列举。
+    """
+    if not os.path.isdir(src):
+        raise SystemExit("打包源不是目录: %s" % src)
+    entries = []
+    for root, dirs, files in os.walk(src):
+        dirs.sort()
+        for fn in sorted(files):
+            abs_p = os.path.join(root, fn)
+            rel = os.path.relpath(abs_p, src).replace(os.sep, "/")
+            with open(abs_p, "rb") as f:
+                data = f.read()
+            # 空文件也要成为一个 entry：官方脚本里没有空文件，但静默丢弃
+            # 会让「包里少了个文件」和「本来就没有」分不开。
+            entries.append({"name": rel, "data": data, "parts": [True]})
+    if not entries:
+        raise SystemExit("打包源为空: %s" % src)
+    entries.sort(key=lambda e: e["name"])
+    blob = build_xp3(entries, index_compressed=True, mz_prefix=False)
+
+    # 写完立刻用独立 reader 读回：builder 和 reader 是两套代码，
+    # 这样「打得开」才是真检查，不是自证。
+    parsed = parse_xp3(blob)
+    if parsed["count"] != len(entries):
+        raise SystemExit("读回条目数不符: %d != %d" % (parsed["count"], len(entries)))
+    with open(out_path, "wb") as f:
+        f.write(blob)
+    print("%-24s %7d bytes  files=%d (packed from %s)" %
+          (os.path.basename(out_path), len(blob), parsed["count"], src))
+    return 0
+
+
+def list_xp3(path):
+    """打印条目清单（name<TAB>orgSize），给 CI 做 grep 断言用。"""
+    with open(path, "rb") as f:
+        parsed = parse_xp3(f.read())
+    for e in parsed["entries"]:
+        print("%s\t%d" % (e["name"], e["orgSize"]))
+    return 0
+
+
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] == ["--pack"]:
+        if len(argv) != 3:
+            raise SystemExit("用法: xp3_fixture.py --pack <源目录> <输出.xp3>")
+        return pack_dir(argv[1], argv[2])
+    if argv[:1] == ["--list"]:
+        if len(argv) != 2:
+            raise SystemExit("用法: xp3_fixture.py --list <包.xp3>")
+        return list_xp3(argv[1])
+    if argv:
+        raise SystemExit("未知参数: %s（可用 --pack / --list）" % " ".join(argv))
+
     os.makedirs(FIXTURES, exist_ok=True)
     manifest = {}
     defs = fixture_defs()

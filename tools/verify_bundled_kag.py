@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""核验 app bundle 里内置的 demo-game.xp3 是不是**真能跑**的 KAG 包。
+
+为什么需要这一步：出包链路里的 strings 标记只能证明 C++ 代码链接进包，
+证明不了「包里有脚本可执行」。M2e-2~M2e-12 做的 Layer/Window/Menu/Timer/
+Font/KAGParser/AsyncTrigger 骨架，一度只存在于 Linux 自测夹具，内置包里的
+startup.tjs 只有一行注释 —— 自测全绿而设备上根本没跑过官方启动链。
+
+判据（任一不满足即失败）：
+  1. startup.tjs 存在，且正文里真的 `execStorage("system/Initialize.tjs")`；
+  2. system/Initialize.tjs 是官方原文（体积下限，探针版只有几百字节）；
+  3. 九个 GalBox 骨架文件全在包内（LoadEngineShim 靠 IsExistentStorage 找它们，
+     少一个就在设备上悄悄退回缺类状态）；
+  4. 官方 Config.tjs 在包内（KAGWindow_config 定义在它里面）；
+  5. 条目数与总体积达到下限 —— 防止「文件都在但内容被截断」。
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import xp3_fixture as X  # noqa: E402
+
+SKELETONS = ["Consts", "Font", "Layer", "Window", "Pad", "Menu", "Timer",
+             "KAGParser", "AsyncTrigger"]
+REQUIRED = ["startup.tjs", "system/Initialize.tjs", "system/Config.tjs"] + \
+           ["system/GalBox%s.tjs" % s for s in SKELETONS]
+
+MIN_ENTRIES = 30
+MIN_INIT_BYTES = 1000     # 官方 Initialize.tjs 约 7 KB；探针版远小于此
+MIN_TOTAL_BYTES = 100000  # 20 个官方脚本 + Config 的压缩体量下限
+
+
+def fail(msg):
+    print("::error::" + msg)
+    return 1
+
+
+def main(argv):
+    if len(argv) != 2:
+        raise SystemExit("用法: verify_bundled_kag.py <app 内的 demo-game.xp3>")
+    path = argv[1]
+    if not os.path.isfile(path):
+        return fail("找不到内置包: %s" % path)
+
+    raw = open(path, "rb").read()
+    try:
+        parsed = X.parse_xp3(raw, collect_data=True)
+    except Exception as ex:
+        return fail("内置包解析失败（不是合法 XP3）: %s" % ex)
+
+    names = set(e["name"] for e in parsed["entries"])
+    missing = [n for n in REQUIRED if n not in names]
+    if missing:
+        return fail("内置包缺文件: %s" % missing)
+
+    if parsed["count"] < MIN_ENTRIES:
+        return fail("内置包只有 %d 个文件（下限 %d）：官方系统脚本没打进去？"
+                    % (parsed["count"], MIN_ENTRIES))
+
+    by_name = {e["name"]: e for e in parsed["entries"]}
+    init_bytes = by_name["system/Initialize.tjs"]["orgSize"]
+    if init_bytes < MIN_INIT_BYTES:
+        return fail("system/Initialize.tjs 只有 %d B（下限 %d）：像是探针版而非官方原文"
+                    % (init_bytes, MIN_INIT_BYTES))
+
+    total = sum(e["orgSize"] for e in parsed["entries"])
+    if total < MIN_TOTAL_BYTES:
+        return fail("内置包解压后共 %d B（下限 %d）：内容被截断？"
+                    % (total, MIN_TOTAL_BYTES))
+
+    # startup.tjs 必须是官方那一句：只看「文件在」不够 —— 它曾经就在，
+    # 只是内容是 `// demo game package` 一行注释。正文必须解压出来比，
+    # 不能在压缩字节里瞎搜（压缩段搜不到任何明文）。
+    boot_text = by_name["startup.tjs"]["data"]
+    if b"system/Initialize.tjs" not in boot_text:
+        return fail("startup.tjs 没有 execStorage(\"system/Initialize.tjs\")，"
+                    "仍是注释版：设备上不会跑官方启动链")
+    if b"execStorage" not in boot_text:
+        return fail("startup.tjs 里没有 execStorage 调用")
+
+    # Config.tjs 必须带 KAGWindow_config（M2e-5 的核心缺口就来自它）。
+    # CP932 里 ASCII 恒等，所以直接在解出的字节里搜函数名是可靠的。
+    cfg = by_name["system/Config.tjs"]["data"]
+    if b"KAGWindow_config" not in cfg:
+        return fail("system/Config.tjs 里没有 KAGWindow_config：不是官方配置，"
+                    "会在 MainWindow.tjs 撞缺类")
+
+    print("[m2e12b] 内置包核验通过: %d 个文件 / 解压后 %d B / "
+          "Initialize.tjs %d B / startup.tjs 真调 Initialize / 九个骨架全在"
+          % (parsed["count"], total, init_bytes))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

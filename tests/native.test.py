@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER LEAK LEAK2" in test_sh,
-   "构建脚本把十个场景拆成独立进程跑（NOMENU / NOSTYLE / NOTIMER / NOFONT / NOKAGPARSER / NOASYNCTRIGGER 六个负向对照）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把十一个场景拆成独立进程跑（六个负向对照 + XP3 容器等价场景）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1003,6 +1003,37 @@ ok("gapLine == 343 || gapLine == 344" in m2h_test and
    "gapLine >= 313 && gapLine <= 320" in m2h_test,
    "判据防回归(M2e-12 修复)：旧停点检查用精确行号，不用 <=N 宽范围"
    "(run 44057349589 的 debugLevel@266 曾被 font 判据 <=345 误伤)")
+
+# ---- M2e-12b：内置 xp3 与自测夹具同源（自测结果才能在设备上生效）----
+xp3_tool = read("tools/xp3_fixture.py")
+verifier = read("tools/verify_bundled_kag.py")
+build_native = read("tools/build_native.sh")
+workflow = read(".github/workflows/build-native-ipa.yml")
+ok("def pack_dir" in xp3_tool and '"--pack"' in xp3_tool and '"--list"' in xp3_tool,
+   "M2e-12b：xp3 工具支持 --pack（目录→真实包）与 --list（CI 断言用）")
+ok("def parse_xp3(data, collect_data=False)" in xp3_tool and
+   'entry["data"] = bytes(plain)' in xp3_tool,
+   "M2e-12b：读端可解出正文，用来核对 startup.tjs 是否真的是官方原文")
+ok('--pack "$M2H_GAME" "$GALBOX_KAG_XP3"' in test_sh and
+   "galbox-kag.xp3" in test_sh,
+   "M2e-12b：构建脚本用同一份 M2H_GAME 现场打包（不手工列举文件清单）")
+ok("def fail" in verifier and "KAGWindow_config" in verifier and
+   'startup.tjs 没有 execStorage' in verifier and
+   '"system/GalBox%s.tjs" % s' in verifier,
+   "M2e-12b：核验器查 startup 正文 / 官方 Config / 九个骨架，缺一即失败")
+ok("galbox-kag.xp3" in build_native and "退化为注释版" in build_native and
+   "内置 KAG 包里没有 system/Initialize.tjs" in build_native,
+   "M2e-12b：出包脚本用真 KAG 包做内置 demo-game.xp3，并在缺失时报错")
+ok("verify_bundled_kag.py" in workflow,
+   "M2e-12b：CI 直接解包核验 app bundle 里的 demo-game.xp3")
+ok("static char *RunArchive" in m2h_test and "RunCasePacked" in m2h_test and
+   "packed xp3 produced a different script trace" in m2h_test,
+   "M2e-12b：自测新增 XP3 场景，逐字比较目录与 .xp3 两种容器的 trace")
+ok("packed xp3 did not stop at the current gap (debugLevel)" in m2h_test and
+   "packed xp3 lost the AsyncTrigger shim" in m2h_test,
+   "M2e-12b：等价不够，还要求 .xp3 真跑到当前缺口且骨架在包内生效")
+ok("从 demo-game.xp3 取到设备端资产" in test_sh and "scenario/first.ks" in test_sh,
+   "M2e-12b：内置包带上设备端要播的剧本/图（否则 app 落「没有剧本」兜底分支）")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

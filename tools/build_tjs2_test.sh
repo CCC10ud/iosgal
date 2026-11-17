@@ -666,6 +666,69 @@ PYEOF
   fi
   echo "[tjs2] M2e-5 fixture: 官方 Config.tjs（含 KAGWindow_config）；负向对照用探针版"
 
+  # ---- M2e-12b：把这一份夹具原样打成设备可读的内置包 -------------------
+  # 设备端只能读 demo-game.xp3，自测跑的是目录虚拟归档。两边各维护一份
+  # 文件清单必然漂移 —— M2e-2~M2e-12 的骨架正是只进了自测、没进包。这里用
+  # **同一份** $M2H_GAME 现场打包，内置包与自测夹具从此同源，不再手工列举。
+  GALBOX_KAG_XP3="$ROOT/dist/fixtures/galbox-kag.xp3"
+  mkdir -p "$ROOT/dist/fixtures"
+  # 夹具只有 system/ 与 startup.tjs；设备上还要有能播的剧本与图，否则 app
+  # 打开后会落到「包内没有可运行的 .ks 剧本」的兜底分支。这两份资产直接
+  # 从 demo-game.xp3 里取，不在这里复制一份正文（避免两份真相）。
+  if [ -f "$ROOT/dist/fixtures/demo-game.xp3" ]; then
+    python3 - "$ROOT/dist/fixtures/demo-game.xp3" "$M2H_GAME" "$ROOT/tools" <<'PYEOF' || exit 1
+import os
+import sys
+sys.path.insert(0, sys.argv[3])
+import xp3_fixture as X
+p = X.parse_xp3(open(sys.argv[1], 'rb').read(), collect_data=True)
+want = ('scenario/first.ks', 'bg/room.png', 'fg/sakura.png')
+taken = []
+for e in p['entries']:
+    if e['name'] in want:
+        dst = os.path.join(sys.argv[2], e['name'])
+        d = os.path.dirname(dst)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(dst, 'wb') as f:
+            f.write(e['data'])
+        taken.append(e['name'])
+missing = [n for n in want if n not in taken]
+if missing:
+    print('[tjs2] demo-game.xp3 里缺资产:', missing)
+    sys.exit(1)
+print('[tjs2] 从 demo-game.xp3 取到设备端资产:', ', '.join(taken))
+PYEOF
+  else
+    echo "[tjs2] 警告：没有 demo-game.xp3，内置包将不含剧本/图片（app 会落兜底分支）"
+  fi
+  python3 "$ROOT/tools/xp3_fixture.py" --pack "$M2H_GAME" "$GALBOX_KAG_XP3" || exit 1
+  python3 - "$GALBOX_KAG_XP3" "$ROOT/tools" <<'PYEOF' || exit 1
+import sys
+sys.path.insert(0, sys.argv[2])
+import xp3_fixture as X
+p = X.parse_xp3(open(sys.argv[1], 'rb').read())
+names = set(e['name'] for e in p['entries'])
+req = ['startup.tjs', 'system/Initialize.tjs', 'system/Config.tjs']
+req += ['system/GalBox%s.tjs' % s for s in (
+    'Consts', 'Font', 'Layer', 'Window', 'Pad', 'Menu', 'Timer',
+    'KAGParser', 'AsyncTrigger')]
+missing = [n for n in req if n not in names]
+if missing:
+    print('[tjs2] 内置 KAG 包缺文件:', missing)
+    sys.exit(1)
+if p['count'] < 30:
+    print('[tjs2] 内置 KAG 包文件数过少:', p['count'])
+    sys.exit(1)
+init = next(e for e in p['entries'] if e['name'] == 'system/Initialize.tjs')
+if init['orgSize'] < 1000:
+    print('[tjs2] system/Initialize.tjs 只有 %d B，像是探针版而不是官方原文'
+          % init['orgSize'])
+    sys.exit(1)
+print('[tjs2] 内置 KAG 包: %d 个文件, Initialize.tjs %d B, 九个骨干全在'
+      % (p['count'], init['orgSize']))
+PYEOF
+
   echo "[tjs2] M2e-5: 编译并运行自测（官方 Config.tjs / 二次执行诊断 / 负向对照）"
   if clang++ -std=c++14 -O1 -g -fexceptions -DTJS2_POSIX \
         -I"$STUB" -I"$SRC" -I"$HOST" -I"$ROOT/native/Engine" -include "$COMPAT" \
@@ -675,12 +738,12 @@ PYEOF
     # 每个场景**独立进程**跑：run #40 出现过「同进程内第二次执行会破坏官方
     # 启动链」, 若三个场景挤在一个进程里, 后面的场景会被前面的污染,
     # 负向对照就会假红。独立进程 => 每个场景都是干净首跑。
-    for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER LEAK LEAK2; do
-      OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER" 2>&1)
-      diag_crash "M2h-$M2H_CASE" "$?" "$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER"
+    for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER XP3 LEAK LEAK2; do
+      OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER" "$GALBOX_KAG_XP3" 2>&1)
+      diag_crash "M2h-$M2H_CASE" "$?" "$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER" "$GALBOX_KAG_XP3"
       echo "$OUTPUT_M2H" | sed 's/^/[tjs2]   /'
       case "$M2H_CASE" in
-        A|B|NOMENU|NOSTYLE|NOTIMER|NOFONT|NOKAGPARSER|NOASYNCTRIGGER)
+        A|B|NOMENU|NOSTYLE|NOTIMER|NOFONT|NOKAGPARSER|NOASYNCTRIGGER|XP3)
           if ! echo "$OUTPUT_M2H" | grep -q "M2H_RESULT=OK"; then
             echo "[tjs2] 场景 $M2H_CASE 未通过"; exit 1
           fi
@@ -691,6 +754,7 @@ PYEOF
       esac
     done
     echo "[tjs2] M2e-5 自测通过（官方 Config.tjs 消掉 KAGWindow_config 缺口 + 负向对照）"
+    echo "[tjs2] M2e-12b 自测通过（内置 xp3 与目录夹具跑出同一条 trace、同一停点）"
   else
     echo "[tjs2] M2e-5 自测链接失败:"; cat "$OUT/link_m2h.log"; exit 1
   fi

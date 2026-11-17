@@ -19,10 +19,38 @@ echo "iPhoneOS SDK: $SDK"
 echo "说明: 部署目标 15.0，用任意较新 SDK 编出的 arm64 包都能在 iOS 27 上运行；不要求 SDK 正好是 27。"
 echo "工程: ios-native/GalBoxNative.xcodeproj   Bundle ID: com.galbox.native"
 
-# Refresh the bundled demo package from the verified XP3 fixture.
-python3 tools/xp3_fixture.py >/dev/null
-cp dist/fixtures/demo-game.xp3 ios-native/GalBoxNative/demo-game.xp3
-echo "已同步内置演示包 demo-game.xp3"
+# 内置游戏包：优先用自测夹具打出来的真 KAG 包（M2e-12b）。
+# 此前这里固定用 xp3_fixture 的 demo-game.xp3，其 startup.tjs 只有一行注释 ——
+# 于是 M2e 各轮的骨架只活在自测夹具里，app 里根本没有系统脚本，所谓「出包」
+# 什么也没验证。现在内置包由 build_tjs2_test.sh 用同一份夹具现场打包，
+# 自测与设备从同一个源出，不会再漂。
+if [ -f dist/fixtures/galbox-kag.xp3 ]; then
+  cp dist/fixtures/galbox-kag.xp3 ios-native/GalBoxNative/demo-game.xp3
+  KAG_BYTES="$(wc -c < ios-native/GalBoxNative/demo-game.xp3 | tr -d ' ')"
+  echo "已同步内置 KAG 包（galbox-kag.xp3, ${KAG_BYTES} B）"
+  if [ "$KAG_BYTES" -lt 100000 ]; then
+    echo "ERROR: 内置 KAG 包只有 ${KAG_BYTES} B，官方系统脚本没打进去。" >&2
+    exit 1
+  fi
+  # 先落成清单文件再 grep：set -o pipefail 下 grep -q 提前退出会让 python
+  # 收到 SIGPIPE，整条管道被判定失败（假红）。
+  KAG_LIST="$(mktemp)"
+  python3 tools/xp3_fixture.py --list ios-native/GalBoxNative/demo-game.xp3 > "$KAG_LIST"
+  if ! grep -q "^system/Initialize.tjs" "$KAG_LIST"; then
+    echo "ERROR: 内置 KAG 包里没有 system/Initialize.tjs" >&2
+    rm -f "$KAG_LIST"; exit 1
+  fi
+  if ! grep -q "^system/GalBoxAsyncTrigger.tjs" "$KAG_LIST"; then
+    echo "ERROR: 内置 KAG 包里没有最新骨架 GalBoxAsyncTrigger.tjs" >&2
+    rm -f "$KAG_LIST"; exit 1
+  fi
+  echo "内置包条目数: $(wc -l < "$KAG_LIST" | tr -d ' ')"
+  rm -f "$KAG_LIST"
+else
+  python3 tools/xp3_fixture.py >/dev/null
+  cp dist/fixtures/demo-game.xp3 ios-native/GalBoxNative/demo-game.xp3
+  echo "::warning::没有 galbox-kag.xp3（build_tjs2_test.sh 未跑？），内置包退化为注释版 demo-game.xp3"
+fi
 
 BUILD="$ROOT/build-native"
 ARCHIVE="$BUILD/GalBoxNative.xcarchive"
