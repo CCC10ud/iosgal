@@ -1027,11 +1027,20 @@ ok("galbox-kag.xp3" in build_native and "退化为注释版" in build_native and
 ok("verify_bundled_kag.py" in workflow,
    "M2e-12b：CI 直接解包核验 app bundle 里的 demo-game.xp3")
 ok("static char *RunArchive" in m2h_test and "RunCasePacked" in m2h_test and
-   "packed xp3 produced a different script trace" in m2h_test,
-   "M2e-12b：自测新增 XP3 场景，逐字比较目录与 .xp3 两种容器的 trace")
+   "packed xp3 did not end the chain at MainWindow.tjs" in m2h_test,
+   "M2e-12b：自测新增 XP3 场景，要求真 .xp3 走完整条链到 MainWindow.tjs")
+# 铁律断言：XP3 场景只许跑一次链。上一版在同一进程里「目录 + xp3」各跑一次
+# 做互比，第二次被第一次污染（trace 相同但停点漂到 (void)convert@398）——
+# 那是装置错误，不是容器差异（run #40 / M2e-6 未决项）。
+_xp3_case = m2h_test.split("static int RunCasePacked", 1)[-1].split("int main(", 1)[0]
+ok(_xp3_case.count("RunArchive(") == 1,
+   "M2e-12b：XP3 场景只跑一次官方链（同进程第二次执行会破坏启动链，不做互比）")
+ok("some skeleton failed to load from the packed xp3" in m2h_test and
+   "packed xp3 did not load a skeleton that the fixture has" in m2h_test,
+   "M2e-12b：九个骨架必须全部从 .xp3 装载成功（状态串不许有 !failed:）")
 ok("packed xp3 did not stop at the current gap (debugLevel)" in m2h_test and
-   "packed xp3 lost the AsyncTrigger shim" in m2h_test,
-   "M2e-12b：等价不够，还要求 .xp3 真跑到当前缺口且骨架在包内生效")
+   "XP3 missing shim tag" in m2h_test,
+   "M2e-12b：等价不够，还要求 .xp3 真跑到当前缺口、且逐个骨架 tag 都在")
 ok("从 demo-game.xp3 取到设备端资产" in test_sh and "scenario/first.ks" in test_sh,
    "M2e-12b：内置包带上设备端要播的剧本/图（否则 app 落「没有剧本」兜底分支）")
 
