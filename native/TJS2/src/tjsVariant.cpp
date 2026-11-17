@@ -1111,7 +1111,18 @@ void tTJSVariant::operator +=(const tTJSVariant &rhs)
 		tTJSVariantString *s1, *s2;
 		s1 = AsString();
 		s2 = rhs.AsString();
-		val.String = TJSAllocVariantString(*s1, *s2);
+		// P8 (GalBox, run #50): 官方原文 `TJSAllocVariantString(*s1, *s2)` 在
+		// lhs 为 void 时解引用 NULL —— AsString() 对 tvtVoid 返回 NULL (见
+		// tjsVariant.h AsString: case tvtVoid: return NULL)。`res += "0"` 的
+		// 首次拼接(res 未初始化为 void)就走这里。macOS clang 的空引用解引用
+		// 恰好读到地址 0 未 fault, Linux/glibc 下直接 SIGSEGV(139, gdb 栈
+		// tTJSVariant::operator+= -> TJSAllocVariantString)。TJSAllocVariantString
+		// 的 (const tjs_char*, const tjs_char*) 重载本身就接受 NULL 并按空串
+		// 处理, 所以改为传指针(经 tTJSVariantString 的 operator const tjs_char*()
+		// 隐式转换), NULL 时直接给 NULL —— 语义与官方完全相同, 但不解引用空引用。
+		const tjs_char *p1 = s1 ? s1->operator const tjs_char *() : NULL;
+		const tjs_char *p2 = s2 ? s2->operator const tjs_char *() : NULL;
+		val.String = TJSAllocVariantString(p1, p2);
 		if(s1) s1->Release();
 		if(s2) s2->Release();   
 		*this=val;
