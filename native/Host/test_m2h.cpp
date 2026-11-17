@@ -183,7 +183,10 @@ static int RunCaseA(const char *game, const char *storage) {
                     IntField(j, "fatalLine"));
     }
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
-    if (!Has(j, "\"M2E4_OFFICIAL_CONSTS\""))
+    // run #55：M2E4_OFFICIAL_CONSTS 在 GalBoxTJS2Install 的 shim 字段里
+    // （形如 "M2E4_OFFICIAL_CONSTS+..."），不是带引号的顶层 JSON 字段。
+    if (StrField(j, "shim").find("M2E4_OFFICIAL_CONSTS") == std::string::npos &&
+        !Has(j, "\"M2E4_OFFICIAL_CONSTS\""))
         return Fail("M2e-4 regression: official constants missing", j);
 
     std::printf("[m2h] A verdict: official Config.tjs took effect, reached UpdateConfig.tjs "
