@@ -1,0 +1,44 @@
+// GalBoxAsyncTrigger.tjs — GalBox 自写的 `AsyncTrigger` 骨架（**非官方**，Milestone 2e-12）
+//
+// 官方 `AsyncTrigger` 是 kirikiri2 核心里的原生类（AsyncTriggerIntf.cpp，
+// 把回调投递到主线程/空闲时执行的触发器）。run 44052678080（M2e-11）
+// 实测的下一缺口正是 BaseConductor 构造里的：
+//     Member "AsyncTrigger" does not exist @ Conductor.tjs:33
+//     (oneshot = new AsyncTrigger(timerCallback, ''))
+//
+// 逐条统计官方 20 个系统脚本对 AsyncTrigger 的用法（5 处构造），只有：
+//   new AsyncTrigger(callback, name)
+//   .cached（写，事件缓存开关）/ .mode（写，atm* 模式，常量已在官方表）
+//   .trigger()（触发回调）/ .cancel()（取消）
+//   invalidate <obj>（走 finalize）
+// 官方注释写明第二参数空字符串表示直接调用第一参数的回调函数，不走消息泵。
+//
+// 骨架只存回调与属性、trigger() 立刻同步调用回调（因为没有主线程事件泵，
+// 立即执行是最接近「cached 投递」语义的可运行近似）；不排队、不空闲调度。
+//
+// ⚠️ TJS2 语法雷（M2e-3 踩过）：方法定义不要用 `...` 变参；`invalidate`
+// 是对象关键字不能当函数名 —— finalize 由 TJS2 invalidate 自动触发。
+
+class AsyncTrigger
+{
+	var callback;
+	var name = "";
+	var cached = false;
+	var mode = 0; // atmNormal；官方 atm* 常量见 GalBoxConsts.tjs
+
+	function AsyncTrigger(cb, nm)
+	{
+		callback = cb;
+		name = nm;
+	}
+
+	function finalize() {}
+
+	function trigger()
+	{
+		// 没有事件泵，同步调用回调（第二参数为空串时官方本就直接调用）。
+		if (callback !== void) callback();
+	}
+
+	function cancel() {}
+}

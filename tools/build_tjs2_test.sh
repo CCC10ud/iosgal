@@ -440,6 +440,8 @@ if [ -f "$HOST/HostBridge.cpp" ] && [ -f "$HOST/test_m2f.cpp" ] \
   cp "$KAG/src/system/GalBoxFont.tjs"  "$M2F_GAME/system/GalBoxFont.tjs"
   # M2e-11：KAGParser 在 Conductor.tjs 的 extends 阶段就需要，从 M2F 起进夹具。
   cp "$KAG/src/system/GalBoxKAGParser.tjs" "$M2F_GAME/system/GalBoxKAGParser.tjs"
+  # M2e-12：AsyncTrigger 在 Conductor.tjs 构造里 new，同样从 M2F 起进夹具。
+  cp "$KAG/src/system/GalBoxAsyncTrigger.tjs" "$M2F_GAME/system/GalBoxAsyncTrigger.tjs"
   cp "$KAG/src/m2f_layer_probe.tjs"    "$M2F_GAME/m2f_layer_probe.tjs"
   # 负向对照：同一套夹具，唯一区别就是**不放** Layer 骨架。
   cp -R "$M2F_GAME" "$M2F_NOSHIM"
@@ -643,6 +645,16 @@ PYEOF
     echo "[tjs2] M2e-11 负向对照夹具里不该有 GalBoxKAGParser.tjs"
     exit 1
   fi
+  # M2e-12 负向对照：唯一区别是**不放** AsyncTrigger 骨架，其余全一样。
+  # 必须复现 `Member "AsyncTrigger" does not exist` @ Conductor.tjs:33。
+  M2H_NOASYNCTRIGGER="$OUT/m2h_noasynctrigger"
+  rm -rf "$M2H_NOASYNCTRIGGER"
+  cp -R "$M2H_GAME" "$M2H_NOASYNCTRIGGER"
+  rm -f "$M2H_NOASYNCTRIGGER/system/GalBoxAsyncTrigger.tjs"
+  if [ -f "$M2H_NOASYNCTRIGGER/system/GalBoxAsyncTrigger.tjs" ]; then
+    echo "[tjs2] M2e-12 负向对照夹具里不该有 GalBoxAsyncTrigger.tjs"
+    exit 1
+  fi
 
   if ! grep -q "function KAGWindow_config" "$M2H_GAME/system/Config.tjs"; then
     echo "[tjs2] M2e-5 夹具的 Config.tjs 里没有 KAGWindow_config（官方原文没拼进去？）"
@@ -663,12 +675,12 @@ PYEOF
     # 每个场景**独立进程**跑：run #40 出现过「同进程内第二次执行会破坏官方
     # 启动链」, 若三个场景挤在一个进程里, 后面的场景会被前面的污染,
     # 负向对照就会假红。独立进程 => 每个场景都是干净首跑。
-    for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER LEAK LEAK2; do
-      OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" 2>&1)
-      diag_crash "M2h-$M2H_CASE" "$?" "$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER"
+    for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER LEAK LEAK2; do
+      OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER" 2>&1)
+      diag_crash "M2h-$M2H_CASE" "$?" "$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER"
       echo "$OUTPUT_M2H" | sed 's/^/[tjs2]   /'
       case "$M2H_CASE" in
-        A|B|NOMENU|NOSTYLE|NOTIMER|NOFONT|NOKAGPARSER)
+        A|B|NOMENU|NOSTYLE|NOTIMER|NOFONT|NOKAGPARSER|NOASYNCTRIGGER)
           if ! echo "$OUTPUT_M2H" | grep -q "M2H_RESULT=OK"; then
             echo "[tjs2] 场景 $M2H_CASE 未通过"; exit 1
           fi

@@ -38,8 +38,10 @@
 //         必须复现 `Member "font" does not exist` @ AnimationLayer.tjs:343。
 //   NOKAGPARSER 负向对照（M2e-11）：唯一区别是不放 KAGParser 骨架 ——
 //         必须复现 `Member "KAGParser" does not exist` @ Conductor.tjs:13。
+//   NOASYNCTRIGGER 负向对照（M2e-12）：唯一区别是不放 AsyncTrigger 骨架 ——
+//         必须复现 `Member "AsyncTrigger" does not exist` @ Conductor.tjs:33。
 //
-// A/B/NOMENU/NOSTYLE/NOTIMER/NOFONT/NOKAGPARSER 全部通过打印 M2H_RESULT=OK。
+// A/B/NOMENU/NOSTYLE/NOTIMER/NOFONT/NOKAGPARSER/NOASYNCTRIGGER 全部通过打印 M2H_RESULT=OK。
 #include "HostBridge.h"
 #include "XP3Archive.hpp"
 
@@ -268,8 +270,18 @@ static int RunCaseA(const char *game, const char *storage) {
     if (trace.find("Conductor.tjs") == std::string::npos)
         return Fail("the chain did not reach Conductor.tjs", j);
 
+    // M2e-12 硬判据：run 44052678080 的下一缺口是 Conductor.tjs:33 的
+    // `oneshot = new AsyncTrigger(timerCallback, '')`。骨架装上后它必须消失，
+    // 且链不能停在那几行（33-35 是构造/cached 赋值）。
+    if (fatal.find("\"AsyncTrigger\"") != std::string::npos ||
+        inner.find("\"AsyncTrigger\"") != std::string::npos)
+        return Fail("M2e-12 gap (AsyncTrigger) not cleared", j);
+    if (gapBlock.find("Conductor.tjs") != std::string::npos &&
+        gapLine > 0 && gapLine <= 35)
+        return Fail("the chain is still stuck at the old Conductor.tjs:33 AsyncTrigger lines", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
-    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-11)\n",
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-12)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
 
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
@@ -294,6 +306,9 @@ static int RunCaseA(const char *game, const char *storage) {
     // M2e-11：KAGParser 骨架必须真的装进引擎。
     if (shim.find("M2E11_KAGPARSER_SKELETON") == std::string::npos)
         return Fail("M2e-11 regression: KAGParser skeleton was not loaded", j);
+    // M2e-12：AsyncTrigger 骨架必须真的装进引擎。
+    if (shim.find("M2E12_ASYNCTRIGGER_SKELETON") == std::string::npos)
+        return Fail("M2e-12 regression: AsyncTrigger skeleton was not loaded", j);
 
     std::printf("[m2h] A verdict: official Config.tjs took effect, UpdateConfig.tjs "
                 "gaps cleared, advanced to %s:%lld (%d scripts read)\n",
@@ -551,6 +566,36 @@ static int RunCaseNoKAGParser(const char *nokagparser, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOASYNCTRIGGER：去掉 AsyncTrigger 骨架的负向对照（M2e-12） --
+static int RunCaseNoAsyncTrigger(const char *noat, const char *storage) {
+    if (!Exists(std::string(noat) + "/system/Config.tjs"))
+        return Fail("NOASYNCTRIGGER fixture missing Config.tjs", NULL);
+    if (Exists(std::string(noat) + "/system/GalBoxAsyncTrigger.tjs"))
+        return Fail("NOASYNCTRIGGER fixture must NOT contain the AsyncTrigger skeleton", NULL);
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(noat, storage, arc);
+    if (!j) return Fail("cannot run the NOASYNCTRIGGER control", NULL);
+    DumpChain("NOASYNCTRIGGER", j);
+
+    if (StrField(j, "shim").find("M2E12_ASYNCTRIGGER_SKELETON") != std::string::npos)
+        return Fail("NOASYNCTRIGGER control unexpectedly loaded the AsyncTrigger skeleton", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string inner = StrField(j, "lastScriptError");
+    const std::string block = StrField(j, "fatalBlock");
+    const bool gap =
+        fatal.find("\"AsyncTrigger\"") != std::string::npos ||
+        inner.find("\"AsyncTrigger\"") != std::string::npos;
+    if (!gap || block.find("Conductor.tjs") == std::string::npos)
+        return Fail("NOASYNCTRIGGER control did not reproduce the AsyncTrigger gap", j);
+
+    std::printf("[m2h] NOASYNCTRIGGER verdict: fatal=\"%s\" @ %s:%lld\n",
+                fatal.c_str(), block.c_str(), IntField(j, "fatalLine"));
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 int main(int argc, char **argv) {
     std::setbuf(stdout, NULL); // 崩溃诊断: 不丢已打印进度
     const char *which   = (argc > 1) ? argv[1] : "A";
@@ -562,6 +607,7 @@ int main(int argc, char **argv) {
     const char *notimer = (argc > 7) ? argv[7] : "";
     const char *nofont  = (argc > 8) ? argv[8] : "";
     const char *nokagparser = (argc > 9) ? argv[9] : "";
+    const char *noat    = (argc > 10) ? argv[10] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -598,11 +644,16 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOASYNCTRIGGER") == 0) {
+        if (RunCaseNoAsyncTrigger(noat, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "LEAK") == 0)
         return RunLeak(game, storage, false);
     if (std::strcmp(which, "LEAK2") == 0)
         return RunLeak(game, storage, true);
 
-    std::printf("[m2h] unknown case '%s' (A / B / NOMENU / NOSTYLE / NOTIMER / NOFONT / NOKAGPARSER / LEAK / LEAK2)\n", which);
+    std::printf("[m2h] unknown case '%s' (A / B / NOMENU / NOSTYLE / NOTIMER / NOFONT / NOKAGPARSER / NOASYNCTRIGGER / LEAK / LEAK2)\n", which);
     return 2;
 }

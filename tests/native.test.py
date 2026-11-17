@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER LEAK LEAK2" in test_sh,
-   "构建脚本把九个场景拆成独立进程跑（NOMENU / NOSTYLE / NOTIMER / NOFONT / NOKAGPARSER 五个负向对照）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER LEAK LEAK2" in test_sh,
+   "构建脚本把十个场景拆成独立进程跑（NOMENU / NOSTYLE / NOTIMER / NOFONT / NOKAGPARSER / NOASYNCTRIGGER 六个负向对照）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -975,6 +975,29 @@ ok("NOKAGPARSER control did not reproduce the KAGParser gap" in m2h_test,
 ok("the chain did not reach Conductor.tjs" in m2h_test and
    "old Conductor.tjs:13 KAGParser line" in m2h_test,
    "M2e-11：自测要求链真到 Conductor.tjs 且离开旧 KAGParser 停点")
+
+# ---- M2e-12：AsyncTrigger 骨架（Conductor.tjs:33）----
+at_shim = read("native/KAG/src/system/GalBoxAsyncTrigger.tjs")
+ok("class AsyncTrigger" in at_shim and
+   "function AsyncTrigger(cb, nm)" in at_shim,
+   "M2e-12：AsyncTrigger 骨架提供官方 new AsyncTrigger(callback, name) 构造函数")
+ok("var cached" in at_shim and "var mode" in at_shim and
+   "function trigger()" in at_shim and "function cancel()" in at_shim,
+   "M2e-12：骨架覆盖官方用到的 cached / mode / trigger / cancel")
+ok("callback()" in at_shim,
+   "M2e-12：trigger() 同步调用回调（无事件泵时的可运行近似）")
+ok("GalBoxAsyncTrigger.tjs" in bridge_cpp and "M2E12_ASYNCTRIGGER_SKELETON" in bridge_cpp,
+   "M2e-12：AsyncTrigger 骨架进 LoadEngineShim 序列且带 shim tag")
+ok("cp \"$KAG/src/system/GalBoxAsyncTrigger.tjs\"" in test_sh and
+   "M2H_NOASYNCTRIGGER" in test_sh and "m2h_noasynctrigger" in test_sh,
+   "M2e-12：构建脚本把 AsyncTrigger 骨架放进夹具并生成 NOASYNCTRIGGER 负向对照")
+ok("M2e-12 gap (AsyncTrigger) not cleared" in m2h_test and
+   "M2e-12 regression: AsyncTrigger skeleton was not loaded" in m2h_test,
+   "M2e-12：A 硬判据清掉 AsyncTrigger 缺口 + 骨架真的装进引擎")
+ok("NOASYNCTRIGGER control did not reproduce the AsyncTrigger gap" in m2h_test,
+   "M2e-12：NOASYNCTRIGGER 负向对照必须复现 Conductor.tjs:33 缺口")
+ok("old Conductor.tjs:33 AsyncTrigger lines" in m2h_test,
+   "M2e-12：自测要求离开 Conductor.tjs:33 旧停点")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
