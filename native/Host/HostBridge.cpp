@@ -1057,12 +1057,14 @@ static bool LoadEngineShim(tTJS *engine) {
         "system/GalBoxLayer.tjs",   // M2e-2
         "system/GalBoxWindow.tjs",  // M2e-3
         "system/GalBoxPad.tjs",     // M2e-6：UpdateConfig.tjs 配置升级路径
+        "system/GalBoxMenu.tjs",    // M2e-7：Menus.tjs 的 MenuItem / Menu 骨架
     };
     static const char *kTags[] = {
         "M2E4_OFFICIAL_CONSTS",
         "M2E2_LAYER_SKELETON",
         "M2E3_WINDOW_SKELETON",
         "M2E6_PAD_SKELETON",
+        "M2E7_MENU_SKELETON",
     };
     if (!engine) { gShimStatus = "error: no engine"; return false; }
     // tag 只在**真正装载成功**时进 status —— run #38 里 Window 骨架是语法

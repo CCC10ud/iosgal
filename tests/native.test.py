@@ -825,9 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("M2H_CASE in A B LEAK LEAK2" in test_sh or
-   "for M2H_CASE in A B LEAK LEAK2" in test_sh,
-   "构建脚本把四个场景拆成独立进程跑（避免场景间污染）")
+ok("for M2H_CASE in A B NOMENU LEAK LEAK2" in test_sh,
+   "构建脚本把五个场景拆成独立进程跑（含 M2e-7 的 NOMENU 负向对照，避免场景间污染）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -851,6 +850,35 @@ ok("M2e-6 gap not cleared" in m2h_test and
 ok("Scripts.exec" in m2h_test and "getLocalName" in m2h_test and
    "const char *gap" in m2h_test,
    "M2e-6：自测逐个校验 Pad / getLocalName / Scripts.exec 不再出现在 fatal")
+
+# ---- M2e-7：菜单子系统骨架（MenuItem / Menu）----
+menu_shim = read("native/KAG/src/system/GalBoxMenu.tjs")
+ok("class MenuItem" in menu_shim and "class Menu" in menu_shim and
+   "function MenuItem(own, cap)" in menu_shim,
+   "M2e-7：Menu 骨架提供 MenuItem / Menu 两个可继承类（Menus.tjs:149）")
+ok("function add(item)" in menu_shim and "function click()" in menu_shim and
+   "function onClick(sender)" in menu_shim and "function finalize()" in menu_shim,
+   "M2e-7：骨架覆盖官方脚本实际用到的 add / click / onClick / finalize")
+ok("var caption" in menu_shim and "var enabled" in menu_shim and
+   "var checked" in menu_shim and "var visible" in menu_shim,
+   "M2e-7：骨架提供 KAGMenuItem 通过 super 访问的可写成员")
+ok("GalBoxMenu.tjs" in bridge_cpp and "M2E7_MENU_SKELETON" in bridge_cpp,
+   "M2e-7：Menu 骨架进 LoadEngineShim 装载序列且带 shim tag")
+ok("new Menu(this)" in read("native/KAG/src/system/GalBoxWindow.tjs"),
+   "M2e-7：Window 骨架构造里创建 menu（官方 createMenus 直接用 menu.add）")
+ok("cp \"$KAG/src/system/GalBoxMenu.tjs\"" in test_sh and
+   "m2h_nomenu" in test_sh and
+   "M2H_NOMENU" in test_sh,
+   "M2e-7：构建脚本把 Menu 骨架放进夹具，并生成去掉它的负向对照")
+ok("M2e-7 gap (Menu/MenuItem) not cleared" in m2h_test and
+   "M2e-7 regression: Menu skeleton was not loaded" in m2h_test,
+   "M2e-7：自测硬判据——MenuItem 缺口全清 + Menu 骨架真的装进引擎")
+ok("NOMENU" in m2h_test and
+   "NOMENU control did not reproduce a menu-subsystem gap" in m2h_test,
+   "M2e-7：自测带负向对照（去掉 Menu 骨架必须复现菜单子系统缺口）")
+ok("did not reach Menus.tjs" in m2h_test and
+   "scripts < 16" in m2h_test,
+   "M2e-7：自测要求脚本链真走到 Menus.tjs 且不倒退")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

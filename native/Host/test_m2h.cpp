@@ -27,8 +27,11 @@
 //         （LEAK REPRODUCED / no leak）。只诊断，不断言。
 //   LEAK2 同 LEAK，但**先**跑一个会抛异常的脚本，再跑官方链 ——
 //         用来区分「异常展开污染了全局栈」与「多引擎本身就有问题」。
+//   NOMENU 负向对照（M2e-7）：同一套官方 Config，只去掉 Menu 骨架 ——
+//         必须复现菜单子系统缺口（Menu / MenuItem），否则 A 的「跨过
+//         MenuItem」就是恒真式自证。
 //
-// A/B 全部通过打印 M2H_RESULT=OK。
+// A/B/NOMENU 全部通过打印 M2H_RESULT=OK。
 #include "HostBridge.h"
 #include "XP3Archive.hpp"
 
@@ -190,10 +193,24 @@ static int RunCaseA(const char *game, const char *storage) {
         }
     }
 
-    // 新缺口记录（M2e-7 的起点）：本轮推进后 UpdateConfig.tjs 应当走完，
-    // Initialize.tjs 继续到 15 脚本链 / createAppLock 或更后面。这里只记录
-    // 真实停点，**不预设下一缺口的名字**——避免判据变成自我实现的预言。
-    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-6)\n",
+    // M2e-7 硬判据：run #57 的下一缺口是 Menus.tjs:149 的
+    // `class KAGMenuItem extends MenuItem`。装上 GalBoxMenu.tjs 之后，
+    // 它不该再出现在 fatal / inner；脚本链也不该再停在那一行。
+    for (const char *gap : {"\"MenuItem\"", "Member \"Menu\" does not exist"}) {
+        if (fatal.find(gap) != std::string::npos ||
+            inner.find(gap) != std::string::npos)
+            return Fail("M2e-7 gap (Menu/MenuItem) not cleared", j);
+    }
+    if (trace.find("Menus.tjs") == std::string::npos)
+        return Fail("the chain did not reach Menus.tjs", j);
+    if (gapBlock.find("Menus.tjs") != std::string::npos &&
+        gapLine > 0 && gapLine <= 150)
+        return Fail("the chain is still stuck at the old Menus.tjs:149 gap", j);
+    if (scripts < 16)
+        return Fail("script chain regressed below the M2e-6 length", j);
+
+    // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-7)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
 
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
@@ -206,6 +223,9 @@ static int RunCaseA(const char *game, const char *storage) {
     // M2e-6：Pad 骨架必须真的装进引擎（shim tag 只在 ExecScript 成功后写入）。
     if (shim.find("M2E6_PAD_SKELETON") == std::string::npos)
         return Fail("M2e-6 regression: Pad skeleton was not loaded", j);
+    // M2e-7：Menu 骨架必须真的装进引擎（tag 只在 ExecScript 成功后写入）。
+    if (shim.find("M2E7_MENU_SKELETON") == std::string::npos)
+        return Fail("M2e-7 regression: Menu skeleton was not loaded", j);
 
     std::printf("[m2h] A verdict: official Config.tjs took effect, UpdateConfig.tjs "
                 "gaps cleared, advanced to %s:%lld (%d scripts read)\n",
@@ -290,12 +310,52 @@ static int RunLeak(const char *game, const char *storage, bool withExceptionFirs
     return 0;
 }
 
+// ---- 场景 NOMENU：去掉 Menu 骨架的负向对照（M2e-7） -------------------
+static int RunCaseNoMenu(const char *nomenu, const char *storage) {
+    if (!Exists(std::string(nomenu) + "/system/Config.tjs"))
+        return Fail("NOMENU fixture missing Config.tjs", NULL);
+    if (Exists(std::string(nomenu) + "/system/GalBoxMenu.tjs"))
+        return Fail("NOMENU fixture must NOT contain the Menu skeleton", NULL);
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(nomenu, storage, arc);
+    if (!j) return Fail("cannot run the NOMENU control", NULL);
+    DumpChain("NOMENU", j);
+
+    if (StrField(j, "shim").find("M2E7_MENU_SKELETON") != std::string::npos)
+        return Fail("NOMENU control unexpectedly loaded the Menu skeleton", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string inner = StrField(j, "lastScriptError");
+    const std::string block = StrField(j, "fatalBlock");
+    // 去掉 Menu 骨架后可能是两处停点之一：
+    //   - Window 骨架构造里的 `new Menu()`（GalBoxWindow.tjs）
+    //   - 官方 Menus.tjs 的 `class KAGMenuItem extends MenuItem`
+    // 二者都属于菜单子系统缺口，都足以证明骨架不是摆设。
+    const bool menuGap =
+        fatal.find("\"Menu\"") != std::string::npos ||
+        inner.find("\"Menu\"") != std::string::npos ||
+        fatal.find("\"MenuItem\"") != std::string::npos ||
+        inner.find("\"MenuItem\"") != std::string::npos;
+    const bool menuBlock =
+        block.find("Menus.tjs") != std::string::npos ||
+        block.find("GalBoxWindow.tjs") != std::string::npos;
+    if (!menuGap || !menuBlock)
+        return Fail("NOMENU control did not reproduce a menu-subsystem gap", j);
+
+    std::printf("[m2h] NOMENU verdict: fatal=\"%s\" @ %s:%lld\n",
+                fatal.c_str(), block.c_str(), IntField(j, "fatalLine"));
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 int main(int argc, char **argv) {
     std::setbuf(stdout, NULL); // 崩溃诊断: 不丢已打印进度
     const char *which   = (argc > 1) ? argv[1] : "A";
     const char *game    = (argc > 2) ? argv[2] : "native/TJS2/build/m2h_game";
     const char *ctrl    = (argc > 3) ? argv[3] : "native/TJS2/build/m2h_ctrl";
     const char *storage = (argc > 4) ? argv[4] : ".";
+    const char *nomenu  = (argc > 5) ? argv[5] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -307,11 +367,16 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOMENU") == 0) {
+        if (RunCaseNoMenu(nomenu, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "LEAK") == 0)
         return RunLeak(game, storage, false);
     if (std::strcmp(which, "LEAK2") == 0)
         return RunLeak(game, storage, true);
 
-    std::printf("[m2h] unknown case '%s' (A / B / LEAK / LEAK2)\n", which);
+    std::printf("[m2h] unknown case '%s' (A / B / NOMENU / LEAK / LEAK2)\n", which);
     return 2;
 }

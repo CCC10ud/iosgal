@@ -44,6 +44,10 @@ class Window
 
 	function Window()
 	{
+		// M2e-7：官方 Window 构造时会带出一个 Menu 对象；KAGWindow 的
+		// KAGWindow_createMenus() 直接写 `menu.add(...)`，不会自己 new Menu。
+		// 骨架里补上这一句，才能让菜单脚本继续往下走。
+		menu = new Menu(this);
 	}
 
 	function finalize() {}

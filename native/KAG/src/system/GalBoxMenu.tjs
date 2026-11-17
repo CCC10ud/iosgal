@@ -1,0 +1,96 @@
+// GalBoxMenu.tjs — GalBox 自写的 `MenuItem` / `Menu` 骨架（**非官方**，Milestone 2e-7）
+//
+// 官方这两个类是 kirikiri2 核心里的原生类（MenuIntf.cpp，绑 Windows tp_stub）。
+// KAG 的官方 `Menus.tjs` 第 149 行写着：
+//     class KAGMenuItem extends MenuItem
+// run #57（M2e-6 完成后）实测的下一缺口正是：
+//     Member "MenuItem" does not exist @ Menus.tjs:149
+//
+// 官方脚本对这些对象的用法只有下面几类（逐条统计过 Menus.tjs / MainWindow.tjs）：
+//   new MenuItem(owner, caption) / new MenuItem(owner, "-")
+//   KAGMenuItem extends MenuItem，构造里调 super.MenuItem(window, caption)
+//   MenuItem.add(item) / Menu.add(item)、children / caption / enabled / visible /
+//   checked / radio / group / click / onClick / finalize
+//   menu.accessible / menu.autoEnable / menu.stopRecur / menu.visible
+//
+// 与 Layer / Window / Pad 同理：这是**过渡骨架**，纯 TJS2，只让官方脚本类
+// 能真正继承、实例化，从而把下一批缺口逼出来。它**不画菜单、不接受点击、
+// 没有原生窗口句柄**，`.click()` 也不会真的执行命令（KAGMenuItem 自己会调
+// 宿主 Scripts.eval / 回调函数，这部分在子类里）。
+//
+// ⚠️ TJS2 语法雷（M2e-3 踩过）：不要用 `...` 变参定义，也不要把 `invalidate`
+// 之类对象关键字当函数名 —— 任何一个都会让整个 shim 语法错误、连带类装不上。
+
+class Menu
+{
+	var owner;
+	var caption = "";
+	var children = [];
+	var parent;
+	var visible = true;
+	var enabled = true;
+	var accessible = true;
+	var autoEnable = false;
+	var stopRecur = false;
+	var checked = false;
+	var radio = false;
+
+	function Menu(own)
+	{
+		owner = own;
+	}
+
+	function finalize() {}
+
+	function add(item)
+	{
+		children.add(item);
+		if (item != void) item.parent = this;
+		return item;
+	}
+
+	function clear()
+	{
+		children = [];
+	}
+
+	function click() {}
+}
+
+class MenuItem
+{
+	var owner;
+	var parent;
+	var caption = "";
+	var children = [];
+	var visible = true;
+	var enabled = true;
+	var checked = false;
+	var radio = false;
+	var group = 0;
+
+	function MenuItem(own, cap)
+	{
+		owner = own;
+		caption = cap;
+	}
+
+	function finalize() {}
+
+	function add(item)
+	{
+		children.add(item);
+		if (item != void) item.parent = this;
+		return item;
+	}
+
+	function clear()
+	{
+		children = [];
+	}
+
+	function click() {}
+
+	// KAGMenuItem.onClick 里会 super.onClick(...) 再调自己的 click()。
+	function onClick(sender) {}
+}
