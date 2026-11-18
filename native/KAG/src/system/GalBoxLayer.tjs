@@ -195,6 +195,21 @@ class Layer
 	}
 	// M2E20_END
 
+	// M2E21_BEGIN —— NOIMAGEMODIFIED 负向对照按此标记整段删除
+	// 官方 LayerIntf.cpp 的**图像脏标记**成员 imageModified（bool）。
+	// M2e-20 补上 setSize 后启动链停在 MessageLayer.tjs:493 的
+	// `imageModified = true;`（MessageLayer 构造，紧接 name/id 赋值之后）。
+	//
+	// 全库 6 处出现，全在 MessageLayer.tjs，无 var 声明 ⇒ 原生 Layer 成员。
+	// 唯一真读点 MessageLayer.tjs:562 `if(imageModified)`（clear() 里判断
+	// 要不要重绘图像），591 再写回 false。留 void 会让 if 恒假、跳过重绘，
+	// 且不抛异常（静默错）。
+	//
+	// 初值取 true：构造 493 一进来就置 true，语义"新建层的图像待重绘"；
+	// 与 type/face 等一样是常态位，不是无值。
+	var imageModified = true;
+	// M2E21_END
+
 	var imageLeft = 0;
 	var imageTop = 0;
 	var isPrimary = false;

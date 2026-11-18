@@ -29,6 +29,8 @@ startup.tjs 只有一行注释 —— 自测全绿而设备上根本没跑过官
      HistoryLayer.tjs:130 构造时写 true，MessageLayer.tjs:2316 拿它做取反判断。
  13. Layer 骨架里带 `function setSize`（M2e-20）—— 官方
      AnimationLayer.tjs:367 的 clearImage() 首句 `setSize(32, 32)`。
+ 14. Layer 骨架里带 `var imageModified = true`（M2e-21）—— 官方
+     MessageLayer.tjs:493 构造时置 true，562 `if(imageModified)` 真读。
 """
 import os
 import sys
@@ -174,13 +176,21 @@ def main(argv):
         return fail("system/GalBoxLayer.tjs 里没有 setSize(w,h) 写 width/height："
                     "设备端会在 AnimationLayer.tjs:367 断链")
 
+    # 第 14 条（M2e-21）：图像脏标记 imageModified。MessageLayer.tjs:493 构造时
+    # 置 true，562 `if(imageModified)` 真读值 ⇒ 必须是布尔真值，留 void 会
+    # if 恒假、跳过图像重绘且不报错。初值 true = "新层图像待重绘"。
+    if b"var imageModified = true;" not in layer:
+        return fail("system/GalBoxLayer.tjs 里没有 var imageModified = true："
+                    "设备端会在 MessageLayer.tjs:493 断链")
+
     print("[m2e12b] 内置包核验通过: %d 个文件 / 解压后 %d B / "
           "Initialize.tjs %d B / startup.tjs 真调 Initialize / 九个骨架全在 / "
           "KAGParser 带 debugLevel(M2e-13) / Layer 带 hitType+hitThreshold(M2e-14) / "
           "Layer 带 setImageSize+setSizeToImageSize(M2e-15) / "
           "Layer 带 face+fillRect(M2e-16) / Layer 带 cursor(M2e-17) / "
           "Layer 带 name(M2e-18) / Layer 带 focusable(M2e-19) / "
-          "Layer 带 setSize(M2e-20)"
+          "Layer 带 setSize(M2e-20) / "
+          "Layer 带 imageModified(M2e-21)"
           % (parsed["count"], total, init_bytes))
     return 0
 

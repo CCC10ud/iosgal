@@ -825,7 +825,7 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE XP3 LEAK LEAK2" in test_sh,
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED XP3 LEAK LEAK2" in test_sh,
    "构建脚本把二十个场景拆成独立进程跑（十五个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
@@ -1395,6 +1395,37 @@ ok("function setSize(w, h)" in verifier and "width = w;" in verifier,
    "M2e-20：出包核验器要求内置包 setSize 写 width/height（非空壳）")
 ok('"\\"focusable\\"", "\\"setSize\\""' in m2h_test,
    "M2e-20：XP3 场景的「已关闭缺口」清单加上了 setSize")
+
+# ---- M2e-21：Layer 图像脏标记 imageModified（MessageLayer.tjs:493）--------
+_im_blk = layer_shim.split("M2E21_BEGIN", 1)[-1].split("M2E21_END", 1)[0]
+ok("var imageModified = true;" in _im_blk,
+   "M2e-21：Layer 骨架声明 imageModified，给布尔真值 true（不是 void）")
+# 全库 6 处全在 MessageLayer.tjs，无 var 声明 ⇒ 原生成员；562 if() 真读。
+_ml21 = raw("native/KAG/src/original/system/MessageLayer.tjs")
+ok(b"var imageModified" not in _ml21 and
+   _ml21.count(b"imageModified") >= 5,
+   "M2e-21：imageModified 无 var 声明（原生成员），在 MessageLayer 多处出现")
+ok(b"if(imageModified)" in _ml21 and b"imageModified = false;" in _ml21,
+   "M2e-21：imageModified 被 if() 真读 + 写回 false ⇒ 必须布尔真值，留 void 会恒假")
+# 新缺口钉在精确行号 493（构造首句），宽判据会误判其它 imageModified 赋值。
+ok(_ml21.split(b"\n")[492].strip() == b"imageModified = true;",
+   "M2e-21：官方 MessageLayer.tjs:493 是 imageModified = true（精确行号）")
+ok("M2e-21 gap (imageModified) not cleared" in m2h_test and
+   "imageModified line" in m2h_test and
+   "gapLine == 493" in m2h_test,
+   "M2e-21：A 硬判据清掉 imageModified 且离开旧停点（精确行号 493）")
+ok("NOIMAGEMODIFIED control did not reproduce the imageModified gap" in m2h_test,
+   "M2e-21：NOIMAGEMODIFIED 负向对照必须复现 imageModified@MessageLayer.tjs:493")
+ok("M2H_NOIMAGEMODIFIED" in test_sh and "M2E21_BEGIN" in test_sh,
+   "M2e-21：构建脚本用 drop_marked 生成 NOIMAGEMODIFIED 夹具")
+ok("NOIMAGEMODIFIED fixture lost unrelated" in m2h_test and
+   "NOIMAGEMODIFIED fixture still declares imageModified" in m2h_test,
+   "M2e-21：负向对照校验夹具只删 imageModified（setSize/focusable 等都在）")
+ok("var imageModified = true" in verifier,
+   "M2e-21：出包核验器要求内置包 Layer 带 imageModified = true")
+_closed_block = m2h_test.split('for (const char *closed',1)[-1].split(') {',1)[0]
+ok('setSize' in _closed_block and 'imageModified' in _closed_block,
+   "M2e-21：XP3 场景的「已关闭缺口」清单加上了 imageModified")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
