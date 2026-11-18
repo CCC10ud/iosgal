@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把二十八个场景拆成独立进程跑（二十三个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把二十九个场景拆成独立进程跑（二十四个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1664,6 +1664,29 @@ ok("var paused = false;\" < 2" in verifier or "count(b\"var paused = false;\")" 
    "M2e-29：出包核验器第 22 条要求两份 paused")
 ok('paused' in _closed_block,
    "M2e-29：XP3 场景的「已关闭缺口」清单加上了 paused")
+
+# ---- M2e-30：WaveSoundBuffer 声像 pan（SE.tjs:221）--------------------
+_win_pan = _gb_sound.split("M2E30_BEGIN",1)[-1].split("M2E30_END",1)[0]
+ok("var pan = 0;" in _win_pan,
+   "M2e-30：WaveSoundBuffer 声明整数 pan（初值 0 = 居中，单位 1/1000）")
+_se30 = raw("native/KAG/src/original/system/SE.tjs")
+ok(_se30.split(b"\n")[220].strip().startswith(b"return super.pan"),
+   "M2e-30：官方 SE.tjs:221 是 return super.pan \\ 1000（精确行号）")
+ok(b"property pan" in _se30 and b"super.pan = x * 1000;" in _se30,
+   "M2e-30：SE.tjs 的 property pan 读写 super.pan，缩放 ×1000 ⇒ 基类存整数")
+ok("M2e-30 gap (pan) not cleared" in m2h_test and
+   "SE.tjs pan line" in m2h_test and
+   "gapLine == 221" in m2h_test,
+   "M2e-30：A 硬判据清掉 pan 且离开旧停点（精确行号 221）")
+ok("NOPAN control advanced past SE.tjs" in m2h_test and
+   "NOPAN verdict: without pan the chain stops" in m2h_test,
+   "M2e-30：NOPAN 不写死行号（改用“到不了后续脚本”判据，含实测教训）")
+ok("M2H_NOPAN" in test_sh and "M2E30_BEGIN" in test_sh,
+   "M2e-30：构建脚本用 drop_marked 生成 NOPAN 夹具")
+ok("var pan = 0;" in verifier,
+   "M2e-30：出包核验器第 23 条要求 Wave 的 pan")
+ok('pan' in _closed_block,
+   "M2e-30：XP3 场景的「已关闭缺口」清单加上了 pan")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

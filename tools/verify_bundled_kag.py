@@ -47,6 +47,8 @@ startup.tjs 只有一行注释 —— 自测全绿而设备上根本没跑过官
      MainWindow.tjs:438 `this.width + this.left`（窗口居中修正）。
  22. Sound 骨架（MIDI + Wave 两个类）各带 `var paused = false`（M2e-29）——
      BGM.tjs:585 `dic.paused = buf1.paused;` / 309 `buf.paused = paused;`。
+ 23. WaveSoundBuffer 带 `var pan = 0`（M2e-30）—— SE.tjs:213-223 的
+     `property pan` 读写 `super.pan`（单位 1/1000）。
 """
 import os
 import sys
@@ -262,6 +264,11 @@ def main(argv):
         return fail("%s 里 var paused = false 少于 2 处："
                     "MIDI/Wave 两个缓冲区类各要一份，否则 BGM.tjs:585 断链" % snd_name)
 
+    # 第 23 条（M2e-30）：声像 pan。SE.tjs:217 `super.pan = x * 1000;`、
+    # 221 `return super.pan \ 1000;` ⇒ 基类必须有整数 pan（单位 1/1000）。
+    if b"var pan = 0;" not in snd:
+        return fail("%s 里没有 var pan = 0：设备端会在 SE.tjs:221 断链" % snd_name)
+
     print("[m2e12b] 内置包核验通过: %d 个文件 / 解压后 %d B / "
           "Initialize.tjs %d B / startup.tjs 真调 Initialize / %d 个骨架全在 / "
           "KAGParser 带 debugLevel(M2e-13) / Layer 带 hitType+hitThreshold(M2e-14) / "
@@ -273,7 +280,7 @@ def main(argv):
           "Layer 带 showParentHint(M2e-23) / Layer 带 cursorX+cursorY(M2e-24) / "
           "Sound 骨架 MIDISoundBuffer(M2e-25) / WaveSoundBuffer(M2e-26) / "
           "Movie 骨架 VideoOverlay(M2e-27) / Window 带 left+top(M2e-28) / "
-          "Sound 带 paused×2(M2e-29)"
+          "Sound 带 paused×2(M2e-29) / Wave 带 pan(M2e-30)"
           % (parsed["count"], total, init_bytes, len(SKELETONS)))
     return 0
 

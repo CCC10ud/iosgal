@@ -49,6 +49,14 @@ class MIDISoundBuffer
 class WaveSoundBuffer
 {
 	var owner;
+	// M2E30_BEGIN —— NOPAN 负向对照按此标记整段删除
+	// 官方 SE.tjs:213-223 定义了 `property pan`（setter 写 super.pan = x*1000，
+	// getter 读 super.pan \ 1000）—— 即**基类** WaveSoundBuffer 上的整数 pan，
+	// 单位 1/1000（-1000 左 / 0 中 / 1000 右）。A 场景实测停点：
+	// `Member "pan" does not exist @ SE.tjs:221`。
+	// 只给 Wave 一份：MIDI 侧目前无证据（BGM 用 audioBalance），等实测再补。
+	var pan = 0;
+	// M2E30_END
 	// M2E29B_BEGIN —— NOPAUSED 负向对照按此标记整段删除
 	// 同 MIDISoundBuffer：Wave 缓冲区也有 paused（BGM.tjs:393/400
 	// `buf1.paused = true/false;` 在 pause/resume 路径上）。
