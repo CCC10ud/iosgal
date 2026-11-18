@@ -39,6 +39,8 @@ startup.tjs 只有一行注释 —— 自测全绿而设备上根本没跑过官
      MessageLayer.tjs:607 clear() 记录鼠标位置，MainWindow.tjs:4006 跨对象读。
  18. 内置包带 `system/GalBoxSound.tjs` 含 `class MIDISoundBuffer`（M2e-25）
      —— BGM.tjs:114 `class KAGMIDISoundBuffer extends MIDISoundBuffer, ...`。
+ 19. 同一文件含 `class WaveSoundBuffer`（M2e-26）—— SE.tjs:4
+     `class SESoundBuffer extends WaveSoundBuffer` / SE.tjs:19 `super.WaveSoundBuffer(owner)`。
 """
 import os
 import sys
@@ -223,8 +225,15 @@ def main(argv):
         return fail("%s 里没有 class MIDISoundBuffer："
                     "设备端会在 BGM.tjs:114 断链" % snd_name)
 
+    # 第 19 条（M2e-26）：同族的 WaveSoundBuffer（WAV/OGG 播放基类）。
+    # SE.tjs:4 `class SESoundBuffer extends WaveSoundBuffer`；
+    # SE.tjs:19 `super.WaveSoundBuffer(owner);`（super 链要能调到基类构造）。
+    if b"class WaveSoundBuffer" not in snd:
+        return fail("%s 里没有 class WaveSoundBuffer："
+                    "设备端会在 SE.tjs:4 断链" % snd_name)
+
     print("[m2e12b] 内置包核验通过: %d 个文件 / 解压后 %d B / "
-          "Initialize.tjs %d B / startup.tjs 真调 Initialize / 九个骨架全在 / "
+          "Initialize.tjs %d B / startup.tjs 真调 Initialize / %d 个骨架全在 / "
           "KAGParser 带 debugLevel(M2e-13) / Layer 带 hitType+hitThreshold(M2e-14) / "
           "Layer 带 setImageSize+setSizeToImageSize(M2e-15) / "
           "Layer 带 face+fillRect(M2e-16) / Layer 带 cursor(M2e-17) / "
@@ -232,8 +241,8 @@ def main(argv):
           "Layer 带 setSize(M2e-20) / "
           "Layer 带 imageModified(M2e-21) / Layer 带 colorRect(M2e-22) / "
           "Layer 带 showParentHint(M2e-23) / Layer 带 cursorX+cursorY(M2e-24) / "
-          "Sound 骨架 MIDISoundBuffer(M2e-25)"
-          % (parsed["count"], total, init_bytes))
+          "Sound 骨架 MIDISoundBuffer(M2e-25) / WaveSoundBuffer(M2e-26)"
+          % (parsed["count"], total, init_bytes, len(SKELETONS)))
     return 0
 
 

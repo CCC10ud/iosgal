@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把二十四个场景拆成独立进程跑（十九个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把二十五个场景拆成独立进程跑（二十个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1539,8 +1539,10 @@ ok(b"class KAGMIDISoundBuffer extends MIDISoundBuffer, KAGSoundBuffer" in _bgm a
    b"MIDISoundBuffer(owner);" in _bgm and
    b"global.MIDISoundBuffer" in _bgm,
    "M2e-25：BGM.tjs 需要类名可解析 + 基类构造 + global 类对象三件事")
-ok("class WaveSoundBuffer" not in _gb_sound,
-   "M2e-25：纪律 —— WaveSoundBuffer/CDDASoundBuffer 同族类等实测停点再补，不超前")
+ok("class CDDASoundBuffer" not in _gb_sound,
+   "M2e-25：纪律 —— CDDASoundBuffer 同族类等实测停点再补，不超前")
+ok("class WaveSoundBuffer" in _gb_sound.split("M2E26_BEGIN",1)[-1].split("M2E26_END",1)[0],
+   "M2e-26：GalBoxSound.tjs 新增 WaveSoundBuffer 类（M2E26 独立标记）")
 # 新缺口钉在精确行号 114（类定义行）。
 ok(_bgm.split(b"\n")[113].strip() == b"class KAGMIDISoundBuffer extends MIDISoundBuffer, KAGSoundBuffer",
    "M2e-25：官方 BGM.tjs:114 是 KAGMIDISoundBuffer 类定义（精确行号）")
@@ -1561,6 +1563,26 @@ ok("class MIDISoundBuffer" in verifier and "GalBoxSound" in verifier,
    "M2e-25：出包核验器要求内置包带 GalBoxSound.tjs 且含类定义")
 ok('MIDISoundBuffer' in _closed_block,
    "M2e-25：XP3 场景的「已关闭缺口」清单加上了 MIDISoundBuffer")
+
+# ---- M2e-26：WaveSoundBuffer 同族音频类（SE.tjs:4）---------------------
+_se = raw("native/KAG/src/original/system/SE.tjs")
+ok(_se.split(b"\n")[3].strip() == b"class SESoundBuffer extends WaveSoundBuffer",
+   "M2e-26：官方 SE.tjs:4 是 SESoundBuffer extends WaveSoundBuffer（精确行号）")
+ok(b"super.WaveSoundBuffer(owner);" in _se,
+   "M2e-26：SE.tjs:19 用 super 链调基类构造 ⇒ 构造签名必须是 WaveSoundBuffer(owner)")
+ok("M2e-26 gap (WaveSoundBuffer) not cleared" in m2h_test and
+   "SE.tjs WaveSoundBuffer line" in m2h_test and
+   "gapLine == 4" in m2h_test,
+   "M2e-26：A 硬判据清掉 WaveSoundBuffer 且离开旧停点（精确行号 4）")
+ok("NOWAVE control did not reproduce the WaveSoundBuffer gap" in m2h_test,
+   "M2e-26：NOWAVE 负向对照必须复现 WaveSoundBuffer@SE.tjs:4")
+ok("NOWAVE fixture lost MIDISoundBuffer" in m2h_test and
+   "NOWAVE fixture still declares WaveSoundBuffer" in m2h_test,
+   "M2e-26：NOWAVE 是段级删除（文件保留、MIDISoundBuffer 完好）")
+ok("class WaveSoundBuffer" in verifier and "SE.tjs:4" in verifier,
+   "M2e-26：出包核验器第 19 条要求 WaveSoundBuffer")
+ok('WaveSoundBuffer' in _closed_block,
+   "M2e-26：XP3 场景的「已关闭缺口」清单加上了 WaveSoundBuffer")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

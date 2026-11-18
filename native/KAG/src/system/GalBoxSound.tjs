@@ -27,3 +27,23 @@ class MIDISoundBuffer
 	}
 }
 // M2E25_END
+
+// M2E26_BEGIN —— NOWAVE 负向对照按此标记整段删除
+// 官方 WaveSoundBuffer 是 kirikiri2/src/core/sound/WaveSoundBuffer.cpp 里的
+// 原生类（WAV/OGG 解码 + 播放，绑死 Windows 音频 API）。两处用名：
+//   SE.tjs:4   `class SESoundBuffer extends WaveSoundBuffer`（效果音基类）
+//   BGM.tjs:95 `class KAGWaveSoundBuffer extends WaveSoundBuffer, KAGSoundBuffer`
+//   SE.tjs:19  `super.WaveSoundBuffer(owner);`（super 链调基类构造）
+// M2e-25 补上 MIDISoundBuffer 后启动链停在 SE.tjs:4。
+//
+// 同 MIDISoundBuffer：过渡骨架，只让类名可解析 + 构造可调；
+// play / stop / status / volume / fade 等成员等实测停点再补。
+class WaveSoundBuffer
+{
+	var owner;
+	function WaveSoundBuffer(o)
+	{
+		owner = o;
+	}
+}
+// M2E26_END

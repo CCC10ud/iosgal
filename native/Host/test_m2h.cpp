@@ -475,8 +475,19 @@ static int RunCaseA(const char *game, const char *storage) {
     if (gapBlock.find("BGM.tjs") != std::string::npos && gapLine == 114)
         return Fail("the chain is still stuck at the BGM.tjs MIDISoundBuffer line", j);
 
+    // M2e-26 硬判据：run 44217840651 的下一缺口是 SE.tjs:4 的
+    // `class SESoundBuffer extends WaveSoundBuffer`（同族音频类）。
+    // 独立负向对照：NOWAVE -> 必须复现 WaveSoundBuffer@SE.tjs:4
+    // 注意：判定用带引号全名 —— 裸 "WaveSoundBuffer" 会命中 KAGWaveSoundBuffer？
+    // 不会（后者的引号在 KAG 前），但仍统一用带引号全名保持口径一致。
+    if (fatal.find("\"WaveSoundBuffer\"") != std::string::npos ||
+        inner.find("\"WaveSoundBuffer\"") != std::string::npos)
+        return Fail("M2e-26 gap (WaveSoundBuffer) not cleared", j);
+    if (gapBlock.find("SE.tjs") != std::string::npos && gapLine == 4)
+        return Fail("the chain is still stuck at the SE.tjs WaveSoundBuffer line", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
-    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-25)\n",
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-26)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
 
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
@@ -1570,6 +1581,52 @@ static int RunCaseNoMidi(const char *nomidi, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOWAVE：缺 WaveSoundBuffer 类的负向对照（M2e-26）
+// 段级删除（文件保留）：只把 GalBoxSound.tjs 里 M2E26 段删掉，
+// MIDISoundBuffer 仍在（否则测的是 M2e-25 那个缺口）。
+// 必须复现 `Member "WaveSoundBuffer" does not exist @ SE.tjs:4`。
+static int RunCaseNoWave(const char *nowave, const char *storage) {
+    if (!Exists(std::string(nowave) + "/system/Config.tjs"))
+        return Fail("NOWAVE fixture missing Config.tjs", NULL);
+    const std::string snd = std::string(nowave) + "/system/GalBoxSound.tjs";
+    if (!Exists(snd))
+        return Fail("NOWAVE fixture must keep GalBoxSound.tjs", NULL);
+    {
+        std::ifstream f(snd.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E26_BEGIN") != std::string::npos)
+            return Fail("NOWAVE fixture must have WaveSoundBuffer removed", NULL);
+        if (body.find("class WaveSoundBuffer") != std::string::npos)
+            return Fail("NOWAVE fixture still declares WaveSoundBuffer", NULL);
+        // MIDISoundBuffer 是上一轮的成员，别一起删了（否则测的不是本轮缺口）。
+        if (body.find("class MIDISoundBuffer") == std::string::npos)
+            return Fail("NOWAVE fixture lost MIDISoundBuffer", NULL);
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(nowave, storage, arc);
+    if (!j) return Fail("cannot run the NOWAVE control", NULL);
+    DumpChain("NOWAVE", j);
+
+    // 骨架文件仍在、shim tag 仍应装上 —— 唯一差异是 WaveSoundBuffer 类没了。
+    if (StrField(j, "shim").find("M2E25_SOUND_SKELETON") == std::string::npos)
+        return Fail("NOWAVE control lost the Sound skeleton tag", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string inner = StrField(j, "lastScriptError");
+    const std::string block = StrField(j, "fatalBlock");
+    const long long line = IntField(j, "fatalLine");
+    const bool gap = (fatal + " || " + inner).find("\"WaveSoundBuffer\"") != std::string::npos;
+    if (!gap || block.find("SE.tjs") == std::string::npos || line != 4)
+        return Fail("NOWAVE control did not reproduce the WaveSoundBuffer gap", j);
+
+    std::printf("[m2h] NOWAVE verdict: fatal=\"%s\" @ %s:%lld\n",
+                fatal.c_str(), block.c_str(), line);
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // 打开任意容器（目录 / .xp3）跑一次官方链，返回 JSON。
 // dirMode / entryCount 必须在 close() 之前取（close 会清掉它们）。
 static char *RunArchive(const char *path, const char *storage,
@@ -1693,7 +1750,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                                "\"name\"", "\"focusable\"", "\"setSize\"",
                                "\"imageModified\"", "\"colorRect\"",
                                "\"showParentHint\"", "\"cursorX\"",
-                               "\"MIDISoundBuffer\""}) {
+                               "\"MIDISoundBuffer\"", "\"WaveSoundBuffer\""}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -1705,7 +1762,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                 "(%lld scripts, debugLevel/hitType/hitThreshold/"
                 "setImageSize/setSizeToImageSize/face/fillRect/cursor/name/"
                 "focusable/setSize/imageModified/colorRect/showParentHint/"
-                "cursorX/MIDISoundBuffer all cleared in the device container)\n", scripts);
+                "cursorX/MIDISoundBuffer/WaveSoundBuffer all cleared in the device container)\n", scripts);
     GalBoxTJS2Free(j);
     return 0;
 }
@@ -1739,6 +1796,7 @@ int main(int argc, char **argv) {
     const char *noph     = (argc > 25) ? argv[25] : "";
     const char *nocx     = (argc > 26) ? argv[26] : "";
     const char *nomidi   = (argc > 27) ? argv[27] : "";
+    const char *nowave   = (argc > 28) ? argv[28] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -1860,6 +1918,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOWAVE") == 0) {
+        if (RunCaseNoWave(nowave, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -1876,6 +1939,6 @@ int main(int argc, char **argv) {
                 "NOHITTHRESHOLD / NOIMAGESIZE / NOSIZETOIMAGESIZE / NODRAWFACE / "
                 "NOFILLRECT / NOCURSOR / NONAME / NOFOCUSABLE / NOSIZE / "
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
-                "NOCURSORX / NOMIDI / XP3 / LEAK / LEAK2)\n", which);
+                "NOCURSORX / NOMIDI / NOWAVE / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }
