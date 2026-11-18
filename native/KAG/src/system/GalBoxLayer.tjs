@@ -224,6 +224,19 @@ class Layer
 	function colorRect(l, t, w, h, color, mode) {}
 	// M2E22_END
 
+	// M2E23_BEGIN —— NOSHOWPARENTHINT 负向对照按此标记整段删除
+	// 官方 LayerIntf.cpp 的**父层提示开关**成员 showParentHint（bool）。
+	// M2e-22 补上 colorRect 后启动链停在 MessageLayer.tjs:1987 的
+	// `showParentHint = false;`（link 隐藏路径，隐藏自己时不再让父层给提示）。
+	//
+	// 全库 6 处全是赋值、零读点（GraphicLayer.tjs 159/234/267/278 写 true，
+	// MessageLayer.tjs 1987 写 false、2093 写 true）⇒ 当前启动链里 void 也够。
+	// 但取官方原生默认值 true：它控制"鼠标悬停时是否显示父层的 hint 文本"，
+	// 消息层默认继承父层提示是 Kirikiri 的既定行为；万一未来加读点，
+	// true 是语义正确的初值，void 会让读点静默变成"不可聚焦/不显示"。
+	var showParentHint = true;
+	// M2E23_END
+
 	var imageLeft = 0;
 	var imageTop = 0;
 	var isPrimary = false;

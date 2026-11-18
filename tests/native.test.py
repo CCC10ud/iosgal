@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把二十一个场景拆成独立进程跑（十六个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把二十二个场景拆成独立进程跑（十七个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1454,6 +1454,38 @@ ok("function colorRect(l, t, w, h, color, mode)" in verifier,
    "M2e-22：出包核验器要求内置包 Layer 带 colorRect 完整签名")
 ok('colorRect' in _closed_block,
    "M2e-22：XP3 场景的「已关闭缺口」清单加上了 colorRect")
+
+# ---- M2e-23：Layer 父层提示开关 showParentHint（MessageLayer.tjs:1987）--------
+_ph_blk = layer_shim.split("M2E23_BEGIN", 1)[-1].split("M2E23_END", 1)[0]
+ok("var showParentHint = true;" in _ph_blk,
+   "M2e-23：Layer 骨架声明 showParentHint = true（原生默认，非 void）")
+# 全库 6 处全是赋值、零读点 ⇒ 只要可写就能过链；取 true 防未来读点静默错。
+_ph_all = b""
+for _pf in ("GraphicLayer.tjs", "MessageLayer.tjs"):
+    _ph_all += raw("native/KAG/src/original/system/" + _pf)
+ok(b"var showParentHint" not in _ph_all and
+   _ph_all.count(b"showParentHint") == 6 and
+   b"showParentHint = true;" in _ph_all and b"showParentHint = false;" in _ph_all,
+   "M2e-23：showParentHint 无 var 声明（原生成员），6 处全赋值、true/false 都有")
+# 新缺口钉在精确行号 1987（link 隐藏路径），GraphicLayer 的 4 处不算停点。
+_ml1987 = raw("native/KAG/src/original/system/MessageLayer.tjs")
+ok(_ml1987.split(b"\n")[1986].strip() == b"showParentHint = false;",
+   "M2e-23：官方 MessageLayer.tjs:1987 是 showParentHint = false（精确行号）")
+ok("M2e-23 gap (showParentHint) not cleared" in m2h_test and
+   "showParentHint line" in m2h_test and
+   "gapLine == 1987" in m2h_test,
+   "M2e-23：A 硬判据清掉 showParentHint 且离开旧停点（精确行号 1987）")
+ok("NOSHOWPARENTHINT control did not reproduce the showParentHint gap" in m2h_test,
+   "M2e-23：NOSHOWPARENTHINT 负向对照必须复现 showParentHint@1987")
+ok("M2H_NOSHOWPARENTHINT" in test_sh and "M2E23_BEGIN" in test_sh,
+   "M2e-23：构建脚本用 drop_marked 生成 NOSHOWPARENTHINT 夹具")
+ok("NOSHOWPARENTHINT fixture lost unrelated" in m2h_test and
+   "NOSHOWPARENTHINT fixture still declares showParentHint" in m2h_test,
+   "M2e-23：负向对照校验夹具只删 showParentHint（colorRect 等都在）")
+ok("var showParentHint = true" in verifier,
+   "M2e-23：出包核验器要求内置包 Layer 带 showParentHint = true")
+ok('showParentHint' in _closed_block,
+   "M2e-23：XP3 场景的「已关闭缺口」清单加上了 showParentHint")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
