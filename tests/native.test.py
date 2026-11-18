@@ -1625,12 +1625,11 @@ ok("M2e-28 gap (Window.left) not cleared" in m2h_test and
    "MainWindow.tjs Window.left line" in m2h_test and
    "gapLine == 438" in m2h_test,
    "M2e-28：A 硬判据清掉 Window.left 且离开旧停点（精确行号 438）")
-ok("NOWINLEFT control unexpectedly completed the startup chain" in m2h_test and
-   "reached the A-scenario stop" in m2h_test,
-   "M2e-28：NOWINLEFT 判据改成「推进深度差异」（实测纠正：本引擎缺成员读返回 void，不抛错）")
-ok("NOWINLEFT verdict: without Window.left/top the chain stops" in m2h_test and
-   "A-scenario stop was BGM.tjs:585" in m2h_test,
-   "M2e-28：NOWINLEFT 输出记录实际停点供审计（run 44303484227 实测 evalStorage@1045）")
+ok("NOWINLEFT control still reached the deep scripts" in m2h_test and
+   "chain dies inside " in m2h_test,
+   "M2e-28：NOWINLEFT 判据改成「深度差异」（实测：读缺失成员返回 void，不抛错；不写死行号防过期）")
+ok("NOWINLEFT verdict: without Window.left/top the chain dies inside " in m2h_test,
+   "M2e-28：NOWINLEFT 输出记录实际停点供审计（实测 MainWindow.tjs:1045）")
 ok("NOWINLEFT fixture still declares Window.left/top" in m2h_test and
    "NOWINLEFT fixture lost unrelated Window members" in m2h_test,
    "M2e-28：NOWINLEFT 是段级删除（M2e-8 style 段等保留）")
@@ -1653,8 +1652,9 @@ ok("M2e-29 gap (paused) not cleared" in m2h_test and
    "BGM.tjs paused line" in m2h_test and
    "gapLine == 585" in m2h_test,
    "M2e-29：A 硬判据清掉 paused 且离开旧停点（精确行号 585）")
-ok("NOPAUSED control did not reproduce the paused gap" in m2h_test,
-   "M2e-29：NOPAUSED 负向对照必须复现 paused@BGM.tjs:585")
+ok("NOPAUSED control still reached the deep scripts" in m2h_test and
+   "NOPAUSED verdict: without paused the chain dies inside " in m2h_test,
+   "M2e-29：NOPAUSED 判据同为深度差异（不期望复现 paused@585 —— void 读不抛错）")
 ok("NOPAUSED fixture must have both paused members removed" in m2h_test and
    "NOPAUSED fixture lost unrelated Sound members" in m2h_test,
    "M2e-29：两处段级删除（M2E29A/M2E29B），两个音频类本体不许丢")

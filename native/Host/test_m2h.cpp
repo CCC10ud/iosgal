@@ -1734,31 +1734,22 @@ static int RunCaseNoWinLeft(const char *nowinl, const char *storage) {
         return Fail("NOWINLEFT control lost the Window skeleton tag", j);
 
     const std::string fatal = StrField(j, "fatal");
-    const std::string inner = StrField(j, "lastScriptError");
     const std::string block = StrField(j, "fatalBlock");
     const long long line = IntField(j, "fatalLine");
 
-    // ⚠️ 实测纠正（run 44303484227 attempt 2，2026-11-18）：
-    // 原先假设「删掉 Window.left/top ⇒ 复现 Member "left" does not exist @ 438」，
-    // **实测不成立**。本引擎里读一个不存在的实例成员返回 **void 而不是抛错**，
-    // 于是 MainWindow.tjs:438 `this.width + this.left` 得到 void、比较为假，
-    // 439/441 两句赋值被整段跳过 —— 链**不报错地**走偏，最后在更早的
-    // `loadSystemVariables()`（1045 行的 catch 重抛）里断在
-    // `Member "evalStorage" does not exist`。
-    // 所以对照的判据改成**可测的「推进深度差异」**：
-    //   有 left/top → 链推进到 A 的停点（BGM.tjs:585 的 paused）；
-    //   无 left/top → 到不了那里，断在更浅的位置。
-    // 这仍然非恒真：它把「有/无 left/top」这个唯一变量与「链推进到哪」绑定起来。
+    // ⚠️ 判据口径（run 44314647942 实测校准）：不在对照里写死“A 的停点行号”——
+    // A 的停点每个里程碑都在前移，写死就会“随机过期”。改用**稳定的深度判据**：
+    //   有 left/top（A）→ 链能推进到深层官方脚本（SE.tjs / BGM.tjs 一类）；
+    //   无 left/top → 链在 MainWindow.tjs 内部就死（void 分支跳过）。
+    // 这与“有/无该成员”这个唯一变量绑定，且不随里程碑漂移。
     if (Has(j, "\"ok\":true"))
         return Fail("NOWINLEFT control unexpectedly completed the startup chain", j);
-    const bool reachedAStop = (fatal + " || " + inner).find("\"paused\"") != std::string::npos &&
-                              block.find("BGM.tjs") != std::string::npos;
-    if (reachedAStop)
-        return Fail("NOWINLEFT control still reached the A-scenario stop — "
+    if (block.find("MainWindow.tjs") == std::string::npos)
+        return Fail("NOWINLEFT control still reached the deep scripts — "
                     "Window.left/top would not be the variable under test", j);
 
-    std::printf("[m2h] NOWINLEFT verdict: without Window.left/top the chain stops "
-                "shallower: fatal=\"%s\" @ %s:%lld (A-scenario stop was BGM.tjs:585)\n",
+    std::printf("[m2h] NOWINLEFT verdict: without Window.left/top the chain dies inside "
+                "MainWindow.tjs: fatal=\"%s\" @ %s:%lld (A with left/top reaches deep scripts)\n",
                 fatal.c_str(), block.c_str(), line);
     GalBoxTJS2Free(j);
     return 0;
@@ -1802,14 +1793,20 @@ static int RunCaseNoPaused(const char *nopause, const char *storage) {
         return Fail("NOPAUSED control lost the Sound skeleton tag", j);
 
     const std::string fatal = StrField(j, "fatal");
-    const std::string inner = StrField(j, "lastScriptError");
     const std::string block = StrField(j, "fatalBlock");
     const long long line = IntField(j, "fatalLine");
-    const bool gap = (fatal + " || " + inner).find("\"paused\"") != std::string::npos;
-    if (!gap || block.find("BGM.tjs") == std::string::npos || line != 585)
-        return Fail("NOPAUSED control did not reproduce the paused gap", j);
+    // 同 NOWINLEFT：不写死行号，判“深度差异”。有 paused → 链推到 SE.tjs:221（A 实测）；
+    // 无 paused → 在 MainWindow.tjs 内部就死。这也解释了为何**不能**期望
+    // “复现 Member paused@585”：读缺失成员返回 void，分支被静默跳过后
+    // 链死得更浅，不会在 585 报错。
+    if (Has(j, "\"ok\":true"))
+        return Fail("NOPAUSED control unexpectedly completed the startup chain", j);
+    if (block.find("MainWindow.tjs") == std::string::npos)
+        return Fail("NOPAUSED control still reached the deep scripts — "
+                    "paused would not be the variable under test", j);
 
-    std::printf("[m2h] NOPAUSED verdict: fatal=\"%s\" @ %s:%lld\n",
+    std::printf("[m2h] NOPAUSED verdict: without paused the chain dies inside "
+                "MainWindow.tjs: fatal=\"%s\" @ %s:%lld (A with paused reaches SE.tjs)\n",
                 fatal.c_str(), block.c_str(), line);
     GalBoxTJS2Free(j);
     return 0;
