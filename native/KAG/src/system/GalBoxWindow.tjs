@@ -51,6 +51,21 @@ class Window
 	var showScrollBars = false;
 	// M2E8_STYLE_END
 
+	// M2E28_BEGIN —— NOWINLEFT 负向对照按此标记整段删除
+	// 官方 WindowIntf 的**窗口左上角坐标** left / top（屏幕坐标）。
+	// M2e-27 补上 VideoOverlay 后启动链停在 MainWindow.tjs:438：
+	//   `if(this.width + this.left > System.desktopLeft + System.desktopWidth)`
+	//   `left = ((System.desktopWidth - this.width) >> 1) + System.desktopLeft;`
+	//   （439/441 两行还会回写 left/top 做居中修正）
+	//
+	// 注意归属：这是 **Window** 的成员，不是 Layer 的 —— Layer 骨架
+	// 早在 M2e-2 就有 var left/top（GalBoxLayer.tjs:34-35），别被同名骗了。
+	// 全库读点都在 KAGWindow / MainWindow 里（this.left、left = …），
+	// 初值 0 = 原生默认（窗口初始位置）。
+	var left = 0;
+	var top = 0;
+	// M2E28_END
+
 	function Window()
 	{
 		// M2e-7：官方 Window 构造时会带出一个 Menu 对象；KAGWindow 的

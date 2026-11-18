@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把二十六个场景拆成独立进程跑（二十一个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把二十七个场景拆成独立进程跑（二十二个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1609,6 +1609,33 @@ ok("class VideoOverlay" in verifier and "VideoOverlay" in verifier,
    "M2e-27：出包核验器第 20 条要求 VideoOverlay")
 ok('VideoOverlay' in _closed_block,
    "M2e-27：XP3 场景的「已关闭缺口」清单加上了 VideoOverlay")
+
+# ---- M2e-28：Window 左上角坐标 left/top（MainWindow.tjs:438）------------
+_win_shim = open("native/KAG/src/system/GalBoxWindow.tjs", encoding="utf-8").read()
+_win_blk = _win_shim.split("M2E28_BEGIN", 1)[-1].split("M2E28_END", 1)[0]
+ok("var left = 0;" in _win_blk and "var top = 0;" in _win_blk,
+   "M2e-28：Window 骨架声明 left/top（初值 0，实例成员）")
+# 归属铁律：Layer 的 left/top 早已存在（M2e-2），不能代替 Window 的。
+ok("var left = 0;" in layer_shim,
+   "M2e-28：Layer.left 仍在（M2e-2）—— 与 Window.left 同名不同类，负向对照可区分")
+_mw = raw("native/KAG/src/original/system/MainWindow.tjs")
+ok(_mw.split(b"\n")[437].strip().startswith(b"if(this.width + this.left"),
+   "M2e-28：官方 MainWindow.tjs:438 是 this.width + this.left（精确行号）")
+ok("M2e-28 gap (Window.left) not cleared" in m2h_test and
+   "MainWindow.tjs Window.left line" in m2h_test and
+   "gapLine == 438" in m2h_test,
+   "M2e-28：A 硬判据清掉 Window.left 且离开旧停点（精确行号 438）")
+ok("NOWINLEFT control did not reproduce the Window.left gap" in m2h_test,
+   "M2e-28：NOWINLEFT 负向对照必须复现 left@MainWindow.tjs:438")
+ok("NOWINLEFT fixture still declares Window.left/top" in m2h_test and
+   "NOWINLEFT fixture lost unrelated Window members" in m2h_test,
+   "M2e-28：NOWINLEFT 是段级删除（M2e-8 style 段等保留）")
+ok("M2H_NOWINLEFT" in test_sh and "M2E28_BEGIN" in test_sh,
+   "M2e-28：构建脚本用 drop_marked 生成 NOWINLEFT 夹具")
+ok("var left = 0" in verifier and "GalBoxWindow.tjs" in verifier,
+   "M2e-28：出包核验器第 21 条查 GalBoxWindow.tjs 的 left/top")
+ok('left' in _closed_block,
+   "M2e-28：XP3 场景的「已关闭缺口」清单加上了 left")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

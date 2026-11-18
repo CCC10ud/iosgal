@@ -495,8 +495,18 @@ static int RunCaseA(const char *game, const char *storage) {
     if (gapBlock.find("Movie.tjs") != std::string::npos && gapLine == 4)
         return Fail("the chain is still stuck at the Movie.tjs VideoOverlay line", j);
 
+    // M2e-28 硬判据：run 44299192628 的下一缺口是 MainWindow.tjs:438 的
+    // `this.width + this.left`（窗口居中修正，439/441 行还会回写）。
+    // 归属是 **Window** 的 left/top，不是 Layer 的（后者 M2e-2 已有）。
+    // 独立负向对照：NOWINLEFT -> 必须复现 left@MainWindow.tjs:438
+    if (fatal.find("\"left\"") != std::string::npos ||
+        inner.find("\"left\"") != std::string::npos)
+        return Fail("M2e-28 gap (Window.left) not cleared", j);
+    if (gapBlock.find("MainWindow.tjs") != std::string::npos && gapLine == 438)
+        return Fail("the chain is still stuck at the MainWindow.tjs Window.left line", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
-    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-27)\n",
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-28)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
 
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
@@ -1674,6 +1684,59 @@ static int RunCaseNoVideo(const char *novideo, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOWINLEFT：Window 骨架缺 left/top 的负向对照（M2e-28）
+// 段级删除（GalBoxWindow.tjs 文件保留）：只删 M2E28 段。
+// 必须复现 `Member "left" does not exist @ MainWindow.tjs:438`。
+// 注意：Layer 骨架的 var left/top（M2e-2）**仍在**，所以这恰恰证明了
+// “Layer 有 left”不能替代“Window 有 left”—— 归属没搞错。
+static int RunCaseNoWinLeft(const char *nowinl, const char *storage) {
+    if (!Exists(std::string(nowinl) + "/system/Config.tjs"))
+        return Fail("NOWINLEFT fixture missing Config.tjs", NULL);
+    const std::string win = std::string(nowinl) + "/system/GalBoxWindow.tjs";
+    if (!Exists(win))
+        return Fail("NOWINLEFT fixture must keep GalBoxWindow.tjs", NULL);
+    {
+        std::ifstream f(win.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E28_BEGIN") != std::string::npos)
+            return Fail("NOWINLEFT fixture must have Window.left/top removed", NULL);
+        if (body.find("var left = 0;") != std::string::npos ||
+            body.find("var top = 0;") != std::string::npos)
+            return Fail("NOWINLEFT fixture still declares Window.left/top", NULL);
+        // M2e-8 的 style 段等必须还在（否则测的是别的缺口）。
+        for (const char *keep : {"M2E8_STYLE_BEGIN", "var borderStyle",
+                                 "var width = 640", "var height = 480",
+                                 "class Window"}) {
+            if (body.find(keep) == std::string::npos) {
+                std::printf("[m2h] NOWINLEFT fixture lost '%s'\n", keep);
+                return Fail("NOWINLEFT fixture lost unrelated Window members", NULL);
+            }
+        }
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(nowinl, storage, arc);
+    if (!j) return Fail("cannot run the NOWINLEFT control", NULL);
+    DumpChain("NOWINLEFT", j);
+
+    if (StrField(j, "shim").find("M2E3_WINDOW_SKELETON") == std::string::npos)
+        return Fail("NOWINLEFT control lost the Window skeleton tag", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string inner = StrField(j, "lastScriptError");
+    const std::string block = StrField(j, "fatalBlock");
+    const long long line = IntField(j, "fatalLine");
+    const bool gap = (fatal + " || " + inner).find("\"left\"") != std::string::npos;
+    if (!gap || block.find("MainWindow.tjs") == std::string::npos || line != 438)
+        return Fail("NOWINLEFT control did not reproduce the Window.left gap", j);
+
+    std::printf("[m2h] NOWINLEFT verdict: fatal=\"%s\" @ %s:%lld\n",
+                fatal.c_str(), block.c_str(), line);
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // 打开任意容器（目录 / .xp3）跑一次官方链，返回 JSON。
 // dirMode / entryCount 必须在 close() 之前取（close 会清掉它们）。
 static char *RunArchive(const char *path, const char *storage,
@@ -1799,7 +1862,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                                "\"imageModified\"", "\"colorRect\"",
                                "\"showParentHint\"", "\"cursorX\"",
                                "\"MIDISoundBuffer\"", "\"WaveSoundBuffer\"",
-                               "\"VideoOverlay\""}) {
+                               "\"VideoOverlay\"", "\"left\""}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -1811,7 +1874,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                 "(%lld scripts, debugLevel/hitType/hitThreshold/"
                 "setImageSize/setSizeToImageSize/face/fillRect/cursor/name/"
                 "focusable/setSize/imageModified/colorRect/showParentHint/"
-                "cursorX/MIDISoundBuffer/WaveSoundBuffer/VideoOverlay "
+                "cursorX/MIDISoundBuffer/WaveSoundBuffer/VideoOverlay/left "
                 "all cleared in the device container)\n", scripts);
     GalBoxTJS2Free(j);
     return 0;
@@ -1848,6 +1911,7 @@ int main(int argc, char **argv) {
     const char *nomidi   = (argc > 27) ? argv[27] : "";
     const char *nowave   = (argc > 28) ? argv[28] : "";
     const char *novideo  = (argc > 29) ? argv[29] : "";
+    const char *nowinl   = (argc > 30) ? argv[30] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -1979,6 +2043,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOWINLEFT") == 0) {
+        if (RunCaseNoWinLeft(nowinl, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -1995,6 +2064,6 @@ int main(int argc, char **argv) {
                 "NOHITTHRESHOLD / NOIMAGESIZE / NOSIZETOIMAGESIZE / NODRAWFACE / "
                 "NOFILLRECT / NOCURSOR / NONAME / NOFOCUSABLE / NOSIZE / "
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
-                "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / XP3 / LEAK / LEAK2)\n", which);
+                "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / NOWINLEFT / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

@@ -43,6 +43,8 @@ startup.tjs 只有一行注释 —— 自测全绿而设备上根本没跑过官
      `class SESoundBuffer extends WaveSoundBuffer` / SE.tjs:19 `super.WaveSoundBuffer(owner)`。
  20. 内置包带 `system/GalBoxMovie.tjs` 含 `class VideoOverlay`（M2e-27）
      —— Movie.tjs:4 `class Movie extends VideoOverlay`。
+ 21. Window 骨架里带 `var left = 0; var top = 0`（M2e-28）—— 官方
+     MainWindow.tjs:438 `this.width + this.left`（窗口居中修正）。
 """
 import os
 import sys
@@ -244,6 +246,14 @@ def main(argv):
         return fail("%s 里没有 class VideoOverlay："
                     "设备端会在 Movie.tjs:4 断链" % mov_name)
 
+    # 第 21 条（M2e-28）：窗口左上角坐标。MainWindow.tjs:438 的
+    # `this.width + this.left`（居中修正）要读 Window.left；439 行还会回写。
+    # 注意别与 Layer.left（M2e-2 已有）混淆：这里查的是 GalBoxWindow.tjs。
+    win = by_name["system/GalBoxWindow.tjs"]["data"]
+    if b"var left = 0;" not in win or b"var top = 0;" not in win:
+        return fail("system/GalBoxWindow.tjs 里没有 var left/top = 0："
+                    "设备端会在 MainWindow.tjs:438 断链")
+
     print("[m2e12b] 内置包核验通过: %d 个文件 / 解压后 %d B / "
           "Initialize.tjs %d B / startup.tjs 真调 Initialize / %d 个骨架全在 / "
           "KAGParser 带 debugLevel(M2e-13) / Layer 带 hitType+hitThreshold(M2e-14) / "
@@ -254,7 +264,7 @@ def main(argv):
           "Layer 带 imageModified(M2e-21) / Layer 带 colorRect(M2e-22) / "
           "Layer 带 showParentHint(M2e-23) / Layer 带 cursorX+cursorY(M2e-24) / "
           "Sound 骨架 MIDISoundBuffer(M2e-25) / WaveSoundBuffer(M2e-26) / "
-          "Movie 骨架 VideoOverlay(M2e-27)"
+          "Movie 骨架 VideoOverlay(M2e-27) / Window 带 left+top(M2e-28)"
           % (parsed["count"], total, init_bytes, len(SKELETONS)))
     return 0
 
