@@ -399,8 +399,17 @@ static int RunCaseA(const char *game, const char *storage) {
     if (gapBlock.find("GraphicLayer.tjs") != std::string::npos && gapLine == 58)
         return Fail("the chain is still stuck at the GraphicLayer.tjs setDefaultCursor line", j);
 
+    // M2e-18 硬判据：run 44203542010 的下一缺口是 HistoryLayer.tjs:110 的
+    // `name = "メッセージ履歴レイヤ";`（Layer 的图层名属性）。独立负向对照：
+    //   NONAME -> 必须复现 name@HistoryLayer.tjs:110
+    if (fatal.find("\"name\"") != std::string::npos ||
+        inner.find("\"name\"") != std::string::npos)
+        return Fail("M2e-18 gap (name) not cleared", j);
+    if (gapBlock.find("HistoryLayer.tjs") != std::string::npos && gapLine == 110)
+        return Fail("the chain is still stuck at the HistoryLayer.tjs layer-name line", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
-    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-17)\n",
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-18)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
 
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
@@ -1096,6 +1105,54 @@ static int RunCaseNoCursor(const char *nocursor, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NONAME：Layer 缺图层名成员 name 的负向对照（M2e-18）----------
+// 精准对照：Layer 骨架保留（几何/命中面/图像面/绘制面/光标面都在），只删
+// M2E18 段。必须复现 `Member "name" does not exist @ HistoryLayer.tjs:110`。
+static int RunCaseNoName(const char *noname, const char *storage) {
+    if (!Exists(std::string(noname) + "/system/Config.tjs"))
+        return Fail("NONAME fixture missing Config.tjs", NULL);
+    const std::string skel = std::string(noname) + "/system/GalBoxLayer.tjs";
+    if (!Exists(skel))
+        return Fail("NONAME fixture must keep the Layer skeleton", NULL);
+    {
+        std::ifstream f(skel.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E18_BEGIN") != std::string::npos)
+            return Fail("NONAME fixture must have the name member removed", NULL);
+        if (body.find("var name") != std::string::npos)
+            return Fail("NONAME fixture still declares name", NULL);
+        for (const char *keep : {"var cursor", "var face", "function fillRect",
+                                 "var imageWidth", "var hitType", "class Layer"}) {
+            if (body.find(keep) == std::string::npos) {
+                std::printf("[m2h] NONAME fixture lost '%s'\n", keep);
+                return Fail("NONAME fixture lost unrelated Layer members", NULL);
+            }
+        }
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(noname, storage, arc);
+    if (!j) return Fail("cannot run the NONAME control", NULL);
+    DumpChain("NONAME", j);
+
+    if (StrField(j, "shim").find("M2E2_LAYER_SKELETON") == std::string::npos)
+        return Fail("NONAME control lost the Layer skeleton tag", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string inner = StrField(j, "lastScriptError");
+    const std::string block = StrField(j, "fatalBlock");
+    const long long line = IntField(j, "fatalLine");
+    const bool gap = (fatal + " || " + inner).find("\"name\"") != std::string::npos;
+    if (!gap || block.find("HistoryLayer.tjs") == std::string::npos || line != 110)
+        return Fail("NONAME control did not reproduce the name gap", j);
+
+    std::printf("[m2h] NONAME verdict: fatal=\"%s\" @ %s:%lld\n",
+                fatal.c_str(), block.c_str(), line);
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // 打开任意容器（目录 / .xp3）跑一次官方链，返回 JSON。
 // dirMode / entryCount 必须在 close() 之前取（close 会清掉它们）。
 static char *RunArchive(const char *path, const char *storage,
@@ -1202,16 +1259,17 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
     }
 
     // 停点必须与 A 场景同口径（目录侧的等价结论由 A 在独立进程里断言）：
-    // M2e-17 之后设备容器里也不许再出现 debugLevel / hitType / hitThreshold /
-    // setImageSize / setSizeToImageSize / face / fillRect / cursor。
-    // 这几条判据非恒真 —— 八个对应负向对照（NODEBUGLEVEL / NOHITTYPE /
+    // M2e-18 之后设备容器里也不许再出现 debugLevel / hitType / hitThreshold /
+    // setImageSize / setSizeToImageSize / face / fillRect / cursor / name。
+    // 这几条判据非恒真 —— 九个对应负向对照（NODEBUGLEVEL / NOHITTYPE /
     // NOHITTHRESHOLD / NOIMAGESIZE / NOSIZETOIMAGESIZE / NODRAWFACE /
-    // NOFILLRECT / NOCURSOR）在独立进程里分别证明了「删掉成员 → 缺口复现」。
+    // NOFILLRECT / NOCURSOR / NONAME）在独立进程里分别证明了「删掉成员 → 缺口复现」。
     const std::string fatal = StrField(j, "fatal");
     const std::string inner = StrField(j, "lastScriptError");
     for (const char *closed : {"debugLevel", "\"hitType\"", "\"hitThreshold\"",
                                "\"setImageSize\"", "\"setSizeToImageSize\"",
-                               "\"face\"", "\"fillRect\"", "\"cursor\""}) {
+                               "\"face\"", "\"fillRect\"", "\"cursor\"",
+                               "\"name\""}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -1221,8 +1279,8 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
 
     std::printf("[m2h] XP3 verdict: real .xp3 ran the same chain "
                 "(%lld scripts, debugLevel/hitType/hitThreshold/"
-                "setImageSize/setSizeToImageSize/face/fillRect/cursor all cleared "
-                "in the device container)\n", scripts);
+                "setImageSize/setSizeToImageSize/face/fillRect/cursor/name "
+                "all cleared in the device container)\n", scripts);
     GalBoxTJS2Free(j);
     return 0;
 }
@@ -1248,6 +1306,7 @@ int main(int argc, char **argv) {
     const char *noface  = (argc > 17) ? argv[17] : "";
     const char *nofr    = (argc > 18) ? argv[18] : "";
     const char *nocursor = (argc > 19) ? argv[19] : "";
+    const char *noname   = (argc > 20) ? argv[20] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -1329,6 +1388,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NONAME") == 0) {
+        if (RunCaseNoName(noname, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -1343,6 +1407,6 @@ int main(int argc, char **argv) {
     std::printf("[m2h] unknown case '%s' (A / B / NOMENU / NOSTYLE / NOTIMER / NOFONT / "
                 "NOKAGPARSER / NOASYNCTRIGGER / NODEBUGLEVEL / NOHITTYPE / "
                 "NOHITTHRESHOLD / NOIMAGESIZE / NOSIZETOIMAGESIZE / NODRAWFACE / "
-                "NOFILLRECT / NOCURSOR / XP3 / LEAK / LEAK2)\n", which);
+                "NOFILLRECT / NOCURSOR / NONAME / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

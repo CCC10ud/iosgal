@@ -15,6 +15,7 @@
 #                      + Layer 骨架补图像面 setImageSize/setSizeToImageSize（Milestone 2e-15）
 #                      + Layer 骨架补绘制面 face/fillRect（Milestone 2e-16）
 #                      + Layer 骨架补光标面 cursor（Milestone 2e-17）
+#                      + Layer 骨架补图层名 name（Milestone 2e-18）
 #
 # 由 CI 在 xcodebuild 之前调用。设计原则：
 #   - 源码尚未 vendoring 时直接跳过（exit 0），绝不破坏现有出包链路。
@@ -825,6 +826,23 @@ PYEOF
     echo "[tjs2] M2e-17 NOCURSOR 夹具里 cursor 还在"
     exit 1
   fi
+
+  # M2e-18 负向对照：只删图层名成员 name。
+  # 必须复现 `Member "name" does not exist` @ HistoryLayer.tjs:110
+  M2H_NONAME="$OUT/m2h_noname"
+  rm -rf "$M2H_NONAME"
+  cp -R "$M2H_GAME" "$M2H_NONAME"
+  drop_marked "$M2H_NONAME/system/GalBoxLayer.tjs" M2E18_BEGIN M2E18_END
+  if grep -q "M2E18_BEGIN\|var name" "$M2H_NONAME/system/GalBoxLayer.tjs"; then
+    echo "[tjs2] M2e-18 NONAME 夹具里 name 还在"
+    exit 1
+  fi
+  for keep in "var cursor" "var face" "function fillRect" "var imageWidth" "var hitType"; do
+    if ! grep -q "$keep" "$M2H_NONAME/system/GalBoxLayer.tjs"; then
+      echo "[tjs2] M2e-18 NONAME 夹具丢了无关成员：$keep"
+      exit 1
+    fi
+  done
   # 别把同段的绘制面一起删了 —— 否则测的是"整段没补"，不是"只缺 cursor"。
   for keep in "var face" "function fillRect" "var imageWidth" "var hitType"; do
     if ! grep -q "$keep" "$M2H_NOCURSOR/system/GalBoxLayer.tjs"; then
@@ -915,12 +933,12 @@ PYEOF
     # 每个场景**独立进程**跑：run #40 出现过「同进程内第二次执行会破坏官方
     # 启动链」, 若三个场景挤在一个进程里, 后面的场景会被前面的污染,
     # 负向对照就会假红。独立进程 => 每个场景都是干净首跑。
-    for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR XP3 LEAK LEAK2; do
-      OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER" "$GALBOX_KAG_XP3" "$M2H_NODEBUGLEVEL" "$M2H_NOHITTYPE" "$M2H_NOHITTHRESHOLD" "$M2H_NOIMAGESIZE" "$M2H_NOSIZETOIMAGESIZE" "$M2H_NODRAWFACE" "$M2H_NOFILLRECT" "$M2H_NOCURSOR" 2>&1)
-      diag_crash "M2h-$M2H_CASE" "$?" "$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER" "$GALBOX_KAG_XP3" "$M2H_NODEBUGLEVEL" "$M2H_NOHITTYPE" "$M2H_NOHITTHRESHOLD" "$M2H_NOIMAGESIZE" "$M2H_NOSIZETOIMAGESIZE" "$M2H_NODRAWFACE" "$M2H_NOFILLRECT" "$M2H_NOCURSOR"
+    for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME XP3 LEAK LEAK2; do
+      OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER" "$GALBOX_KAG_XP3" "$M2H_NODEBUGLEVEL" "$M2H_NOHITTYPE" "$M2H_NOHITTHRESHOLD" "$M2H_NOIMAGESIZE" "$M2H_NOSIZETOIMAGESIZE" "$M2H_NODRAWFACE" "$M2H_NOFILLRECT" "$M2H_NOCURSOR" "$M2H_NONAME" 2>&1)
+      diag_crash "M2h-$M2H_CASE" "$?" "$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER" "$GALBOX_KAG_XP3" "$M2H_NODEBUGLEVEL" "$M2H_NOHITTYPE" "$M2H_NOHITTHRESHOLD" "$M2H_NOIMAGESIZE" "$M2H_NOSIZETOIMAGESIZE" "$M2H_NODRAWFACE" "$M2H_NOFILLRECT" "$M2H_NOCURSOR" "$M2H_NONAME"
       echo "$OUTPUT_M2H" | sed 's/^/[tjs2]   /'
       case "$M2H_CASE" in
-        A|B|NOMENU|NOSTYLE|NOTIMER|NOFONT|NOKAGPARSER|NOASYNCTRIGGER|NODEBUGLEVEL|NOHITTYPE|NOHITTHRESHOLD|NOIMAGESIZE|NOSIZETOIMAGESIZE|NODRAWFACE|NOFILLRECT|NOCURSOR|XP3)
+        A|B|NOMENU|NOSTYLE|NOTIMER|NOFONT|NOKAGPARSER|NOASYNCTRIGGER|NODEBUGLEVEL|NOHITTYPE|NOHITTHRESHOLD|NOIMAGESIZE|NOSIZETOIMAGESIZE|NODRAWFACE|NOFILLRECT|NOCURSOR|NONAME|XP3)
           if ! echo "$OUTPUT_M2H" | grep -q "M2H_RESULT=OK"; then
             echo "[tjs2] 场景 $M2H_CASE 未通过"; exit 1
           fi
@@ -936,6 +954,7 @@ PYEOF
     echo "[tjs2] M2e-15 自测通过（Layer 图像面 setImageSize/setSizeToImageSize + 两个独立负向对照）"
     echo "[tjs2] M2e-16 自测通过（Layer 绘制面 face/fillRect + 两个独立负向对照）"
     echo "[tjs2] M2e-17 自测通过（Layer 光标面 cursor + NOCURSOR 独立负向对照）"
+    echo "[tjs2] M2e-18 自测通过（Layer 图层名 name + NONAME 独立负向对照）"
     echo "[tjs2] M2e-12b 自测通过（内置 xp3 与目录夹具跑出同一条 trace、同一停点）"
   else
     echo "[tjs2] M2e-5 自测链接失败:"; cat "$OUT/link_m2h.log"; exit 1

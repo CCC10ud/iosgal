@@ -139,6 +139,25 @@ class Layer
 	var cursor = crDefault;
 	// M2E17_END
 
+	// M2E18_BEGIN —— NONAME 负向对照按此标记整段删除
+	// 官方 LayerIntf.cpp 的**图层名**属性 name（字符串）。
+	// HistoryLayer.tjs:110 构造时 `name = "メッセージ履歴レイヤ";`，
+	// M2e-17 补上 cursor 后启动链正好停在这一句。
+	//
+	// 必须是**实例成员**：官方有两处 comp 图层互换——
+	//   GraphicLayer.tjs:134-136 / MessageLayer.tjs:2913-2915
+	//   `var tmp = src.name; src.name = name; name = tmp;`
+	// 写成全局会让两张图层共用一个名字，互换等于没换。
+	// 另有多处跨对象赋值：`lineBreak.name = "行クリック待ち記号"`（MainWindow:392）、
+	// `tempLayer.name = "一時ワークレイヤ"`（MainWindow:727）。
+	//
+	// 必须是**字符串真值**而不是 void：MainWindow.tjs:3219
+	// `'anim:' + layer.name + ':' + seg` 拿它做字符串拼接并当 conductor 键，
+	// void 会拼出 `(void)` 或污染键名，且不一定抛异常（静默错）。
+	// 取空串 "" 是 LayerIntf 的 TJSString 默认态：无名字时是空串，不是无值。
+	var name = "";
+	// M2E18_END
+
 	var imageLeft = 0;
 	var imageTop = 0;
 	var isPrimary = false;

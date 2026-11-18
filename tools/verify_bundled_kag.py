@@ -23,6 +23,8 @@ startup.tjs 只有一行注释 —— 自测全绿而设备上根本没跑过官
      官方 GraphicLayer.tjs:422-423 的 clearImage() 先设绘制面再填色。
  10. Layer 骨架里带 `var cursor = crDefault`（M2e-17）—— 官方
      GraphicLayer.tjs:58 的 setDefaultCursor() 给该成员赋值。
+ 11. Layer 骨架里带 `var name = ""`（M2e-18）—— 官方 HistoryLayer.tjs:110
+     给图层名赋值，MainWindow.tjs:3219 拿它做字符串拼接与 conductor 键。
 """
 import os
 import sys
@@ -142,11 +144,21 @@ def main(argv):
         return fail("system/GalBoxLayer.tjs 里没有 var cursor = crDefault："
                     "设备端会在 GraphicLayer.tjs:58 断链")
 
+    # 第 11 条（M2e-18）：图层名 name。HistoryLayer.tjs:110 构造时赋值；
+    # MainWindow.tjs:3219 `'anim:' + layer.name + ':' + seg` 拿它做字符串拼接
+    # 与 conductor 键 ⇒ 必须是字符串真值，留 void 会拼出 (void) 或污染键名。
+    # 官方两处 comp 互换（GraphicLayer.tjs:134 / MessageLayer.tjs:2913）
+    # 也要求它是实例成员，不能做成全局。
+    if b'var name = ""' not in layer:
+        return fail("system/GalBoxLayer.tjs 里没有 var name = \"\"："
+                    "设备端会在 HistoryLayer.tjs:110 断链")
+
     print("[m2e12b] 内置包核验通过: %d 个文件 / 解压后 %d B / "
           "Initialize.tjs %d B / startup.tjs 真调 Initialize / 九个骨架全在 / "
           "KAGParser 带 debugLevel(M2e-13) / Layer 带 hitType+hitThreshold(M2e-14) / "
           "Layer 带 setImageSize+setSizeToImageSize(M2e-15) / "
-          "Layer 带 face+fillRect(M2e-16) / Layer 带 cursor(M2e-17)"
+          "Layer 带 face+fillRect(M2e-16) / Layer 带 cursor(M2e-17) / "
+          "Layer 带 name(M2e-18)"
           % (parsed["count"], total, init_bytes))
     return 0
 

@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把十九个场景拆成独立进程跑（十四个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把二十个场景拆成独立进程跑（十五个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1292,6 +1292,37 @@ ok("var cursor = crDefault" in verifier,
    "M2e-17：出包核验器要求内置包的 Layer 带 cursor")
 ok('"\\"face\\"", "\\"fillRect\\"", "\\"cursor\\""' in m2h_test,
    "M2e-17：XP3 场景的「已关闭缺口」清单加上了 cursor")
+
+# ---- M2e-18：Layer 图层名 name（HistoryLayer.tjs:110）--------------------
+_nm_blk = layer_shim.split("M2E18_BEGIN", 1)[-1].split("M2E18_END", 1)[0]
+ok('var name = "";' in _nm_blk,
+   "M2e-18：Layer 骨架声明 name，给字符串真值空串（不是 void）")
+# name 必须是实例成员：官方两处 comp 图层互换拿它当可交换的实例属性。
+_gl_raw18 = raw("native/KAG/src/original/system/GraphicLayer.tjs")
+_ml_raw18 = raw("native/KAG/src/original/system/MessageLayer.tjs")
+ok(b"var tmp = src.name;" in _gl_raw18 and b"src.name = name;" in _gl_raw18 and
+   b"var tmp = src.name;" in _ml_raw18,
+   "M2e-18：官方两处 comp 互换证明 name 是实例成员，不能做成全局")
+# 必须给真值：MainWindow.tjs:3219 拿 layer.name 做字符串拼接 + conductor 键。
+_mw_raw18 = raw("native/KAG/src/original/system/MainWindow.tjs")
+ok(b"'anim:' + layer.name + ':' + seg" in _mw_raw18,
+   "M2e-18：layer.name 被拼进 conductor 键 ⇒ 留 void 会静默污染键名")
+ok("M2e-18 gap (name) not cleared" in m2h_test and
+   "layer-name line" in m2h_test and
+   "gapLine == 110" in m2h_test,
+   "M2e-18：A 硬判据清掉 name 且离开旧停点（精确行号 110）")
+ok("NONAME control did not reproduce the name gap" in m2h_test,
+   "M2e-18：NONAME 负向对照必须复现 name@HistoryLayer.tjs:110")
+ok("M2H_NONAME" in test_sh and "M2E18_BEGIN" in test_sh,
+   "M2e-18：构建脚本用 drop_marked 生成 NONAME 夹具")
+ok("NONAME fixture must keep the Layer skeleton" in m2h_test and
+   "NONAME fixture still declares name" in m2h_test,
+   "M2e-18：负向对照校验夹具只删 name（骨架与其余成员都得在）")
+ok('var name = ""' in verifier,
+   "M2e-18：出包核验器要求内置包的 Layer 带 name")
+ok('"\\"name\\""}) {' in m2h_test and
+   'for (const char *closed' in m2h_test,
+   "M2e-18：XP3 场景的「已关闭缺口」清单加上了 name")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
