@@ -1235,7 +1235,10 @@ static int RunCaseNoSize(const char *nosize, const char *storage) {
                          std::istreambuf_iterator<char>());
         if (body.find("M2E20_BEGIN") != std::string::npos)
             return Fail("NOSIZE fixture must have the setSize method removed", NULL);
-        if (body.find("function setSize") != std::string::npos)
+        // ⚠️ 必须带参数列表精确匹配 function setSize(w, h)：
+        // 只搜 "function setSize" 会命中同文件的 function setSizeToImageSize
+        // 子串，导致删对了的夹具被误判成"还留着"（run 44210836253 踩过）。
+        if (body.find("function setSize(w, h)") != std::string::npos)
             return Fail("NOSIZE fixture still declares setSize", NULL);
         // setSizeToImageSize 是另一个成员，别一起删了。
         for (const char *keep : {"function setSizeToImageSize", "function setPos",

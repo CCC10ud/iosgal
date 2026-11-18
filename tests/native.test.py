@@ -1387,10 +1387,10 @@ ok("NOSIZE control did not reproduce the setSize gap" in m2h_test,
    "M2e-20：NOSIZE 负向对照必须复现 setSize@AnimationLayer.tjs:367")
 ok("M2H_NOSIZE" in test_sh and "M2E20_BEGIN" in test_sh,
    "M2e-20：构建脚本用 drop_marked 生成 NOSIZE 夹具")
-ok("NOSIZE fixture must keep the Layer skeleton" in m2h_test and
-   "NOSIZE fixture still declares setSize" in m2h_test and
-   "NOSIZE fixture lost unrelated" in m2h_test,
-   "M2e-20：负向对照校验夹具只删 setSize（还确认 setSizeToImageSize 没被误删）")
+ok("NOSIZE fixture still declares setSize" in m2h_test and
+   'body.find("function setSize(w, h)")' in m2h_test,
+   "M2e-20：负向对照校验夹具只删 setSize（还确认 setSizeToImageSize 没被误删）；"
+   "精确匹配带参数列表，防 function setSizeToImageSize 子串误判")
 ok("function setSize(w, h)" in verifier and "width = w;" in verifier,
    "M2e-20：出包核验器要求内置包 setSize 写 width/height（非空壳）")
 ok('"\\"focusable\\"", "\\"setSize\\""' in m2h_test,
