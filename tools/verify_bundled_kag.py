@@ -35,6 +35,8 @@ startup.tjs 只有一行注释 —— 自测全绿而设备上根本没跑过官
      MessageLayer.tjs:587 的 clear() 首句 `colorRect(0,0,imageWidth,imageHeight,0)`。
  16. Layer 骨架里带 `var showParentHint = true`（M2e-23）—— 官方
      MessageLayer.tjs:1987 link 隐藏路径写 false（全库零读点，取原生默认 true）。
+ 17. Layer 骨架里带 `var cursorX = 0; var cursorY = 0`（M2e-24）—— 官方
+     MessageLayer.tjs:607 clear() 记录鼠标位置，MainWindow.tjs:4006 跨对象读。
 """
 import os
 import sys
@@ -201,6 +203,13 @@ def main(argv):
         return fail("system/GalBoxLayer.tjs 里没有 var showParentHint = true："
                     "设备端会在 MessageLayer.tjs:1987 断链")
 
+    # 第 17 条（M2e-24）：层内鼠标坐标 cursorX/cursorY（成对成员）。
+    # MessageLayer.tjs:607 读 + MainWindow.tjs:4006 跨对象读 ⇒ 必须是
+    # 实例数值成员。核验器只查 cursorX（cursorY 与它同段声明，删一个必删另一个）。
+    if b"var cursorX = 0;" not in layer or b"var cursorY = 0;" not in layer:
+        return fail("system/GalBoxLayer.tjs 里没有 var cursorX/cursorY = 0："
+                    "设备端会在 MessageLayer.tjs:607 断链")
+
     print("[m2e12b] 内置包核验通过: %d 个文件 / 解压后 %d B / "
           "Initialize.tjs %d B / startup.tjs 真调 Initialize / 九个骨架全在 / "
           "KAGParser 带 debugLevel(M2e-13) / Layer 带 hitType+hitThreshold(M2e-14) / "
@@ -209,7 +218,7 @@ def main(argv):
           "Layer 带 name(M2e-18) / Layer 带 focusable(M2e-19) / "
           "Layer 带 setSize(M2e-20) / "
           "Layer 带 imageModified(M2e-21) / Layer 带 colorRect(M2e-22) / "
-          "Layer 带 showParentHint(M2e-23)"
+          "Layer 带 showParentHint(M2e-23) / Layer 带 cursorX+cursorY(M2e-24)"
           % (parsed["count"], total, init_bytes))
     return 0
 

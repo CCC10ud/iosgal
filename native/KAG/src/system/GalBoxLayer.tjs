@@ -237,6 +237,23 @@ class Layer
 	var showParentHint = true;
 	// M2E23_END
 
+	// M2E24_BEGIN —— NOCURSORX 负向对照按此标记整段删除（cursorX/cursorY 成对）
+	// 官方 LayerIntf.cpp 的**层内鼠标坐标**成员 cursorX / cursorY。
+	// M2e-23 补上 showParentHint 后启动链停在 MessageLayer.tjs:607 的
+	// `lastMouseX = cursorX;`（clear() 里记录当前鼠标位置，608 紧跟 cursorY）。
+	//
+	// 全库 10 处出现（cursorX/cursorY 永远成对），有写也有**跨对象读**：
+	//   写  MessageLayer.tjs:2297/2298 `cursorX = x; cursorY = y;`（鼠标事件）
+	//   读  MessageLayer.tjs:607/608、1671/1672（本层记录 lastMouseX/Y）
+	//       MessageLayer.tjs:2192/2193 `parent.cursorX`（读父层）
+	//       MainWindow.tjs:4006/4007 `pl.cursorX`（读任意层）
+	// ⇒ 必须是实例数值成员：做成全局会让"每层的鼠标坐标"串成一份；
+	//   留 void 会被赋值合法化后读到 void，lastMouseX 变 void 静默扩散。
+	// 初值 0 = 原生默认（鼠标尚未进入层内时的坐标原点）。
+	var cursorX = 0;
+	var cursorY = 0;
+	// M2E24_END
+
 	var imageLeft = 0;
 	var imageTop = 0;
 	var isPrimary = false;

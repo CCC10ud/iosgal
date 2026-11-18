@@ -454,8 +454,19 @@ static int RunCaseA(const char *game, const char *storage) {
     if (gapBlock.find("MessageLayer.tjs") != std::string::npos && gapLine == 1987)
         return Fail("the chain is still stuck at the MessageLayer.tjs showParentHint line", j);
 
+    // M2e-24 硬判据：run 44214822084 的下一缺口是 MessageLayer.tjs:607 的
+    // `lastMouseX = cursorX;`（clear() 记录鼠标位置，cursorY 紧随其后）。
+    // 独立负向对照：NOCURSORX -> 必须复现 cursorX@MessageLayer.tjs:607
+    // 注意判据用带引号的完整成员名：裸 "cursor" 是 M2e-17 已关闭的缺口，
+    // 而 "cursorX" 包含 "cursor" 子串，裸匹配会把新缺口误判成旧缺口。
+    if (fatal.find("\"cursorX\"") != std::string::npos ||
+        inner.find("\"cursorX\"") != std::string::npos)
+        return Fail("M2e-24 gap (cursorX) not cleared", j);
+    if (gapBlock.find("MessageLayer.tjs") != std::string::npos && gapLine == 607)
+        return Fail("the chain is still stuck at the MessageLayer.tjs cursorX line", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
-    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-23)\n",
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-24)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
 
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
@@ -1456,6 +1467,59 @@ static int RunCaseNoShowParentHint(const char *noph, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOCURSORX：Layer 缺层内鼠标坐标 cursorX/cursorY 的负向对照（M2e-24）
+// 精准对照：只删 M2E24 段（cursorX/cursorY 成对声明、一起删）。必须复现
+// `Member "cursorX" does not exist @ MessageLayer.tjs:607`。
+static int RunCaseNoCursorX(const char *nocx, const char *storage) {
+    if (!Exists(std::string(nocx) + "/system/Config.tjs"))
+        return Fail("NOCURSORX fixture missing Config.tjs", NULL);
+    const std::string skel = std::string(nocx) + "/system/GalBoxLayer.tjs";
+    if (!Exists(skel))
+        return Fail("NOCURSORX fixture must keep the Layer skeleton", NULL);
+    {
+        std::ifstream f(skel.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E24_BEGIN") != std::string::npos)
+            return Fail("NOCURSORX fixture must have cursorX/cursorY removed", NULL);
+        if (body.find("var cursorX") != std::string::npos ||
+            body.find("var cursorY") != std::string::npos)
+            return Fail("NOCURSORX fixture still declares cursorX/cursorY", NULL);
+        // M2e-17 的 var cursor 是不同成员；带初值匹配防与 cursorX 混淆。
+        for (const char *keep : {"var cursor = crDefault", "var showParentHint",
+                                 "function colorRect", "function fillRect",
+                                 "function setSize(w, h)", "var imageModified",
+                                 "var focusable", "var name", "var face",
+                                 "function setSizeToImageSize", "class Layer"}) {
+            if (body.find(keep) == std::string::npos) {
+                std::printf("[m2h] NOCURSORX fixture lost '%s'\n", keep);
+                return Fail("NOCURSORX fixture lost unrelated Layer members", NULL);
+            }
+        }
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(nocx, storage, arc);
+    if (!j) return Fail("cannot run the NOCURSORX control", NULL);
+    DumpChain("NOCURSORX", j);
+
+    if (StrField(j, "shim").find("M2E2_LAYER_SKELETON") == std::string::npos)
+        return Fail("NOCURSORX control lost the Layer skeleton tag", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string inner = StrField(j, "lastScriptError");
+    const std::string block = StrField(j, "fatalBlock");
+    const long long line = IntField(j, "fatalLine");
+    const bool gap = (fatal + " || " + inner).find("\"cursorX\"") != std::string::npos;
+    if (!gap || block.find("MessageLayer.tjs") == std::string::npos || line != 607)
+        return Fail("NOCURSORX control did not reproduce the cursorX gap", j);
+
+    std::printf("[m2h] NOCURSORX verdict: fatal=\"%s\" @ %s:%lld\n",
+                fatal.c_str(), block.c_str(), line);
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // 打开任意容器（目录 / .xp3）跑一次官方链，返回 JSON。
 // dirMode / entryCount 必须在 close() 之前取（close 会清掉它们）。
 static char *RunArchive(const char *path, const char *storage,
@@ -1562,14 +1626,14 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
     }
 
     // 停点必须与 A 场景同口径（目录侧的等价结论由 A 在独立进程里断言）：
-    // M2e-23 之后设备容器里也不许再出现 debugLevel / hitType / hitThreshold /
+    // M2e-24 之后设备容器里也不许再出现 debugLevel / hitType / hitThreshold /
     // setImageSize / setSizeToImageSize / face / fillRect / cursor / name /
-    // focusable / setSize / imageModified / colorRect / showParentHint。
-    // 判据非恒真 —— 十四个对应负向对照（NODEBUGLEVEL / NOHITTYPE /
-    // NOHITTHRESHOLD / NOIMAGESIZE / NOSIZETOIMAGESIZE / NODRAWFACE /
-    // NOFILLRECT / NOCURSOR / NONAME / NOFOCUSABLE / NOSIZE /
-    // NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT）在独立进程里
-    // 分别证明了「删掉成员 → 缺口复现」。
+    // focusable / setSize / imageModified / colorRect / showParentHint /
+    // cursorX+cursorY。判据非恒真 —— 十五个对应负向对照（NODEBUGLEVEL /
+    // NOHITTYPE / NOHITTHRESHOLD / NOIMAGESIZE / NOSIZETOIMAGESIZE /
+    // NODRAWFACE / NOFILLRECT / NOCURSOR / NONAME / NOFOCUSABLE / NOSIZE /
+    // NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / NOCURSORX）在
+    // 独立进程里分别证明了「删掉成员 → 缺口复现」。
     const std::string fatal = StrField(j, "fatal");
     const std::string inner = StrField(j, "lastScriptError");
     for (const char *closed : {"debugLevel", "\"hitType\"", "\"hitThreshold\"",
@@ -1577,7 +1641,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                                "\"face\"", "\"fillRect\"", "\"cursor\"",
                                "\"name\"", "\"focusable\"", "\"setSize\"",
                                "\"imageModified\"", "\"colorRect\"",
-                               "\"showParentHint\""}) {
+                               "\"showParentHint\"", "\"cursorX\""}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -1588,8 +1652,8 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
     std::printf("[m2h] XP3 verdict: real .xp3 ran the same chain "
                 "(%lld scripts, debugLevel/hitType/hitThreshold/"
                 "setImageSize/setSizeToImageSize/face/fillRect/cursor/name/"
-                "focusable/setSize/imageModified/colorRect/showParentHint "
-                "all cleared in the device container)\n", scripts);
+                "focusable/setSize/imageModified/colorRect/showParentHint/"
+                "cursorX all cleared in the device container)\n", scripts);
     GalBoxTJS2Free(j);
     return 0;
 }
@@ -1621,6 +1685,7 @@ int main(int argc, char **argv) {
     const char *noim     = (argc > 23) ? argv[23] : "";
     const char *nocr     = (argc > 24) ? argv[24] : "";
     const char *noph     = (argc > 25) ? argv[25] : "";
+    const char *nocx     = (argc > 26) ? argv[26] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -1732,6 +1797,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOCURSORX") == 0) {
+        if (RunCaseNoCursorX(nocx, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -1748,6 +1818,6 @@ int main(int argc, char **argv) {
                 "NOHITTHRESHOLD / NOIMAGESIZE / NOSIZETOIMAGESIZE / NODRAWFACE / "
                 "NOFILLRECT / NOCURSOR / NONAME / NOFOCUSABLE / NOSIZE / "
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
-                "XP3 / LEAK / LEAK2)\n", which);
+                "NOCURSORX / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

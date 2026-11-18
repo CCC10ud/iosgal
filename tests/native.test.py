@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把二十二个场景拆成独立进程跑（十七个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把二十三个场景拆成独立进程跑（十八个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1486,6 +1486,39 @@ ok("var showParentHint = true" in verifier,
    "M2e-23：出包核验器要求内置包 Layer 带 showParentHint = true")
 ok('showParentHint' in _closed_block,
    "M2e-23：XP3 场景的「已关闭缺口」清单加上了 showParentHint")
+
+# ---- M2e-24：Layer 层内鼠标坐标 cursorX/cursorY（MessageLayer.tjs:607）--------
+_cx_blk = layer_shim.split("M2E24_BEGIN", 1)[-1].split("M2E24_END", 1)[0]
+ok("var cursorX = 0;" in _cx_blk and "var cursorY = 0;" in _cx_blk,
+   "M2e-24：Layer 骨架成对声明 cursorX/cursorY = 0（实例数值成员，非全局）")
+# 全库 10 处成对出现；有跨对象读（MainWindow.tjs:4006 pl.cursorX、
+# MessageLayer.tjs:2192 parent.cursorX）⇒ 必须实例成员，全局会串值。
+_mw = raw("native/KAG/src/original/system/MainWindow.tjs")
+_ml24 = raw("native/KAG/src/original/system/MessageLayer.tjs")
+_all = _ml24 + _mw
+ok(_all.count(b"cursorX") == _all.count(b"cursorY") == 5,
+   "M2e-24：cursorX/cursorY 各 5 处、永远成对出现")
+ok(b"pl.cursorX" in _mw and b"parent.cursorX" in _ml24 and
+  b"cursorX = x;" in _ml24,
+   "M2e-24：有跨对象读（pl.cursorX / parent.cursorX）⇒ 实例成员不能是全局")
+# 新缺口钉在精确行号 607（clear() 记录鼠标位置），2297/1671 等不算停点。
+ok(_ml24.split(b"\n")[606].strip() == b"lastMouseX = cursorX;",
+   "M2e-24：官方 MessageLayer.tjs:607 是 lastMouseX = cursorX（精确行号）")
+ok("M2e-24 gap (cursorX) not cleared" in m2h_test and
+   "cursorX line" in m2h_test and
+   "gapLine == 607" in m2h_test,
+   "M2e-24：A 硬判据清掉 cursorX 且离开旧停点（精确行号 607）")
+ok("NOCURSORX control did not reproduce the cursorX gap" in m2h_test,
+   "M2e-24：NOCURSORX 负向对照必须复现 cursorX@MessageLayer.tjs:607")
+ok("M2H_NOCURSORX" in test_sh and "M2E24_BEGIN" in test_sh,
+   "M2e-24：构建脚本用 drop_marked 生成 NOCURSORX 夹具")
+ok("NOCURSORX fixture lost unrelated" in m2h_test and
+   "NOCURSORX fixture still declares cursorX/cursorY" in m2h_test,
+   "M2e-24：负向对照校验夹具只删 cursorX/cursorY（var cursor = crDefault 带初值匹配防混淆）")
+ok("var cursorX = 0" in verifier and "var cursorY = 0" in verifier,
+   "M2e-24：出包核验器要求内置包 Layer 带 cursorX/cursorY = 0")
+ok('cursorX' in _closed_block,
+   "M2e-24：XP3 场景的「已关闭缺口」清单加上了 cursorX（带引号匹配，不与 cursor 子串冲突）")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
