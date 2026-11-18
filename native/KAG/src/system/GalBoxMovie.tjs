@@ -21,6 +21,15 @@
 class VideoOverlay
 {
 	var owner;
+	// M2E31_BEGIN —— NOMODE 负向对照按此标记整段删除
+	// 官方 VideoOverlay 的**播放模式** mode（vomOverlay=0 / vomLayer=1 / vomMixer=2，
+	// 常量表 GalBoxConsts.tjs:42 已逐字提供）。A 场景实测停点：
+	// `Member "mode" does not exist @ Movie.tjs:30`（store() 里 `dic.mode = mode;`）。
+	// 全库 mode 读写都在 Movie.tjs（30/31/62/64/181/193/269/273）⇒ 普通实例成员，
+	// 无 super 访问 ⇒ var 即可（对比 M2e-30 的 pan 必须 property）。
+	// 初值取 vomLayer(1)：Movie 默认把影片画在图层上，overlay 是显式选项。
+	var mode = vomLayer;
+	// M2E31_END
 	function VideoOverlay(o = void)
 	{
 		owner = o;

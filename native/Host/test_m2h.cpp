@@ -524,8 +524,16 @@ static int RunCaseA(const char *game, const char *storage) {
     if (gapBlock.find("SE.tjs") != std::string::npos && gapLine == 221)
         return Fail("the chain is still stuck at the SE.tjs pan line", j);
 
+    // M2e-31 硬判据：run 44323307593 的下一缺口是 Movie.tjs:30
+    // `dic.mode = mode;`（VideoOverlay 的播放模式，普通实例成员）。
+    if (fatal.find("\"mode\"") != std::string::npos ||
+        inner.find("\"mode\"") != std::string::npos)
+        return Fail("M2e-31 gap (mode) not cleared", j);
+    if (gapBlock.find("Movie.tjs") != std::string::npos && gapLine == 30)
+        return Fail("the chain is still stuck at the Movie.tjs mode line", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
-    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-30)\n",
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-31)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
 
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
@@ -1874,6 +1882,51 @@ static int RunCaseNoPan(const char *nopan, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOMODE：VideoOverlay 缺播放模式 mode 的负向对照（M2e-31）
+// 段级删除（GalBoxMovie.tjs 的 M2E31 段）。判据同前三个：不写死行号，
+// 只看「没推进到后续官方脚本」（Movie.tjs 或更浅的 MainWindow.tjs）。
+static int RunCaseNoMode(const char *nomode, const char *storage) {
+    if (!Exists(std::string(nomode) + "/system/Config.tjs"))
+        return Fail("NOMODE fixture missing Config.tjs", NULL);
+    const std::string mvf = std::string(nomode) + "/system/GalBoxMovie.tjs";
+    if (!Exists(mvf))
+        return Fail("NOMODE fixture must keep GalBoxMovie.tjs", NULL);
+    {
+        std::ifstream f(mvf.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E31_BEGIN") != std::string::npos)
+            return Fail("NOMODE fixture must have mode removed", NULL);
+        if (body.find("var mode = vomLayer;") != std::string::npos)
+            return Fail("NOMODE fixture still declares mode", NULL);
+        if (body.find("class VideoOverlay") == std::string::npos)
+            return Fail("NOMODE fixture lost class VideoOverlay", NULL);
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(nomode, storage, arc);
+    if (!j) return Fail("cannot run the NOMODE control", NULL);
+    DumpChain("NOMODE", j);
+
+    if (StrField(j, "shim").find("M2E27_MOVIE_SKELETON") == std::string::npos)
+        return Fail("NOMODE control lost the Movie skeleton tag", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string block = StrField(j, "fatalBlock");
+    const long long line = IntField(j, "fatalLine");
+    if (Has(j, "\"ok\":true"))
+        return Fail("NOMODE control unexpectedly completed the startup chain", j);
+    const bool shallow = block.find("Movie.tjs") != std::string::npos ||
+                         block.find("MainWindow.tjs") != std::string::npos;
+    if (!shallow)
+        return Fail("NOMODE control advanced past Movie.tjs — mode would not be the variable under test", j);
+
+    std::printf("[m2h] NOMODE verdict: without mode the chain stops at \"%s\" @ %s:%lld "
+                "(A with mode advances past Movie.tjs)\n", fatal.c_str(), block.c_str(), line);
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // 打开任意容器（目录 / .xp3）跑一次官方链，返回 JSON。
 // dirMode / entryCount 必须在 close() 之前取（close 会清掉它们）。
 static char *RunArchive(const char *path, const char *storage,
@@ -2000,7 +2053,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                                "\"showParentHint\"", "\"cursorX\"",
                                "\"MIDISoundBuffer\"", "\"WaveSoundBuffer\"",
                                "\"VideoOverlay\"", "\"left\"", "\"paused\"",
-                               "\"pan\""}) {
+                               "\"pan\"", "\"mode\""}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -2012,7 +2065,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                 "(%lld scripts, debugLevel/hitType/hitThreshold/"
                 "setImageSize/setSizeToImageSize/face/fillRect/cursor/name/"
                 "focusable/setSize/imageModified/colorRect/showParentHint/"
-                "cursorX/MIDISoundBuffer/WaveSoundBuffer/VideoOverlay/left/paused/pan "
+                "cursorX/MIDISoundBuffer/WaveSoundBuffer/VideoOverlay/left/paused/pan/mode "
                 "all cleared in the device container)\n", scripts);
     GalBoxTJS2Free(j);
     return 0;
@@ -2052,6 +2105,7 @@ int main(int argc, char **argv) {
     const char *nowinl   = (argc > 30) ? argv[30] : "";
     const char *nopause  = (argc > 31) ? argv[31] : "";
     const char *nopan    = (argc > 32) ? argv[32] : "";
+    const char *nomode   = (argc > 33) ? argv[33] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -2198,6 +2252,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOMODE") == 0) {
+        if (RunCaseNoMode(nomode, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -2215,6 +2274,6 @@ int main(int argc, char **argv) {
                 "NOFILLRECT / NOCURSOR / NONAME / NOFOCUSABLE / NOSIZE / "
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
                 "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / NOWINLEFT / NOPAUSED / "
-                "NOPAN / XP3 / LEAK / LEAK2)\n", which);
+                "NOPAN / NOMODE / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把二十九个场景拆成独立进程跑（二十四个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把三十个场景拆成独立进程跑（二十五个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1687,6 +1687,30 @@ ok("property pan" in verifier and "var panValue" in verifier,
    "M2e-30：出包核验器第 23 条要求 Wave 的 pan property（不是普通 var）")
 ok('pan' in _closed_block,
    "M2e-30：XP3 场景的「已关闭缺口」清单加上了 pan")
+
+# ---- M2e-31：VideoOverlay 播放模式 mode（Movie.tjs:30）------------------
+_gb_movie31 = open("native/KAG/src/system/GalBoxMovie.tjs", encoding="utf-8").read()
+_m31 = _gb_movie31.split("M2E31_BEGIN",1)[-1].split("M2E31_END",1)[0]
+ok("var mode = vomLayer;" in _m31,
+   "M2e-31：VideoOverlay 声明 mode（初值 vomLayer；常量为普通成员访问 ⇒ var 足够）")
+_mv31 = raw("native/KAG/src/original/system/Movie.tjs")
+ok(_mv31.split(b"\n")[29].strip().startswith(b"dic.mode = mode"),
+   "M2e-31：官方 Movie.tjs:30 是 dic.mode = mode（精确行号）")
+ok(b"mode == vomLayer" in _mv31 and b"mode = vomOverlay;" in _mv31,
+   "M2e-31：mode 在 store/restore/play 多处读写 ⇒ 实例成员")
+ok("M2e-31 gap (mode) not cleared" in m2h_test and
+   "Movie.tjs mode line" in m2h_test and
+   "gapLine == 30" in m2h_test,
+   "M2e-31：A 硬判据清掉 mode 且离开旧停点（精确行号 30）")
+ok("NOMODE control advanced past Movie.tjs" in m2h_test and
+   "NOMODE verdict: without mode the chain stops" in m2h_test,
+   "M2e-31：NOMODE 用深度判据（不写死行号）")
+ok("M2H_NOMODE" in test_sh and "M2E31_BEGIN" in test_sh,
+   "M2e-31：构建脚本生成 NOMODE 夹具")
+ok("var mode = vomLayer;" in verifier,
+   "M2e-31：出包核验器第 24 条要求 mode")
+ok('mode' in _closed_block,
+   "M2e-31：XP3 场景的「已关闭缺口」清单加上了 mode")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
