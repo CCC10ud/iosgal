@@ -210,6 +210,20 @@ class Layer
 	var imageModified = true;
 	// M2E21_END
 
+	// M2E22_BEGIN —— NOCOLORRECT 负向对照按此标记整段删除
+	// 官方 LayerIntf.cpp 的**颜色矩形填充**方法 colorRect(l, t, w, h, color, mode)。
+	// M2e-21 补上 imageModified 后启动链停在 MessageLayer.tjs:587 的
+	// `colorRect(0, 0, imageWidth, imageHeight, 0);`（clear() 里清完图像后
+	// 再把整块区域填回底色，mode 省略 ⇒ 允许 5 参调用，TJS2 兼容层已验证）。
+	//
+	// 全库 33 处调用（ButtonLayer/CheckBoxLayer/EditLayer/MessageLayer/
+	// AnimationLayer/YesNoDialog 等），全部无声明 ⇒ 原生 Layer 成员。
+	// 与 fillRect(M2e-16) 的分工：fillRect 是覆盖式填色，colorRect 带合成
+	// 模式参数（mode 省略时保留目标 alpha，常用于叠色/画边框）。
+	// M3 真渲染前先做空壳（同 fillRect 模式），调用面先通。
+	function colorRect(l, t, w, h, color, mode) {}
+	// M2E22_END
+
 	var imageLeft = 0;
 	var imageTop = 0;
 	var isPrimary = false;

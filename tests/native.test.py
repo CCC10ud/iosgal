@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把二十个场景拆成独立进程跑（十五个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把二十一个场景拆成独立进程跑（十六个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1426,6 +1426,34 @@ ok("var imageModified = true" in verifier,
 _closed_block = m2h_test.split('for (const char *closed',1)[-1].split(') {',1)[0]
 ok('setSize' in _closed_block and 'imageModified' in _closed_block,
    "M2e-21：XP3 场景的「已关闭缺口」清单加上了 imageModified")
+
+# ---- M2e-22：Layer 颜色矩形填充 colorRect（MessageLayer.tjs:587）--------
+_cr_blk = layer_shim.split("M2E22_BEGIN", 1)[-1].split("M2E22_END", 1)[0]
+ok("function colorRect(l, t, w, h, color, mode) {}" in _cr_blk,
+   "M2e-22：Layer 骨架声明 colorRect（带完整参数列表，M3 前先空壳）")
+# 全库 33 处调用无声明 ⇒ 原生成员；587 的 mode 省略 ⇒ 允许 5 参调用。
+_ml587 = raw("native/KAG/src/original/system/MessageLayer.tjs")
+ok(b"var colorRect" not in _ml587 and
+   _ml587.count(b"colorRect") >= 4,
+   "M2e-22：colorRect 无 var 声明（原生成员），MessageLayer 多处调用")
+# 新缺口钉在精确行号 587（clear() 首句），宽判据会误判 1011/1060 等其它调用。
+ok(_ml587.split(b"\n")[586].strip().startswith(b"colorRect(0, 0, imageWidth, imageHeight, 0);"),
+   "M2e-22：官方 MessageLayer.tjs:587 是 clear() 的 colorRect（精确行号）")
+ok("M2e-22 gap (colorRect) not cleared" in m2h_test and
+   "colorRect line" in m2h_test and
+   "gapLine == 587" in m2h_test,
+   "M2e-22：A 硬判据清掉 colorRect 且离开旧停点（精确行号 587）")
+ok("NOCOLORRECT control did not reproduce the colorRect gap" in m2h_test,
+   "M2e-22：NOCOLORRECT 负向对照必须复现 colorRect@MessageLayer.tjs:587")
+ok("M2H_NOCOLORRECT" in test_sh and "M2E22_BEGIN" in test_sh,
+   "M2e-22：构建脚本用 drop_marked 生成 NOCOLORRECT 夹具")
+ok("NOCOLORRECT fixture lost unrelated" in m2h_test and
+   "NOCOLORRECT fixture still declares colorRect" in m2h_test,
+   "M2e-22：负向对照校验夹具只删 colorRect（fillRect/imageModified 等都在）")
+ok("function colorRect(l, t, w, h, color, mode)" in verifier,
+   "M2e-22：出包核验器要求内置包 Layer 带 colorRect 完整签名")
+ok('colorRect' in _closed_block,
+   "M2e-22：XP3 场景的「已关闭缺口」清单加上了 colorRect")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
