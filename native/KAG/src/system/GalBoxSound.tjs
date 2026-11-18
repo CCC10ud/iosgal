@@ -21,6 +21,14 @@
 class MIDISoundBuffer
 {
 	var owner;
+	// M2E29A_BEGIN —— NOPAUSED 负向对照按此标记整段删除
+	// 官方 SoundBufferIntf 的**暂停位** paused（bool）。真实使用点在
+	// BGM.tjs:585 `dic.paused = buf1.paused;`（store() 存状态）与
+	// BGM.tjs:309 `buf.paused = paused;`（playBuffer）—— 注意这是对
+	// **类实例**的属性访问，缺了就抛 MemberNotFound（与 M2e-28 发现的
+	// `this.xxx` 代理返回 void 不同）、链路真实停止。
+	var paused = false;
+	// M2E29A_END
 	function MIDISoundBuffer(o)
 	{
 		owner = o;
@@ -41,6 +49,11 @@ class MIDISoundBuffer
 class WaveSoundBuffer
 {
 	var owner;
+	// M2E29B_BEGIN —— NOPAUSED 负向对照按此标记整段删除
+	// 同 MIDISoundBuffer：Wave 缓冲区也有 paused（BGM.tjs:393/400
+	// `buf1.paused = true/false;` 在 pause/resume 路径上）。
+	var paused = false;
+	// M2E29B_END
 	function WaveSoundBuffer(o)
 	{
 		owner = o;

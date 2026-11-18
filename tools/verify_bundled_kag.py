@@ -45,6 +45,8 @@ startup.tjs 只有一行注释 —— 自测全绿而设备上根本没跑过官
      —— Movie.tjs:4 `class Movie extends VideoOverlay`。
  21. Window 骨架里带 `var left = 0; var top = 0`（M2e-28）—— 官方
      MainWindow.tjs:438 `this.width + this.left`（窗口居中修正）。
+ 22. Sound 骨架（MIDI + Wave 两个类）各带 `var paused = false`（M2e-29）——
+     BGM.tjs:585 `dic.paused = buf1.paused;` / 309 `buf.paused = paused;`。
 """
 import os
 import sys
@@ -254,6 +256,12 @@ def main(argv):
         return fail("system/GalBoxWindow.tjs 里没有 var left/top = 0："
                     "设备端会在 MainWindow.tjs:438 断链")
 
+    # 第 22 条（M2e-29）：音频缓冲区暂停位 paused。MIDI 与 Wave 两个类
+    # 各要一份（BGM 的 buf1 可能是任一类型）；差一份就是静默丢状态。
+    if snd.count(b"var paused = false;") < 2:
+        return fail("%s 里 var paused = false 少于 2 处："
+                    "MIDI/Wave 两个缓冲区类各要一份，否则 BGM.tjs:585 断链" % snd_name)
+
     print("[m2e12b] 内置包核验通过: %d 个文件 / 解压后 %d B / "
           "Initialize.tjs %d B / startup.tjs 真调 Initialize / %d 个骨架全在 / "
           "KAGParser 带 debugLevel(M2e-13) / Layer 带 hitType+hitThreshold(M2e-14) / "
@@ -264,7 +272,8 @@ def main(argv):
           "Layer 带 imageModified(M2e-21) / Layer 带 colorRect(M2e-22) / "
           "Layer 带 showParentHint(M2e-23) / Layer 带 cursorX+cursorY(M2e-24) / "
           "Sound 骨架 MIDISoundBuffer(M2e-25) / WaveSoundBuffer(M2e-26) / "
-          "Movie 骨架 VideoOverlay(M2e-27) / Window 带 left+top(M2e-28)"
+          "Movie 骨架 VideoOverlay(M2e-27) / Window 带 left+top(M2e-28) / "
+          "Sound 带 paused×2(M2e-29)"
           % (parsed["count"], total, init_bytes, len(SKELETONS)))
     return 0
 

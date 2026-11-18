@@ -505,8 +505,18 @@ static int RunCaseA(const char *game, const char *storage) {
     if (gapBlock.find("MainWindow.tjs") != std::string::npos && gapLine == 438)
         return Fail("the chain is still stuck at the MainWindow.tjs Window.left line", j);
 
+    // M2e-29 硬判据：run 44311767621 的下一缺口是 BGM.tjs:585 的
+    // `dic.paused = buf1.paused;`（store() 存暂停位）。注意这是对**类实例**
+    // 的属性访问 → 缺 member 会真抛错（不同于 M2e-28 的 this.xxx 代理返回 void）。
+    // 独立负向对照：NOPAUSED -> 必须复现 paused@BGM.tjs:585
+    if (fatal.find("\"paused\"") != std::string::npos ||
+        inner.find("\"paused\"") != std::string::npos)
+        return Fail("M2e-29 gap (paused) not cleared", j);
+    if (gapBlock.find("BGM.tjs") != std::string::npos && gapLine == 585)
+        return Fail("the chain is still stuck at the BGM.tjs paused line", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
-    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-28)\n",
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-29)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
 
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
@@ -1754,6 +1764,57 @@ static int RunCaseNoWinLeft(const char *nowinl, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOPAUSED：音频缓冲区缺 paused 位的负向对照（M2e-29）
+// 段级删除两处（M2E29A 在 MIDISoundBuffer、M2E29B 在 WaveSoundBuffer），文件保留。
+// 必须复现 `Member "paused" does not exist @ BGM.tjs:585`。
+// 两处都删是因为 buf1 可能是任一类型；只删一处会“看运气”通过。
+static int RunCaseNoPaused(const char *nopause, const char *storage) {
+    if (!Exists(std::string(nopause) + "/system/Config.tjs"))
+        return Fail("NOPAUSED fixture missing Config.tjs", NULL);
+    const std::string snd = std::string(nopause) + "/system/GalBoxSound.tjs";
+    if (!Exists(snd))
+        return Fail("NOPAUSED fixture must keep GalBoxSound.tjs", NULL);
+    {
+        std::ifstream f(snd.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E29A_BEGIN") != std::string::npos ||
+            body.find("M2E29B_BEGIN") != std::string::npos)
+            return Fail("NOPAUSED fixture must have both paused members removed", NULL);
+        if (body.find("var paused") != std::string::npos)
+            return Fail("NOPAUSED fixture still declares paused", NULL);
+        // 两个音频类本身必须还在（否则测的是 M2e-25/26 的缺口）。
+        for (const char *keep : {"class MIDISoundBuffer", "class WaveSoundBuffer",
+                                 "var owner"}) {
+            if (body.find(keep) == std::string::npos) {
+                std::printf("[m2h] NOPAUSED fixture lost '%s'\n", keep);
+                return Fail("NOPAUSED fixture lost unrelated Sound members", NULL);
+            }
+        }
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(nopause, storage, arc);
+    if (!j) return Fail("cannot run the NOPAUSED control", NULL);
+    DumpChain("NOPAUSED", j);
+
+    if (StrField(j, "shim").find("M2E25_SOUND_SKELETON") == std::string::npos)
+        return Fail("NOPAUSED control lost the Sound skeleton tag", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string inner = StrField(j, "lastScriptError");
+    const std::string block = StrField(j, "fatalBlock");
+    const long long line = IntField(j, "fatalLine");
+    const bool gap = (fatal + " || " + inner).find("\"paused\"") != std::string::npos;
+    if (!gap || block.find("BGM.tjs") == std::string::npos || line != 585)
+        return Fail("NOPAUSED control did not reproduce the paused gap", j);
+
+    std::printf("[m2h] NOPAUSED verdict: fatal=\"%s\" @ %s:%lld\n",
+                fatal.c_str(), block.c_str(), line);
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // 打开任意容器（目录 / .xp3）跑一次官方链，返回 JSON。
 // dirMode / entryCount 必须在 close() 之前取（close 会清掉它们）。
 static char *RunArchive(const char *path, const char *storage,
@@ -1879,7 +1940,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                                "\"imageModified\"", "\"colorRect\"",
                                "\"showParentHint\"", "\"cursorX\"",
                                "\"MIDISoundBuffer\"", "\"WaveSoundBuffer\"",
-                               "\"VideoOverlay\"", "\"left\""}) {
+                               "\"VideoOverlay\"", "\"left\"", "\"paused\""}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -1891,7 +1952,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                 "(%lld scripts, debugLevel/hitType/hitThreshold/"
                 "setImageSize/setSizeToImageSize/face/fillRect/cursor/name/"
                 "focusable/setSize/imageModified/colorRect/showParentHint/"
-                "cursorX/MIDISoundBuffer/WaveSoundBuffer/VideoOverlay/left "
+                "cursorX/MIDISoundBuffer/WaveSoundBuffer/VideoOverlay/left/paused "
                 "all cleared in the device container)\n", scripts);
     GalBoxTJS2Free(j);
     return 0;
@@ -1929,6 +1990,7 @@ int main(int argc, char **argv) {
     const char *nowave   = (argc > 28) ? argv[28] : "";
     const char *novideo  = (argc > 29) ? argv[29] : "";
     const char *nowinl   = (argc > 30) ? argv[30] : "";
+    const char *nopause  = (argc > 31) ? argv[31] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -2065,6 +2127,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOPAUSED") == 0) {
+        if (RunCaseNoPaused(nopause, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -2081,6 +2148,7 @@ int main(int argc, char **argv) {
                 "NOHITTHRESHOLD / NOIMAGESIZE / NOSIZETOIMAGESIZE / NODRAWFACE / "
                 "NOFILLRECT / NOCURSOR / NONAME / NOFOCUSABLE / NOSIZE / "
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
-                "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / NOWINLEFT / XP3 / LEAK / LEAK2)\n", which);
+                "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / NOWINLEFT / NOPAUSED / "
+                "XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把二十七个场景拆成独立进程跑（二十二个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把二十八个场景拆成独立进程跑（二十三个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1640,6 +1640,30 @@ ok("var left = 0" in verifier and "GalBoxWindow.tjs" in verifier,
    "M2e-28：出包核验器第 21 条查 GalBoxWindow.tjs 的 left/top")
 ok('left' in _closed_block,
    "M2e-28：XP3 场景的「已关闭缺口」清单加上了 left")
+
+# ---- M2e-29：音频缓冲区 paused（BGM.tjs:585）-------------------------
+ok(_gb_sound.count("var paused = false;") == 2,
+   "M2e-29：MIDISoundBuffer 与 WaveSoundBuffer 各带一份 paused（只给一个 = 静默丢状态）")
+_bgm29 = raw("native/KAG/src/original/system/BGM.tjs")
+ok(_bgm29.split(b"\n")[584].strip().startswith(b"dic.paused = buf1.paused"),
+   "M2e-29：官方 BGM.tjs:585 是 dic.paused = buf1.paused（精确行号）")
+ok(b"buf.paused = paused;" in _bgm29 and b"buf1.paused = true;" in _bgm29,
+   "M2e-29：paused 在 playBuffer / pause / resume 三处被写 ⇒ 必须是实例成员")
+ok("M2e-29 gap (paused) not cleared" in m2h_test and
+   "BGM.tjs paused line" in m2h_test and
+   "gapLine == 585" in m2h_test,
+   "M2e-29：A 硬判据清掉 paused 且离开旧停点（精确行号 585）")
+ok("NOPAUSED control did not reproduce the paused gap" in m2h_test,
+   "M2e-29：NOPAUSED 负向对照必须复现 paused@BGM.tjs:585")
+ok("NOPAUSED fixture must have both paused members removed" in m2h_test and
+   "NOPAUSED fixture lost unrelated Sound members" in m2h_test,
+   "M2e-29：两处段级删除（M2E29A/M2E29B），两个音频类本体不许丢")
+ok("M2E29A_BEGIN" in test_sh and "M2E29B_BEGIN" in test_sh,
+   "M2e-29：构建脚本对两处都调 drop_marked")
+ok("var paused = false;\" < 2" in verifier or "count(b\"var paused = false;\")" in verifier,
+   "M2e-29：出包核验器第 22 条要求两份 paused")
+ok('paused' in _closed_block,
+   "M2e-29：XP3 场景的「已关闭缺口」清单加上了 paused")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
