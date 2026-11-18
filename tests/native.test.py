@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把二十五个场景拆成独立进程跑（二十个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把二十六个场景拆成独立进程跑（二十一个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1583,6 +1583,32 @@ ok("class WaveSoundBuffer" in verifier and "SE.tjs:4" in verifier,
    "M2e-26：出包核验器第 19 条要求 WaveSoundBuffer")
 ok('WaveSoundBuffer' in _closed_block,
    "M2e-26：XP3 场景的「已关闭缺口」清单加上了 WaveSoundBuffer")
+
+# ---- M2e-27：VideoOverlay 影片类骨架（Movie.tjs:4）---------------------
+_gb_movie = open("native/KAG/src/system/GalBoxMovie.tjs", encoding="utf-8").read()
+_mov_blk = _gb_movie.split("M2E27_BEGIN", 1)[-1].split("M2E27_END", 1)[0]
+ok("class VideoOverlay" in _mov_blk and "function VideoOverlay(o = void)" in _mov_blk,
+   "M2e-27：GalBoxMovie.tjs 声明 VideoOverlay 类（构造参数默认 void）")
+_mv = raw("native/KAG/src/original/system/Movie.tjs")
+ok(_mv.split(b"\n")[3].strip() == b"class Movie extends VideoOverlay",
+   "M2e-27：官方 Movie.tjs:4 是 class Movie extends VideoOverlay（精确行号）")
+ok(b"super.VideoOverlay(...)" in _mv,
+   "M2e-27：Movie.tjs:16 用 super.VideoOverlay(...) 打散参数调基类构造")
+ok("M2e-27 gap (VideoOverlay) not cleared" in m2h_test and
+   "Movie.tjs VideoOverlay line" in m2h_test and
+   "gapLine == 4" in m2h_test,
+   "M2e-27：A 硬判据清掉 VideoOverlay 且离开旧停点（精确行号 4）")
+ok("NOVIDEO control did not reproduce the VideoOverlay gap" in m2h_test,
+   "M2e-27：NOVIDEO 负向对照必须复现 VideoOverlay@Movie.tjs:4")
+ok("NOVIDEO fixture must not contain GalBoxMovie.tjs" in m2h_test and
+   "NOVIDEO control lost unrelated skeletons" in m2h_test,
+   "M2e-27：NOVIDEO 是文件级删除，且 Sound/Layer 骨架不许丢")
+ok("M2E27_MOVIE_SKELETON" in bridge_cpp and "system/GalBoxMovie.tjs" in bridge_cpp,
+   "M2e-27：HostBridge 的 kShims/kTags 注册 Movie 骨架")
+ok("class VideoOverlay" in verifier and "VideoOverlay" in verifier,
+   "M2e-27：出包核验器第 20 条要求 VideoOverlay")
+ok('VideoOverlay' in _closed_block,
+   "M2e-27：XP3 场景的「已关闭缺口」清单加上了 VideoOverlay")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

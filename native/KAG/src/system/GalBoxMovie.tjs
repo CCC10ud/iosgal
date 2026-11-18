@@ -1,0 +1,29 @@
+// GalBoxMovie.tjs — GalBox 自写的 `VideoOverlay` 骨架（**非官方**，Milestone 2e-27）
+//
+// 官方 `VideoOverlay` 是 kirikiri2/src/core/visual/VideoOverlay.cpp 里的
+// **原生类**（Windows 上走 DirectShow / WMV，绑死 tp_stub）。KAG 的影片脚本
+// `Movie.tjs` 第 4 行就是 `class Movie extends VideoOverlay`，第 16 行
+// `super.VideoOverlay(...)` 用 super 链调基类构造。
+//
+// M2e-26 补上 WaveSoundBuffer 后，run 44298320673 实测的阻塞点正是
+// `Member "VideoOverlay" does not exist` @ Movie.tjs:4。
+// 这是音频领域之后紧接着的**影片播放领域**（Movie.tjs 另带播放/停止/
+// 状态查询/层叠加等大面）。
+//
+// 与 GalBoxSound.tjs 同理：**过渡骨架**，只让类名可解析、基类构造可调用。
+// Movie.tjs 里大量成员（mode / visible / loop / frame / numberOfAudioStream /
+// audioBalance / audioVolume / enabledAudioStream / segmentLoopFrame /
+// playRate / open / play / stop / status …）等执行路径实测逼出来再补，
+// 不预置猜测性实现。
+
+// M2E27_BEGIN —— NOVIDEO 负向对照按**文件级**删除（同 M2e-25 模式）：
+// 整个 GalBoxMovie.tjs 不放进夹具，必须复现 VideoOverlay@Movie.tjs:4。
+class VideoOverlay
+{
+	var owner;
+	function VideoOverlay(o = void)
+	{
+		owner = o;
+	}
+}
+// M2E27_END

@@ -41,6 +41,8 @@ startup.tjs 只有一行注释 —— 自测全绿而设备上根本没跑过官
      —— BGM.tjs:114 `class KAGMIDISoundBuffer extends MIDISoundBuffer, ...`。
  19. 同一文件含 `class WaveSoundBuffer`（M2e-26）—— SE.tjs:4
      `class SESoundBuffer extends WaveSoundBuffer` / SE.tjs:19 `super.WaveSoundBuffer(owner)`。
+ 20. 内置包带 `system/GalBoxMovie.tjs` 含 `class VideoOverlay`（M2e-27）
+     —— Movie.tjs:4 `class Movie extends VideoOverlay`。
 """
 import os
 import sys
@@ -49,7 +51,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import xp3_fixture as X  # noqa: E402
 
 SKELETONS = ["Consts", "Font", "Layer", "Window", "Pad", "Menu", "Timer",
-             "KAGParser", "AsyncTrigger", "Sound"]
+             "KAGParser", "AsyncTrigger", "Sound", "Movie"]
 REQUIRED = ["startup.tjs", "system/Initialize.tjs", "system/Config.tjs"] + \
            ["system/GalBox%s.tjs" % s for s in SKELETONS]
 
@@ -232,6 +234,16 @@ def main(argv):
         return fail("%s 里没有 class WaveSoundBuffer："
                     "设备端会在 SE.tjs:4 断链" % snd_name)
 
+    # 第 20 条（M2e-27）：影片类骨架 VideoOverlay。Movie.tjs:4
+    # `class Movie extends VideoOverlay`，16 行 `super.VideoOverlay(...)`。
+    mov_name = "system/GalBoxMovie.tjs"
+    if mov_name not in by_name:
+        return fail("内置包里没有 %s：设备端会在 Movie.tjs:4 断链" % mov_name)
+    mov = by_name[mov_name]["data"]
+    if b"class VideoOverlay" not in mov:
+        return fail("%s 里没有 class VideoOverlay："
+                    "设备端会在 Movie.tjs:4 断链" % mov_name)
+
     print("[m2e12b] 内置包核验通过: %d 个文件 / 解压后 %d B / "
           "Initialize.tjs %d B / startup.tjs 真调 Initialize / %d 个骨架全在 / "
           "KAGParser 带 debugLevel(M2e-13) / Layer 带 hitType+hitThreshold(M2e-14) / "
@@ -241,7 +253,8 @@ def main(argv):
           "Layer 带 setSize(M2e-20) / "
           "Layer 带 imageModified(M2e-21) / Layer 带 colorRect(M2e-22) / "
           "Layer 带 showParentHint(M2e-23) / Layer 带 cursorX+cursorY(M2e-24) / "
-          "Sound 骨架 MIDISoundBuffer(M2e-25) / WaveSoundBuffer(M2e-26)"
+          "Sound 骨架 MIDISoundBuffer(M2e-25) / WaveSoundBuffer(M2e-26) / "
+          "Movie 骨架 VideoOverlay(M2e-27)"
           % (parsed["count"], total, init_bytes, len(SKELETONS)))
     return 0
 

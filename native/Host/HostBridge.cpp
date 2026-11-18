@@ -1063,6 +1063,7 @@ static bool LoadEngineShim(tTJS *engine) {
         "system/GalBoxKAGParser.tjs", // M2e-11：Conductor.tjs 的 KAGParser 父类骨架
         "system/GalBoxAsyncTrigger.tjs", // M2e-12：Conductor.tjs 的 AsyncTrigger 骨架
         "system/GalBoxSound.tjs",   // M2e-25：BGM.tjs 的 MIDISoundBuffer 骨架
+        "system/GalBoxMovie.tjs",   // M2e-27：Movie.tjs 的 VideoOverlay 骨架
     };
     static const char *kTags[] = {
         "M2E4_OFFICIAL_CONSTS",
@@ -1075,6 +1076,7 @@ static bool LoadEngineShim(tTJS *engine) {
         "M2E11_KAGPARSER_SKELETON",
         "M2E12_ASYNCTRIGGER_SKELETON",
         "M2E25_SOUND_SKELETON",
+        "M2E27_MOVIE_SKELETON",
     };
     if (!engine) { gShimStatus = "error: no engine"; return false; }
     // tag 只在**真正装载成功**时进 status —— run #38 里 Window 骨架是语法
