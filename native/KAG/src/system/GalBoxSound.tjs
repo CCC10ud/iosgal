@@ -1,0 +1,29 @@
+// GalBoxSound.tjs — GalBox 自写的 `MIDISoundBuffer` 骨架（**非官方**，Milestone 2e-25）
+//
+// 官方 `MIDISoundBuffer` 是 kirikiri2/src/core/sound/MidiSoundBuffer.cpp 里的
+// **原生类**（绑死 Windows MIDI API）。KAG 的音频脚本 `BGM.tjs` 第 114 行：
+//
+//   class KAGMIDISoundBuffer extends MIDISoundBuffer, KAGSoundBuffer
+//
+// 没有 MIDISoundBuffer，BGM.tjs 的类定义链就断在这 —— M2e-24 补上
+// cursorX/cursorY 后，run 44216212216 实测的阻塞点正是
+// `Member "MIDISoundBuffer" does not exist` @ BGM.tjs:114。
+// 这是启动链**首次跳出 Layer/Window 视觉领域**，进入音频类领域。
+//
+// 与 GalBoxWindow.tjs 同理：这是**过渡骨架**，只让类名可解析（global 上有
+// 类对象）、基类构造可调用，把下一批缺口（fade / stop / status / midiOut 等
+// 成员，见 BGM.tjs:65/74/77/87/287 对 sbclass 的调用）逼出来。
+// 它**不发声、不碰 MIDI 设备**。WaveSoundBuffer / CDDASoundBuffer 同族类
+// 等 BGM/SE 执行路径实测需要时再补（一个里程碑跨一个停点）。
+
+// M2E25_BEGIN —— NOMIDI 负向对照按**文件级**删除（同 M2e-7/11/12 模式）：
+// 整个 GalBoxSound.tjs 不放进夹具，必须复现 MIDISoundBuffer@BGM.tjs:114。
+class MIDISoundBuffer
+{
+	var owner;
+	function MIDISoundBuffer(o)
+	{
+		owner = o;
+	}
+}
+// M2E25_END

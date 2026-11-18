@@ -37,6 +37,8 @@ startup.tjs 只有一行注释 —— 自测全绿而设备上根本没跑过官
      MessageLayer.tjs:1987 link 隐藏路径写 false（全库零读点，取原生默认 true）。
  17. Layer 骨架里带 `var cursorX = 0; var cursorY = 0`（M2e-24）—— 官方
      MessageLayer.tjs:607 clear() 记录鼠标位置，MainWindow.tjs:4006 跨对象读。
+ 18. 内置包带 `system/GalBoxSound.tjs` 含 `class MIDISoundBuffer`（M2e-25）
+     —— BGM.tjs:114 `class KAGMIDISoundBuffer extends MIDISoundBuffer, ...`。
 """
 import os
 import sys
@@ -45,7 +47,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import xp3_fixture as X  # noqa: E402
 
 SKELETONS = ["Consts", "Font", "Layer", "Window", "Pad", "Menu", "Timer",
-             "KAGParser", "AsyncTrigger"]
+             "KAGParser", "AsyncTrigger", "Sound"]
 REQUIRED = ["startup.tjs", "system/Initialize.tjs", "system/Config.tjs"] + \
            ["system/GalBox%s.tjs" % s for s in SKELETONS]
 
@@ -210,6 +212,17 @@ def main(argv):
         return fail("system/GalBoxLayer.tjs 里没有 var cursorX/cursorY = 0："
                     "设备端会在 MessageLayer.tjs:607 断链")
 
+    # 第 18 条（M2e-25）：音频类骨架 MIDISoundBuffer。BGM.tjs:114 的
+    # `class KAGMIDISoundBuffer extends MIDISoundBuffer, KAGSoundBuffer`
+    # 需要全局类可解析。GalBoxSound.tjs 必须在包里且含类定义。
+    snd_name = "system/GalBoxSound.tjs"
+    if snd_name not in by_name:
+        return fail("内置包里没有 %s：设备端会在 BGM.tjs:114 断链" % snd_name)
+    snd = by_name[snd_name]["data"]
+    if b"class MIDISoundBuffer" not in snd:
+        return fail("%s 里没有 class MIDISoundBuffer："
+                    "设备端会在 BGM.tjs:114 断链" % snd_name)
+
     print("[m2e12b] 内置包核验通过: %d 个文件 / 解压后 %d B / "
           "Initialize.tjs %d B / startup.tjs 真调 Initialize / 九个骨架全在 / "
           "KAGParser 带 debugLevel(M2e-13) / Layer 带 hitType+hitThreshold(M2e-14) / "
@@ -218,7 +231,8 @@ def main(argv):
           "Layer 带 name(M2e-18) / Layer 带 focusable(M2e-19) / "
           "Layer 带 setSize(M2e-20) / "
           "Layer 带 imageModified(M2e-21) / Layer 带 colorRect(M2e-22) / "
-          "Layer 带 showParentHint(M2e-23) / Layer 带 cursorX+cursorY(M2e-24)"
+          "Layer 带 showParentHint(M2e-23) / Layer 带 cursorX+cursorY(M2e-24) / "
+          "Sound 骨架 MIDISoundBuffer(M2e-25)"
           % (parsed["count"], total, init_bytes))
     return 0
 

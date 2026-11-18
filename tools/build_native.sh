@@ -44,6 +44,10 @@ if [ -f dist/fixtures/galbox-kag.xp3 ]; then
     echo "ERROR: 内置 KAG 包里没有最新骨架 GalBoxAsyncTrigger.tjs" >&2
     rm -f "$KAG_LIST"; exit 1
   fi
+  if ! grep -q "^system/GalBoxSound.tjs" "$KAG_LIST"; then
+    echo "ERROR: 内置 KAG 包里没有最新骨架 GalBoxSound.tjs (M2e-25)" >&2
+    rm -f "$KAG_LIST"; exit 1
+  fi
   echo "内置包条目数: $(wc -l < "$KAG_LIST" | tr -d ' ')"
   rm -f "$KAG_LIST"
 else

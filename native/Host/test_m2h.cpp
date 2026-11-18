@@ -465,8 +465,18 @@ static int RunCaseA(const char *game, const char *storage) {
     if (gapBlock.find("MessageLayer.tjs") != std::string::npos && gapLine == 607)
         return Fail("the chain is still stuck at the MessageLayer.tjs cursorX line", j);
 
+    // M2e-25 硬判据：run 44216212216 的下一缺口是 BGM.tjs:114 的
+    // `class KAGMIDISoundBuffer extends MIDISoundBuffer, KAGSoundBuffer`
+    // —— 首次跳出视觉类，进入音频类。独立负向对照：
+    //   NOMIDI -> 必须复现 MIDISoundBuffer@BGM.tjs:114
+    if (fatal.find("\"MIDISoundBuffer\"") != std::string::npos ||
+        inner.find("\"MIDISoundBuffer\"") != std::string::npos)
+        return Fail("M2e-25 gap (MIDISoundBuffer) not cleared", j);
+    if (gapBlock.find("BGM.tjs") != std::string::npos && gapLine == 114)
+        return Fail("the chain is still stuck at the BGM.tjs MIDISoundBuffer line", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
-    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-24)\n",
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-25)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
 
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
@@ -494,6 +504,9 @@ static int RunCaseA(const char *game, const char *storage) {
     // M2e-12：AsyncTrigger 骨架必须真的装进引擎。
     if (shim.find("M2E12_ASYNCTRIGGER_SKELETON") == std::string::npos)
         return Fail("M2e-12 regression: AsyncTrigger skeleton was not loaded", j);
+    // M2e-25：MIDISoundBuffer 骨架必须真的装进引擎（BGM.tjs:114 类定义需要它）。
+    if (shim.find("M2E25_SOUND_SKELETON") == std::string::npos)
+        return Fail("M2e-25 regression: Sound skeleton was not loaded", j);
 
     std::printf("[m2h] A verdict: official Config.tjs took effect, UpdateConfig.tjs "
                 "gaps cleared, advanced to %s:%lld (%d scripts read)\n",
@@ -1522,6 +1535,41 @@ static int RunCaseNoCursorX(const char *nocx, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOMIDI：缺 MIDISoundBuffer 骨架的负向对照（M2e-25）
+// 文件级删除（同 M2e-7/11/12 模式）：夹具不放 GalBoxSound.tjs。
+// 必须复现 `Member "MIDISoundBuffer" does not exist @ BGM.tjs:114`。
+static int RunCaseNoMidi(const char *nomidi, const char *storage) {
+    if (!Exists(std::string(nomidi) + "/system/Config.tjs"))
+        return Fail("NOMIDI fixture missing Config.tjs", NULL);
+    if (Exists(std::string(nomidi) + "/system/GalBoxSound.tjs"))
+        return Fail("NOMIDI fixture must not contain GalBoxSound.tjs", NULL);
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(nomidi, storage, arc);
+    if (!j) return Fail("cannot run the NOMIDI control", NULL);
+    DumpChain("NOMIDI", j);
+
+    // 骨架文件被删 ⇒ shim 里不许出现 M2E25 tag（tag 只在 ExecScript 成功后写入）。
+    if (StrField(j, "shim").find("M2E25_SOUND_SKELETON") != std::string::npos)
+        return Fail("NOMIDI control unexpectedly loaded the Sound skeleton", j);
+    // 但 Layer 骨架必须还在（删的只是 Sound）。
+    if (StrField(j, "shim").find("M2E2_LAYER_SKELETON") == std::string::npos)
+        return Fail("NOMIDI control lost the Layer skeleton tag", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string inner = StrField(j, "lastScriptError");
+    const std::string block = StrField(j, "fatalBlock");
+    const long long line = IntField(j, "fatalLine");
+    const bool gap = (fatal + " || " + inner).find("\"MIDISoundBuffer\"") != std::string::npos;
+    if (!gap || block.find("BGM.tjs") == std::string::npos || line != 114)
+        return Fail("NOMIDI control did not reproduce the MIDISoundBuffer gap", j);
+
+    std::printf("[m2h] NOMIDI verdict: fatal=\"%s\" @ %s:%lld\n",
+                fatal.c_str(), block.c_str(), line);
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // 打开任意容器（目录 / .xp3）跑一次官方链，返回 JSON。
 // dirMode / entryCount 必须在 close() 之前取（close 会清掉它们）。
 static char *RunArchive(const char *path, const char *storage,
@@ -1619,6 +1667,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
         "M2E3_WINDOW_SKELETON", "M2E6_PAD_SKELETON", "M2E7_MENU_SKELETON",
         "M2E9_TIMER_SKELETON", "M2E11_KAGPARSER_SKELETON",
         "M2E12_ASYNCTRIGGER_SKELETON",
+        "M2E25_SOUND_SKELETON",
     };
     for (size_t i = 0; i < sizeof(kMustHave) / sizeof(kMustHave[0]); ++i) {
         if (shim.find(kMustHave[i]) == std::string::npos) {
@@ -1643,7 +1692,8 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                                "\"face\"", "\"fillRect\"", "\"cursor\"",
                                "\"name\"", "\"focusable\"", "\"setSize\"",
                                "\"imageModified\"", "\"colorRect\"",
-                               "\"showParentHint\"", "\"cursorX\""}) {
+                               "\"showParentHint\"", "\"cursorX\"",
+                               "\"MIDISoundBuffer\""}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -1655,7 +1705,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                 "(%lld scripts, debugLevel/hitType/hitThreshold/"
                 "setImageSize/setSizeToImageSize/face/fillRect/cursor/name/"
                 "focusable/setSize/imageModified/colorRect/showParentHint/"
-                "cursorX all cleared in the device container)\n", scripts);
+                "cursorX/MIDISoundBuffer all cleared in the device container)\n", scripts);
     GalBoxTJS2Free(j);
     return 0;
 }
@@ -1688,6 +1738,7 @@ int main(int argc, char **argv) {
     const char *nocr     = (argc > 24) ? argv[24] : "";
     const char *noph     = (argc > 25) ? argv[25] : "";
     const char *nocx     = (argc > 26) ? argv[26] : "";
+    const char *nomidi   = (argc > 27) ? argv[27] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -1804,6 +1855,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOMIDI") == 0) {
+        if (RunCaseNoMidi(nomidi, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -1820,6 +1876,6 @@ int main(int argc, char **argv) {
                 "NOHITTHRESHOLD / NOIMAGESIZE / NOSIZETOIMAGESIZE / NODRAWFACE / "
                 "NOFILLRECT / NOCURSOR / NONAME / NOFOCUSABLE / NOSIZE / "
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
-                "NOCURSORX / XP3 / LEAK / LEAK2)\n", which);
+                "NOCURSORX / NOMIDI / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }
