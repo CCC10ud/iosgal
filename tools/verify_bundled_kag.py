@@ -266,8 +266,11 @@ def main(argv):
 
     # 第 23 条（M2e-30）：声像 pan。SE.tjs:217 `super.pan = x * 1000;`、
     # 221 `return super.pan \ 1000;` ⇒ 基类必须有整数 pan（单位 1/1000）。
-    if b"var pan = 0;" not in snd:
-        return fail("%s 里没有 var pan = 0：设备端会在 SE.tjs:221 断链" % snd_name)
+    # 必须是 property（类对象上的访问器），光有 var 字段时 super.pan 解析不到
+    # （run 44319521519 实测：A 仍停在 SE.tjs:221）。
+    if b"property pan" not in snd or b"var panValue" not in snd:
+        return fail("%s 里没有 property pan + var panValue："
+                    "设备端会在 SE.tjs:221 断链" % snd_name)
 
     print("[m2e12b] 内置包核验通过: %d 个文件 / 解压后 %d B / "
           "Initialize.tjs %d B / startup.tjs 真调 Initialize / %d 个骨架全在 / "
@@ -280,7 +283,7 @@ def main(argv):
           "Layer 带 showParentHint(M2e-23) / Layer 带 cursorX+cursorY(M2e-24) / "
           "Sound 骨架 MIDISoundBuffer(M2e-25) / WaveSoundBuffer(M2e-26) / "
           "Movie 骨架 VideoOverlay(M2e-27) / Window 带 left+top(M2e-28) / "
-          "Sound 带 paused×2(M2e-29) / Wave 带 pan(M2e-30)"
+          "Sound 带 paused×2(M2e-29) / Wave 带 pan property(M2e-30)"
           % (parsed["count"], total, init_bytes, len(SKELETONS)))
     return 0
 

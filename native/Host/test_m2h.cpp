@@ -1838,8 +1838,9 @@ static int RunCaseNoPan(const char *nopan, const char *storage) {
                          std::istreambuf_iterator<char>());
         if (body.find("M2E30_BEGIN") != std::string::npos)
             return Fail("NOPAN fixture must have pan removed", NULL);
-        if (body.find("var pan") != std::string::npos)
-            return Fail("NOPAN fixture still declares pan", NULL);
+        if (body.find("property pan") != std::string::npos ||
+            body.find("var panValue") != std::string::npos)
+            return Fail("NOPAN fixture still declares pan/panValue", NULL);
         for (const char *keep : {"class MIDISoundBuffer", "class WaveSoundBuffer",
                                  "var paused = false;", "var owner"}) {
             if (body.find(keep) == std::string::npos) {

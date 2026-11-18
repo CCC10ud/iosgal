@@ -1045,7 +1045,7 @@ PYEOF
   rm -rf "$M2H_NOPAN"
   cp -R "$M2H_GAME" "$M2H_NOPAN"
   drop_marked "$M2H_NOPAN/system/GalBoxSound.tjs" M2E30_BEGIN M2E30_END
-  if grep -q "M2E30_BEGIN\|var pan" "$M2H_NOPAN/system/GalBoxSound.tjs"; then
+  if grep -q "M2E30_BEGIN\|property pan" "$M2H_NOPAN/system/GalBoxSound.tjs"; then
     echo "[tjs2] M2e-30 NOPAN 夹具里 pan 还在"
     exit 1
   fi

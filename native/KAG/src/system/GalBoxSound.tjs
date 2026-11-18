@@ -51,11 +51,21 @@ class WaveSoundBuffer
 	var owner;
 	// M2E30_BEGIN —— NOPAN 负向对照按此标记整段删除
 	// 官方 SE.tjs:213-223 定义了 `property pan`（setter 写 super.pan = x*1000，
-	// getter 读 super.pan \ 1000）—— 即**基类** WaveSoundBuffer 上的整数 pan，
+	// getter 读 super.pan \ 1000）—— 即**基类** WaveSoundBuffer 上要有 pan，
 	// 单位 1/1000（-1000 左 / 0 中 / 1000 右）。A 场景实测停点：
 	// `Member "pan" does not exist @ SE.tjs:221`。
+	//
+	// ⚠️ 必须用 **property** 而不是 var（run 44319521519 实测）：
+	// 光写 `var pan = 0;` 时 `super.pan` 仍然解析不到（本引擎的 super 代理
+	// 只走类对象上的访问器/方法，不暴露实例字段），A 照样停在 221。
+	// 改成 var 存储 + property 访问器后 super 链才能读到。
 	// 只给 Wave 一份：MIDI 侧目前无证据（BGM 用 audioBalance），等实测再补。
-	var pan = 0;
+	var panValue = 0;
+	property pan
+	{
+		getter { return panValue; }
+		setter(v) { panValue = v; }
+	}
 	// M2E30_END
 	// M2E29B_BEGIN —— NOPAUSED 负向对照按此标记整段删除
 	// 同 MIDISoundBuffer：Wave 缓冲区也有 paused（BGM.tjs:393/400

@@ -1667,8 +1667,8 @@ ok('paused' in _closed_block,
 
 # ---- M2e-30：WaveSoundBuffer 声像 pan（SE.tjs:221）--------------------
 _win_pan = _gb_sound.split("M2E30_BEGIN",1)[-1].split("M2E30_END",1)[0]
-ok("var pan = 0;" in _win_pan,
-   "M2e-30：WaveSoundBuffer 声明整数 pan（初值 0 = 居中，单位 1/1000）")
+ok("property pan" in _win_pan and "var panValue = 0;" in _win_pan,
+   "M2e-30：WaveSoundBuffer 用 property + 存储字段实现 pan（var 字段 super 解析不到）")
 _se30 = raw("native/KAG/src/original/system/SE.tjs")
 ok(_se30.split(b"\n")[220].strip().startswith(b"return super.pan"),
    "M2e-30：官方 SE.tjs:221 是 return super.pan \\ 1000（精确行号）")
@@ -1683,8 +1683,8 @@ ok("NOPAN control advanced past SE.tjs" in m2h_test and
    "M2e-30：NOPAN 不写死行号（改用“到不了后续脚本”判据，含实测教训）")
 ok("M2H_NOPAN" in test_sh and "M2E30_BEGIN" in test_sh,
    "M2e-30：构建脚本用 drop_marked 生成 NOPAN 夹具")
-ok("var pan = 0;" in verifier,
-   "M2e-30：出包核验器第 23 条要求 Wave 的 pan")
+ok("property pan" in verifier and "var panValue" in verifier,
+   "M2e-30：出包核验器第 23 条要求 Wave 的 pan property（不是普通 var）")
 ok('pan' in _closed_block,
    "M2e-30：XP3 场景的「已关闭缺口」清单加上了 pan")
 
