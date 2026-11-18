@@ -822,7 +822,8 @@ PYEOF
   rm -rf "$M2H_NOCURSOR"
   cp -R "$M2H_GAME" "$M2H_NOCURSOR"
   drop_marked "$M2H_NOCURSOR/system/GalBoxLayer.tjs" M2E17_BEGIN M2E17_END
-  if grep -q "M2E17_BEGIN\|var cursor" "$M2H_NOCURSOR/system/GalBoxLayer.tjs"; then
+  # 带初值匹配：裸 "var cursor" 会被 M2e-24 新增的 var cursorX 子串命中（第三次同类坑）。
+  if grep -q "M2E17_BEGIN\|var cursor = crDefault" "$M2H_NOCURSOR/system/GalBoxLayer.tjs"; then
     echo "[tjs2] M2e-17 NOCURSOR 夹具里 cursor 还在"
     exit 1
   fi
@@ -837,7 +838,7 @@ PYEOF
     echo "[tjs2] M2e-18 NONAME 夹具里 name 还在"
     exit 1
   fi
-  for keep in "var cursor" "var face" "function fillRect" "var imageWidth" "var hitType"; do
+  for keep in "var cursor = crDefault" "var face" "function fillRect" "var imageWidth" "var hitType"; do
     if ! grep -q "$keep" "$M2H_NONAME/system/GalBoxLayer.tjs"; then
       echo "[tjs2] M2e-18 NONAME 夹具丢了无关成员：$keep"
       exit 1

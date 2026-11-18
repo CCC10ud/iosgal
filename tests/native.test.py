@@ -1519,6 +1519,12 @@ ok("var cursorX = 0" in verifier and "var cursorY = 0" in verifier,
    "M2e-24：出包核验器要求内置包 Layer 带 cursorX/cursorY = 0")
 ok('cursorX' in _closed_block,
    "M2e-24：XP3 场景的「已关闭缺口」清单加上了 cursorX（带引号匹配，不与 cursor 子串冲突）")
+# 子串误判第三次同类坑：NOCURSOR 夹具的"还在"校验必须带初值匹配。
+# M2e-24 给骨架加 var cursorX 后，裸 grep "var cursor" 会命中 cursorX 假红
+# （run 44215568706 实测）。同型检查还有 C++ 负向对照的 "var cursor" keep ——
+# keep 是"必须在"型，风险低；"还在/不在"型必须完整签名。
+ok("M2E17_BEGIN\\|var cursor = crDefault" in test_sh,
+   "M2e-24：NOCURSOR 夹具的「还在」校验用 var cursor = crDefault（防 var cursorX 子串命中）")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
