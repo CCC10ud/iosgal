@@ -1525,6 +1525,8 @@ ok('cursorX' in _closed_block,
 # keep 是"必须在"型，风险低；"还在/不在"型必须完整签名。
 ok("M2E17_BEGIN\\|var cursor = crDefault" in test_sh,
    "M2e-24：NOCURSOR 夹具的「还在」校验用 var cursor = crDefault（防 var cursorX 子串命中）")
+ok('body.find("var cursor = crDefault")' in m2h_test,
+   "M2e-24：C++ 侧 NOCURSOR 场景同样带初值匹配（run 44215904431 实测假红后修复）")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

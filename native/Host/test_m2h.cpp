@@ -1127,7 +1127,9 @@ static int RunCaseNoCursor(const char *nocursor, const char *storage) {
                          std::istreambuf_iterator<char>());
         if (body.find("M2E17_BEGIN") != std::string::npos)
             return Fail("NOCURSOR fixture must have the cursor member removed", NULL);
-        if (body.find("var cursor") != std::string::npos)
+        // 带初值匹配：裸 "var cursor" 会被 M2e-24 的 var cursorX 子串命中
+        // （run 44215568706 / 44215904431 两轮实测假红，子串误判第三次同类坑）。
+        if (body.find("var cursor = crDefault") != std::string::npos)
             return Fail("NOCURSOR fixture still declares cursor", NULL);
         // 别把 defaultCursor 一起删了 —— 那是官方 GraphicLayer.tjs:31 自己声明的，
         // 骨架里本来就没有，删不删都测不出 cursor 这条。
