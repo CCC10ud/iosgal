@@ -175,6 +175,26 @@ class Layer
 	var focusable = false;
 	// M2E19_END
 
+	// M2E20_BEGIN —— NOSIZE 负向对照按此标记整段删除
+	// 官方 LayerIntf.cpp 的**显示尺寸设置**方法 setSize(w, h)。
+	// M2e-19 补上 focusable 后启动链停在 AnimationLayer.tjs:367 的
+	// `setSize(32, 32);` —— clearImage() 里第一步就把图层缩到 32x32。
+	//
+	// 它与骨架已有的 setPos / setSizeToImageSize 是三件不同的事：
+	//   setPos(l,t,w,h)        写 left/top/width/height（位置+尺寸一起）
+	//   setSize(w,h)           只写 width/height（显示框大小，不动位置）
+	//   setSizeToImageSize()   把 width/height 对齐到 imageWidth/imageHeight
+	// 官方 ButtonLayer.tjs:323 / EditLayer.tjs:696 都覆写 setSize 并调
+	// `super.setSize(w, h)` ⇒ 基类必须真写 width/height，不能留空壳。
+	// KAGLayer.tjs:374 / MessageLayer.tjs:505,513 也直接调用它，
+	// 之后脚本会读回 width/height 做布局算术 —— 空壳会静默算出 0。
+	function setSize(w, h)
+	{
+		width = w;
+		height = h;
+	}
+	// M2E20_END
+
 	var imageLeft = 0;
 	var imageTop = 0;
 	var isPrimary = false;

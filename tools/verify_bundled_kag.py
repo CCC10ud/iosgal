@@ -27,6 +27,8 @@ startup.tjs 只有一行注释 —— 自测全绿而设备上根本没跑过官
      给图层名赋值，MainWindow.tjs:3219 拿它做字符串拼接与 conductor 键。
  12. Layer 骨架里带 `var focusable = false`（M2e-19）—— 官方
      HistoryLayer.tjs:130 构造时写 true，MessageLayer.tjs:2316 拿它做取反判断。
+ 13. Layer 骨架里带 `function setSize`（M2e-20）—— 官方
+     AnimationLayer.tjs:367 的 clearImage() 首句 `setSize(32, 32)`。
 """
 import os
 import sys
@@ -164,12 +166,21 @@ def main(argv):
         return fail("system/GalBoxLayer.tjs 里没有 var focusable = false："
                     "设备端会在 HistoryLayer.tjs:130 断链")
 
+    # 第 13 条（M2e-20）：显示尺寸方法 setSize。AnimationLayer.tjs:367 的
+    # clearImage() 首句 `setSize(32, 32);`；官方 ButtonLayer/EditLayer 覆写时
+    # 都调 `super.setSize(w, h)` ⇒ 基类必须真写 width/height，不能是空壳。
+    # 必须带函数体写 width/height，只搜函数名不足以排除空实现。
+    if b"function setSize(w, h)" not in layer or b"width = w;" not in layer:
+        return fail("system/GalBoxLayer.tjs 里没有 setSize(w,h) 写 width/height："
+                    "设备端会在 AnimationLayer.tjs:367 断链")
+
     print("[m2e12b] 内置包核验通过: %d 个文件 / 解压后 %d B / "
           "Initialize.tjs %d B / startup.tjs 真调 Initialize / 九个骨架全在 / "
           "KAGParser 带 debugLevel(M2e-13) / Layer 带 hitType+hitThreshold(M2e-14) / "
           "Layer 带 setImageSize+setSizeToImageSize(M2e-15) / "
           "Layer 带 face+fillRect(M2e-16) / Layer 带 cursor(M2e-17) / "
-          "Layer 带 name(M2e-18) / Layer 带 focusable(M2e-19)"
+          "Layer 带 name(M2e-18) / Layer 带 focusable(M2e-19) / "
+          "Layer 带 setSize(M2e-20)"
           % (parsed["count"], total, init_bytes))
     return 0
 

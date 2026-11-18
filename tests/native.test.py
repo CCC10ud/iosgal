@@ -825,7 +825,7 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE XP3 LEAK LEAK2" in test_sh,
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE XP3 LEAK LEAK2" in test_sh,
    "构建脚本把二十个场景拆成独立进程跑（十五个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
@@ -1360,6 +1360,41 @@ ok("var focusable = false" in verifier,
 ok('"\\"focusable\\""' in m2h_test and
    '"\\"name\\"", "\\"focusable\\""' in m2h_test,
    "M2e-19：XP3 场景的「已关闭缺口」清单加上了 focusable")
+
+# ---- M2e-20：Layer 显示尺寸方法 setSize（AnimationLayer.tjs:367）---------
+_sz_blk = layer_shim.split("M2E20_BEGIN", 1)[-1].split("M2E20_END", 1)[0]
+ok("function setSize(w, h)" in _sz_blk and "width = w;" in _sz_blk and
+   "height = h;" in _sz_blk,
+   "M2e-20：Layer 骨架的 setSize 真写 width/height（不是空壳）")
+# 官方 ButtonLayer/EditLayer 覆写 setSize 并调 super.setSize ⇒ 基类必须真做事。
+# EditLayer.tjs:696 的覆写还连着 setImageSize + update()，佐证 setSize 是显示尺寸。
+_btn20 = raw("native/KAG/src/original/system/ButtonLayer.tjs")
+_edt20 = raw("native/KAG/src/original/system/EditLayer.tjs")
+ok(b"super.setSize(w, h);" in _btn20 and b"super.setSize(w, h);" in _edt20,
+   "M2e-20：官方两个子类覆写 setSize 都调 super.setSize ⇒ 基类必须真写尺寸")
+ok(b"super.setSize(w, h);" in _edt20 and
+   b"setImageSize(w, h);" in _edt20 and b"update();" in _edt20,
+   "M2e-20：EditLayer 的 setSize 覆写 = super.setSize + setImageSize + update")
+# 新缺口钉在精确行号 367（clearImage 首句），宽判据会误判其它 setSize 调用。
+_anim20 = raw("native/KAG/src/original/system/AnimationLayer.tjs")
+ok(_anim20.split(b"\n")[366].strip() == b"setSize(32, 32);",
+   "M2e-20：官方 AnimationLayer.tjs:367 是 setSize(32,32)（精确行号）")
+ok("M2e-20 gap (setSize) not cleared" in m2h_test and
+   "setSize line" in m2h_test and
+   "gapLine == 367" in m2h_test,
+   "M2e-20：A 硬判据清掉 setSize 且离开旧停点（精确行号 367）")
+ok("NOSIZE control did not reproduce the setSize gap" in m2h_test,
+   "M2e-20：NOSIZE 负向对照必须复现 setSize@AnimationLayer.tjs:367")
+ok("M2H_NOSIZE" in test_sh and "M2E20_BEGIN" in test_sh,
+   "M2e-20：构建脚本用 drop_marked 生成 NOSIZE 夹具")
+ok("NOSIZE fixture must keep the Layer skeleton" in m2h_test and
+   "NOSIZE fixture still declares setSize" in m2h_test and
+   "NOSIZE fixture lost unrelated" in m2h_test,
+   "M2e-20：负向对照校验夹具只删 setSize（还确认 setSizeToImageSize 没被误删）")
+ok("function setSize(w, h)" in verifier and "width = w;" in verifier,
+   "M2e-20：出包核验器要求内置包 setSize 写 width/height（非空壳）")
+ok('"\\"focusable\\"", "\\"setSize\\""' in m2h_test,
+   "M2e-20：XP3 场景的「已关闭缺口」清单加上了 setSize")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
