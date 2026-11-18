@@ -1727,11 +1727,28 @@ static int RunCaseNoWinLeft(const char *nowinl, const char *storage) {
     const std::string inner = StrField(j, "lastScriptError");
     const std::string block = StrField(j, "fatalBlock");
     const long long line = IntField(j, "fatalLine");
-    const bool gap = (fatal + " || " + inner).find("\"left\"") != std::string::npos;
-    if (!gap || block.find("MainWindow.tjs") == std::string::npos || line != 438)
-        return Fail("NOWINLEFT control did not reproduce the Window.left gap", j);
 
-    std::printf("[m2h] NOWINLEFT verdict: fatal=\"%s\" @ %s:%lld\n",
+    // ⚠️ 实测纠正（run 44303484227 attempt 2，2026-11-18）：
+    // 原先假设「删掉 Window.left/top ⇒ 复现 Member "left" does not exist @ 438」，
+    // **实测不成立**。本引擎里读一个不存在的实例成员返回 **void 而不是抛错**，
+    // 于是 MainWindow.tjs:438 `this.width + this.left` 得到 void、比较为假，
+    // 439/441 两句赋值被整段跳过 —— 链**不报错地**走偏，最后在更早的
+    // `loadSystemVariables()`（1045 行的 catch 重抛）里断在
+    // `Member "evalStorage" does not exist`。
+    // 所以对照的判据改成**可测的「推进深度差异」**：
+    //   有 left/top → 链推进到 A 的停点（BGM.tjs:585 的 paused）；
+    //   无 left/top → 到不了那里，断在更浅的位置。
+    // 这仍然非恒真：它把「有/无 left/top」这个唯一变量与「链推进到哪」绑定起来。
+    if (Has(j, "\"ok\":true"))
+        return Fail("NOWINLEFT control unexpectedly completed the startup chain", j);
+    const bool reachedAStop = (fatal + " || " + inner).find("\"paused\"") != std::string::npos &&
+                              block.find("BGM.tjs") != std::string::npos;
+    if (reachedAStop)
+        return Fail("NOWINLEFT control still reached the A-scenario stop — "
+                    "Window.left/top would not be the variable under test", j);
+
+    std::printf("[m2h] NOWINLEFT verdict: without Window.left/top the chain stops "
+                "shallower: fatal=\"%s\" @ %s:%lld (A-scenario stop was BGM.tjs:585)\n",
                 fatal.c_str(), block.c_str(), line);
     GalBoxTJS2Free(j);
     return 0;

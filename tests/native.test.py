@@ -1625,8 +1625,12 @@ ok("M2e-28 gap (Window.left) not cleared" in m2h_test and
    "MainWindow.tjs Window.left line" in m2h_test and
    "gapLine == 438" in m2h_test,
    "M2e-28：A 硬判据清掉 Window.left 且离开旧停点（精确行号 438）")
-ok("NOWINLEFT control did not reproduce the Window.left gap" in m2h_test,
-   "M2e-28：NOWINLEFT 负向对照必须复现 left@MainWindow.tjs:438")
+ok("NOWINLEFT control unexpectedly completed the startup chain" in m2h_test and
+   "reached the A-scenario stop" in m2h_test,
+   "M2e-28：NOWINLEFT 判据改成「推进深度差异」（实测纠正：本引擎缺成员读返回 void，不抛错）")
+ok("NOWINLEFT verdict: without Window.left/top the chain stops" in m2h_test and
+   "A-scenario stop was BGM.tjs:585" in m2h_test,
+   "M2e-28：NOWINLEFT 输出记录实际停点供审计（run 44303484227 实测 evalStorage@1045）")
 ok("NOWINLEFT fixture still declares Window.left/top" in m2h_test and
    "NOWINLEFT fixture lost unrelated Window members" in m2h_test,
    "M2e-28：NOWINLEFT 是段级删除（M2e-8 style 段等保留）")
