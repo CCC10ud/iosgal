@@ -825,7 +825,7 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME XP3 LEAK LEAK2" in test_sh,
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE XP3 LEAK LEAK2" in test_sh,
    "构建脚本把二十个场景拆成独立进程跑（十五个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
@@ -1320,9 +1320,46 @@ ok("NONAME fixture must keep the Layer skeleton" in m2h_test and
    "M2e-18：负向对照校验夹具只删 name（骨架与其余成员都得在）")
 ok('var name = ""' in verifier,
    "M2e-18：出包核验器要求内置包的 Layer 带 name")
-ok('"\\"name\\""}) {' in m2h_test and
+ok('"\\"name\\"", "\\"focusable\\""' in m2h_test and
    'for (const char *closed' in m2h_test,
    "M2e-18：XP3 场景的「已关闭缺口」清单加上了 name")
+
+# ---- M2e-19：Layer 焦点接收面 focusable（HistoryLayer.tjs:130）-----------
+_fc_blk = layer_shim.split("M2E19_BEGIN", 1)[-1].split("M2E19_END", 1)[0]
+ok("var focusable = false;" in _fc_blk,
+   "M2e-19：Layer 骨架声明 focusable，给布尔真值 false（不是 void）")
+# 初值依据：官方 HistoryLayer.tjs:10（LButtonLayer 构造）与 MessageLayer.tjs:595
+# 都明确写 focusable = false（「フォーカスは受け取らない」），需要焦点才设 true。
+_hl_raw19 = raw("native/KAG/src/original/system/HistoryLayer.tjs")
+_ml_raw19 = raw("native/KAG/src/original/system/MessageLayer.tjs")
+ok(b"focusable = false;" in _hl_raw19.split(b"\n")[9] and
+   b"focusable = false;" in _ml_raw19.split(b"\n")[594],
+   "M2e-19：官方两处明确写 focusable = false ⇒ 骨架初值取 false")
+# 新缺口必须钉在精确行号 130（HistoryLayer 构造末尾），宽判据会误判别的赋值。
+ok(_hl_raw19.split(b"\n")[129].strip() == b"focusable = true;",
+   "M2e-19：官方 HistoryLayer.tjs:130 是 focusable = true（精确行号）")
+# 两处真读：2316 取反判断（留 void 会 !void 为真，静默废掉键盘导航）；
+# 2605 跨对象复制 ⇒ 必须是实例成员，不能做成全局。
+ok(b"if(!focusable ||" in _ml_raw19.split(b"\n")[2315],
+   "M2e-19：MessageLayer.tjs:2316 对 focusable 取反判断 ⇒ 必须是布尔真值")
+ok(b"focusable = src.focusable;" in _ml_raw19.split(b"\n")[2604],
+   "M2e-19：MessageLayer.tjs:2605 跨对象复制 ⇒ focusable 必须是实例成员")
+ok("M2e-19 gap (focusable) not cleared" in m2h_test and
+   "focusable line" in m2h_test and
+   "gapLine == 130" in m2h_test,
+   "M2e-19：A 硬判据清掉 focusable 且离开旧停点（精确行号 130）")
+ok("NOFOCUSABLE control did not reproduce the focusable gap" in m2h_test,
+   "M2e-19：NOFOCUSABLE 负向对照必须复现 focusable@HistoryLayer.tjs:130")
+ok("M2H_NOFOCUSABLE" in test_sh and "M2E19_BEGIN" in test_sh,
+   "M2e-19：构建脚本用 drop_marked 生成 NOFOCUSABLE 夹具")
+ok("NOFOCUSABLE fixture must keep the Layer skeleton" in m2h_test and
+   "NOFOCUSABLE fixture still declares focusable" in m2h_test,
+   "M2e-19：负向对照校验夹具只删 focusable（骨架与其余成员都得在）")
+ok("var focusable = false" in verifier,
+   "M2e-19：出包核验器要求内置包的 Layer 带 focusable")
+ok('"\\"focusable\\""' in m2h_test and
+   '"\\"name\\"", "\\"focusable\\""' in m2h_test,
+   "M2e-19：XP3 场景的「已关闭缺口」清单加上了 focusable")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

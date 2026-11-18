@@ -158,6 +158,23 @@ class Layer
 	var name = "";
 	// M2E18_END
 
+	// M2E19_BEGIN —— NOFOCUSABLE 负向对照按此标记整段删除
+	// 官方 LayerIntf.cpp 的**焦点接收面**成员 focusable（bool）。
+	// M2e-18 补上 name 后启动链正好停在 HistoryLayer.tjs:130 的
+	// `focusable = true;`（HistoryLayer 构造末尾，紧接着 132 行 cursor）。
+	//
+	// 用法统计：**16 处赋值 / 2 处真读**。两处读都是静默错的来源：
+	//   MessageLayer.tjs:2316 `if(!focusable || (!numLinks && !hasClick()))`
+	//     —— 留 void 时 !void 为真，会无条件走 fallback，键盘导航全废且不报错；
+	//   MessageLayer.tjs:2605 `focusable = src.focusable;`（comp 图层复制）
+	//     —— 跨对象读 ⇒ 必须是实例成员，做成全局会让两张图层串值。
+	//
+	// 初值取 false 的依据在官方脚本自己：HistoryLayer.tjs:10（LButtonLayer 构造）
+	// 和 MessageLayer.tjs:595（clear 路径）都写 `focusable = false;`
+	// （注释「フォーカスは受け取らない」），只有明确需要焦点时才设 true。
+	var focusable = false;
+	// M2E19_END
+
 	var imageLeft = 0;
 	var imageTop = 0;
 	var isPrimary = false;
