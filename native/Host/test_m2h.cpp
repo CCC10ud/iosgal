@@ -1825,21 +1825,25 @@ static int RunCaseNoPaused(const char *nopause, const char *storage) {
         return Fail("NOPAUSED control lost the Sound skeleton tag", j);
 
     const std::string fatal = StrField(j, "fatal");
+    const std::string inner = StrField(j, "lastScriptError");
     const std::string block = StrField(j, "fatalBlock");
     const long long line = IntField(j, "fatalLine");
-    // 同 NOWINLEFT：不写死行号，判“深度差异”。有 paused → 链推到 SE.tjs:221（A 实测）；
-    // 无 paused → 在 MainWindow.tjs 内部就死。这也解释了为何**不能**期望
-    // “复现 Member paused@585”：读缺失成员返回 void，分支被静默跳过后
-    // 链死得更浅，不会在 585 报错。
-    if (Has(j, "\"ok\":true"))
-        return Fail("NOPAUSED control unexpectedly completed the startup chain", j);
-    if (block.find("MainWindow.tjs") == std::string::npos)
-        return Fail("NOPAUSED control still reached the deep scripts — "
+    // M2e-32 修正（run 44479583807 实测）：evalStorage 补上后链能跑到底，
+    // 旧的「深度差异」判据失效——缺 paused 时 fatal 仍**精确**停在
+    // `Member "paused" does not exist` @ BGM.tjs:585（实测），只是链尾跑得更深。
+    // 旧注释说「读缺失成员返回 void、不会在 585 报错」是过时观察：
+    // `dic.paused = buf1.paused` 是对**类实例**读属性，缺了会真抛错并写进 fatal。
+    // ⇒ 改回直接验证变量唯一：fatal 必须精确复现 paused@BGM.tjs:585。
+    const bool reproduced =
+        (fatal.find("\"paused\"") != std::string::npos ||
+         inner.find("\"paused\"") != std::string::npos) &&
+        block.find("BGM.tjs") != std::string::npos && line == 585;
+    if (!reproduced)
+        return Fail("NOPAUSED control did not reproduce paused@BGM.tjs:585 — "
                     "paused would not be the variable under test", j);
 
-    std::printf("[m2h] NOPAUSED verdict: without paused the chain dies inside "
-                "MainWindow.tjs: fatal=\"%s\" @ %s:%lld (A with paused reaches SE.tjs)\n",
-                fatal.c_str(), block.c_str(), line);
+    std::printf("[m2h] NOPAUSED verdict: without paused the chain stops at \"%s\" @ %s:%lld "
+                "(exact paused@BGM.tjs:585 reproduction)\n", fatal.c_str(), block.c_str(), line);
     GalBoxTJS2Free(j);
     return 0;
 }

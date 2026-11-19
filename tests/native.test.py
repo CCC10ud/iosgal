@@ -1652,9 +1652,9 @@ ok("M2e-29 gap (paused) not cleared" in m2h_test and
    "BGM.tjs paused line" in m2h_test and
    "gapLine == 585" in m2h_test,
    "M2e-29：A 硬判据清掉 paused 且离开旧停点（精确行号 585）")
-ok("NOPAUSED control still reached the deep scripts" in m2h_test and
-   "NOPAUSED verdict: without paused the chain dies inside " in m2h_test,
-   "M2e-29：NOPAUSED 判据同为深度差异（不期望复现 paused@585 —— void 读不抛错）")
+ok("NOPAUSED control did not reproduce paused@BGM.tjs:585" in m2h_test and
+   "exact paused@BGM.tjs:585 reproduction" in m2h_test,
+   "M2e-29/32：NOPAUSED 判据改回精确复现 paused@585（run 44479583807 实测：链能跑通后深度判据失效）")
 ok("NOPAUSED fixture must have both paused members removed" in m2h_test and
    "NOPAUSED fixture lost unrelated Sound members" in m2h_test,
    "M2e-29：两处段级删除（M2E29A/M2E29B），两个音频类本体不许丢")
