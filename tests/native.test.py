@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把三十三个场景拆成独立进程跑（二十八个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把三十四个场景拆成独立进程跑（二十九个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1772,6 +1772,30 @@ ok("var visible = true;" in verifier,
    "M2e-33：出包核验器第 25 条要求 visible")
 ok("visible" in _closed_block,
    "M2e-33：XP3 场景的「已关闭缺口」清单加上了 visible")
+
+# ---- M2e-34：VideoOverlay 循环标志 loop（Movie.tjs:34）--------------------
+_gb_movie34 = open("native/KAG/src/system/GalBoxMovie.tjs", encoding="utf-8").read()
+_m34 = _gb_movie34.split("M2E34_BEGIN",1)[-1].split("M2E34_END",1)[0]
+ok("var loop = false;" in _m34,
+   "M2e-34：VideoOverlay 声明 loop（初值 false；裸标识符读写 ⇒ var 足够）")
+_mv34 = raw("native/KAG/src/original/system/Movie.tjs")
+ok(_mv34.split(b"\n")[33].strip().startswith(b"dic.loop = loop"),
+   "M2e-34：官方 Movie.tjs:34 是 dic.loop = loop（精确行号）")
+ok(b"loop = dic.loop;" in _mv34,
+   "M2e-34：loop 在 restore() 回写 ⇒ 实例成员")
+ok("M2e-34 gap (loop) not cleared" in m2h_test and
+   "Movie.tjs loop line" in m2h_test and
+   "gapLine == 34" in m2h_test,
+   "M2e-34：A 硬判据清掉 loop 且离开旧停点（精确行号 34）")
+ok("NOLOOP control did not reproduce the loop gap" in m2h_test and
+   "RunCaseNoLoop" in m2h_test,
+   "M2e-34：NOLOOP 用 fatal 精确复现判据")
+ok("M2H_NOLOOP" in test_sh and "M2E34_BEGIN" in test_sh,
+   "M2e-34：构建脚本生成 NOLOOP 夹具")
+ok("var loop = false;" in verifier,
+   "M2e-34：出包核验器第 26 条要求 loop")
+ok("loop" in _closed_block,
+   "M2e-34：XP3 场景的「已关闭缺口」清单加上了 loop")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

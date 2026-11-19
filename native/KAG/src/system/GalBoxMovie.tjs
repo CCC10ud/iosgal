@@ -38,6 +38,14 @@ class VideoOverlay
 	// （对比 M2e-30 的 pan 必须 property）。初值 true：图层默认可见。
 	var visible = true;
 	// M2E33_END
+	// M2E34_BEGIN —— NOLOOP 负向对照按此标记整段删除
+	// 官方 VideoOverlay 的循环播放标志 loop（true=循环，false=播完停）。
+	// A 场景实测停点：`Member "loop" does not exist @ Movie.tjs:34`
+	// （store() 里 `dic.loop = loop;`，65 行 restore() 写回 `loop = dic.loop;`，
+	// 264 行 restore 再读 xml）。裸标识符读写、无 super ⇒ 普通实例成员 ⇒ var。
+	// 初值 false：默认播完即停。
+	var loop = false;
+	// M2E34_END
 	function VideoOverlay(o = void)
 	{
 		owner = o;
