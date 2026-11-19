@@ -30,6 +30,14 @@ class VideoOverlay
 	// 初值取 vomLayer(1)：Movie 默认把影片画在图层上，overlay 是显式选项。
 	var mode = vomLayer;
 	// M2E31_END
+	// M2E33_BEGIN —— NOVISIBLE 负向对照按此标记整段删除
+	// 官方 VideoOverlay 的可见性标志 visible（影片图层是否显示，true/false）。
+	// A 场景实测停点：`Member "visible" does not exist @ Movie.tjs:33`
+	// （store() 里 `dic.visible = visible;`，253 行 restore() 里再写回）。
+	// 官方脚本全是裸标识符读写（无 this./super.）⇒ 普通实例成员 ⇒ var 即可
+	// （对比 M2e-30 的 pan 必须 property）。初值 true：图层默认可见。
+	var visible = true;
+	// M2E33_END
 	function VideoOverlay(o = void)
 	{
 		owner = o;

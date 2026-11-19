@@ -547,8 +547,17 @@ static int RunCaseA(const char *game, const char *storage) {
     if (!Has(j, "\"evalStorageEnabled\":true"))
         return Fail("M2e-32: Scripts.evalStorage was not registered", j);
 
+    // M2e-33 硬判据：run 44480536205 的下一缺口是 Movie.tjs:33
+    // `dic.visible = visible;`（VideoOverlay 的可见标志，普通实例成员）。
+    // 独立负向对照：NOVISIBLE -> 必须复现 visible@Movie.tjs:33。
+    if (fatal.find("\"visible\"") != std::string::npos ||
+        inner.find("\"visible\"") != std::string::npos)
+        return Fail("M2e-33 gap (visible) not cleared", j);
+    if (gapBlock.find("Movie.tjs") != std::string::npos && gapLine == 33)
+        return Fail("the chain is still stuck at the Movie.tjs visible line", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
-    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-32)\n",
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-33)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
 
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
@@ -1946,6 +1955,57 @@ static int RunCaseNoMode(const char *nomode, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOVISIBLE：VideoOverlay 缺可见标志 visible 的负向对照（M2e-33）
+// 段级删除（GalBoxMovie.tjs 的 M2E33 段）。判据：链没跑到后续脚本，
+// fatal 必须精确复现 `Member "visible" does not exist` @ Movie.tjs:33 ——
+// M2e-32 已证实 fatal 记的是第一次捕获的异常，链跑通后仍精确保留。
+static int RunCaseNoVisible(const char *novisible, const char *storage) {
+    if (!Exists(std::string(novisible) + "/system/Config.tjs"))
+        return Fail("NOVISIBLE fixture missing Config.tjs", NULL);
+    const std::string mvf = std::string(novisible) + "/system/GalBoxMovie.tjs";
+    if (!Exists(mvf))
+        return Fail("NOVISIBLE fixture must keep GalBoxMovie.tjs", NULL);
+    {
+        std::ifstream f(mvf.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E33_BEGIN") != std::string::npos)
+            return Fail("NOVISIBLE fixture must have visible removed", NULL);
+        if (body.find("var visible = true;") != std::string::npos)
+            return Fail("NOVISIBLE fixture still declares visible", NULL);
+        if (body.find("class VideoOverlay") == std::string::npos)
+            return Fail("NOVISIBLE fixture lost class VideoOverlay", NULL);
+        // 只有 visible 缺失，mode 必须还在 —— 保证变量唯一。
+        if (body.find("var mode = vomLayer;") == std::string::npos)
+            return Fail("NOVISIBLE fixture lost mode too (variable not unique)", NULL);
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(novisible, storage, arc);
+    if (!j) return Fail("cannot run the NOVISIBLE control", NULL);
+    DumpChain("NOVISIBLE", j);
+
+    if (StrField(j, "shim").find("M2E27_MOVIE_SKELETON") == std::string::npos)
+        return Fail("NOVISIBLE control lost the Movie skeleton tag", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string block = StrField(j, "fatalBlock");
+    const long long line = IntField(j, "fatalLine");
+    if (Has(j, "\"ok\":true"))
+        return Fail("NOVISIBLE control unexpectedly completed the startup chain", j);
+    // 精确复现 visible@Movie.tjs:33（fatal 记首次捕获的异常，链跑通也不丢）。
+    if (fatal.find("\"visible\"") == std::string::npos)
+        return Fail("NOVISIBLE control did not reproduce the visible gap — "
+                    "visible would not be the variable under test", j);
+    if (block.find("Movie.tjs") == std::string::npos)
+        return Fail("NOVISIBLE control's visible gap is not in Movie.tjs", j);
+
+    std::printf("[m2h] NOVISIBLE verdict: without visible the chain stops at \"%s\" @ %s:%lld "
+                "(A with visible advances past Movie.tjs:33)\n", fatal.c_str(), block.c_str(), line);
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // ---- 场景 NOEVALSTORAGE：Scripts.evalStorage 原生方法缺失的负向对照（M2e-32）
 // 与前面所有 NOxxx 不同：evalStorage 是 C++ 原生方法，不在 TJS 骨架文件里，
 // 没法用 drop_marked/rm 夹具复现。改用宿主开关在**注册时**不挂载该方法 ——
@@ -2118,7 +2178,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                                "\"showParentHint\"", "\"cursorX\"",
                                "\"MIDISoundBuffer\"", "\"WaveSoundBuffer\"",
                                "\"VideoOverlay\"", "\"left\"", "\"paused\"",
-                               "\"pan\"", "\"mode\"", "evalStorage"}) {
+                               "\"pan\"", "\"mode\"", "evalStorage", "\"visible\""}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -2131,7 +2191,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                 "setImageSize/setSizeToImageSize/face/fillRect/cursor/name/"
                 "focusable/setSize/imageModified/colorRect/showParentHint/"
                 "cursorX/MIDISoundBuffer/WaveSoundBuffer/VideoOverlay/left/paused/pan/mode/"
-                "evalStorage all cleared in the device container)\n", scripts);
+                "evalStorage/visible all cleared in the device container)\n", scripts);
     GalBoxTJS2Free(j);
     return 0;
 }
@@ -2171,6 +2231,7 @@ int main(int argc, char **argv) {
     const char *nopause  = (argc > 31) ? argv[31] : "";
     const char *nopan    = (argc > 32) ? argv[32] : "";
     const char *nomode   = (argc > 33) ? argv[33] : "";
+    const char *novisible = (argc > 34) ? argv[34] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -2328,6 +2389,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOVISIBLE") == 0) {
+        if (RunCaseNoVisible(novisible, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -2345,6 +2411,6 @@ int main(int argc, char **argv) {
                 "NOFILLRECT / NOCURSOR / NONAME / NOFOCUSABLE / NOSIZE / "
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
                 "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / NOWINLEFT / NOPAUSED / "
-                "NOPAN / NOMODE / NOEVALSTORAGE / XP3 / LEAK / LEAK2)\n", which);
+                "NOPAN / NOMODE / NOEVALSTORAGE / NOVISIBLE / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把三十二个场景拆成独立进程跑（二十七个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把三十三个场景拆成独立进程跑（二十八个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1748,6 +1748,30 @@ ok("NOEVALSTORAGE" in test_sh,
    "M2e-32：构建脚本场景循环加入 NOEVALSTORAGE")
 ok("evalStorage" in _closed_block,
    "M2e-32：XP3 场景的「已关闭缺口」清单加上了 evalStorage")
+
+# ---- M2e-33：VideoOverlay 可见标志 visible（Movie.tjs:33）------------------
+_gb_movie33 = open("native/KAG/src/system/GalBoxMovie.tjs", encoding="utf-8").read()
+_m33 = _gb_movie33.split("M2E33_BEGIN",1)[-1].split("M2E33_END",1)[0]
+ok("var visible = true;" in _m33,
+   "M2e-33：VideoOverlay 声明 visible（初值 true；裸标识符读写 ⇒ var 足够）")
+_mv33 = raw("native/KAG/src/original/system/Movie.tjs")
+ok(_mv33.split(b"\n")[32].strip().startswith(b"dic.visible = visible"),
+   "M2e-33：官方 Movie.tjs:33 是 dic.visible = visible（精确行号）")
+ok(b"visible = +elm.visible" in _mv33,
+   "M2e-33：visible 在 restore() 回写 ⇒ 实例成员")
+ok("M2e-33 gap (visible) not cleared" in m2h_test and
+   "Movie.tjs visible line" in m2h_test and
+   "gapLine == 33" in m2h_test,
+   "M2e-33：A 硬判据清掉 visible 且离开旧停点（精确行号 33）")
+ok("NOVISIBLE control did not reproduce the visible gap" in m2h_test and
+   "RunCaseNoVisible" in m2h_test,
+   "M2e-33：NOVISIBLE 用 fatal 精确复现判据（fatal 记首次捕获异常）")
+ok("M2H_NOVISIBLE" in test_sh and "M2E33_BEGIN" in test_sh,
+   "M2e-33：构建脚本生成 NOVISIBLE 夹具")
+ok("var visible = true;" in verifier,
+   "M2e-33：出包核验器第 25 条要求 visible")
+ok("visible" in _closed_block,
+   "M2e-33：XP3 场景的「已关闭缺口」清单加上了 visible")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
