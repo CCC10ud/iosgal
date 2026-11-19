@@ -46,6 +46,14 @@ class VideoOverlay
 	// 初值 false：默认播完即停。
 	var loop = false;
 	// M2E34_END
+	// M2E35_BEGIN —— NOFRAME 负向对照按此标记整段删除
+	// 官方 VideoOverlay 的当前播放帧号 frame（帧单位）。
+	// A 场景实测停点：`Member "frame" does not exist @ Movie.tjs:35`
+	// （store() 里 `dic.frame = frame;`，89 行 `frame = dic.frame;`、265 行
+	// restore 再读）。裸标识符读写、无 super ⇒ 普通实例成员 ⇒ var。
+	// 初值 0：88 行 `if(dic.frame >= 0)` 表示负值才是「不设置帧」。
+	var frame = 0;
+	// M2E35_END
 	function VideoOverlay(o = void)
 	{
 		owner = o;

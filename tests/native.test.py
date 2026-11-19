@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把三十四个场景拆成独立进程跑（二十九个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把三十五个场景拆成独立进程跑（三十个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1796,6 +1796,30 @@ ok("var loop = false;" in verifier,
    "M2e-34：出包核验器第 26 条要求 loop")
 ok("loop" in _closed_block,
    "M2e-34：XP3 场景的「已关闭缺口」清单加上了 loop")
+
+# ---- M2e-35：VideoOverlay 当前帧号 frame（Movie.tjs:35）--------------------
+_gb_movie35 = open("native/KAG/src/system/GalBoxMovie.tjs", encoding="utf-8").read()
+_m35 = _gb_movie35.split("M2E35_BEGIN",1)[-1].split("M2E35_END",1)[0]
+ok("var frame = 0;" in _m35,
+   "M2e-35：VideoOverlay 声明 frame（初值 0；裸标识符读写 ⇒ var 足够）")
+_mv35 = raw("native/KAG/src/original/system/Movie.tjs")
+ok(_mv35.split(b"\n")[34].strip().startswith(b"dic.frame = frame"),
+   "M2e-35：官方 Movie.tjs:35 是 dic.frame = frame（精确行号）")
+ok(b"frame = dic.frame;" in _mv35,
+   "M2e-35：frame 在 restore() 回写 ⇒ 实例成员")
+ok("M2e-35 gap (frame) not cleared" in m2h_test and
+   "Movie.tjs frame line" in m2h_test and
+   "gapLine == 35" in m2h_test,
+   "M2e-35：A 硬判据清掉 frame 且离开旧停点（精确行号 35）")
+ok("NOFRAME control did not reproduce the frame gap" in m2h_test and
+   "RunCaseNoFrame" in m2h_test,
+   "M2e-35：NOFRAME 用 fatal 精确复现判据")
+ok("M2H_NOFRAME" in test_sh and "M2E35_BEGIN" in test_sh,
+   "M2e-35：构建脚本生成 NOFRAME 夹具")
+ok("var frame = 0;" in verifier,
+   "M2e-35：出包核验器第 27 条要求 frame")
+ok("frame" in _closed_block,
+   "M2e-35：XP3 场景的「已关闭缺口」清单加上了 frame")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
