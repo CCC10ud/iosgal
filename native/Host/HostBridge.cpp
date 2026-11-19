@@ -228,6 +228,12 @@ std::string gLastScriptError;
 // 「调用了但内层抛异常」与「压根没调用」无法区分（run #24 踩过）。
 unsigned gExecStorageAttempts = 0;
 
+// M2e-32：Scripts.evalStorage 的注册开关与调用计数。声明在 MakeExecResult
+// 之前 —— 诊断 JSON（MakeExecResult）要读它们，定义处在本文件下方 Scripts
+// 类声明区。默认 enabled=true（app 侧恒带该方法），负向对照用 C API 关掉。
+bool gEvalStorageEnabled = true;
+unsigned gEvalStorageCalls = 0;
+
 // M2e：脚本读取轨迹。只记「流已成功打开且正文已读到」的短名；
 // execStorage 的存在性检查失败不会写进来，因此 trace 里出现 KAGLayer.tjs
 // 就等于「文件真在包里、真被解码了」，而不是「碰巧名字对上了」。
@@ -411,11 +417,10 @@ unsigned gExecStorageCalls = 0;      // 成功执行完的次数（gExecStorageA
 // `システム変数データを読み込めないか、あるいは...` @ MainWindow.tjs:1045。
 //
 // 负向对照的「变量唯一」铁律：不能靠删 TJS 文件（这是 C++ 原生方法），
-// 因此用一个进程级开关在**注册时**决定是否挂载 evalStorage。关掉时方法
-// 真的不在 Scripts 类上，TJS 引擎会真抛 Member does not exist —— 与历史
-// 缺口一字不差。默认 true（出包/app 侧永远带这个方法）。
-bool gEvalStorageEnabled = true;
-unsigned gEvalStorageCalls = 0;      // evalStorage 成功求值返回的次数
+// 因此用一个进程级开关 gEvalStorageEnabled（声明在本文件诊断状态区）在
+// **注册时**决定是否挂载 evalStorage。关掉时方法真的不在 Scripts 类上，
+// TJS 引擎会真抛 Member does not exist —— 与历史缺口一字不差。
+// 默认 true（出包/app 侧永远带这个方法）。
 
 // 测试专用开关：负向对照场景（独立进程）在 ExecScript 前调用它关掉方法注册。
 // app 侧不调用，因此设备包里 evalStorage 恒在。
