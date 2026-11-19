@@ -67,6 +67,12 @@ class VideoOverlay
 	// 裸标识符读、无 super 访问自身 ⇒ 普通实例成员 ⇒ var。初值 0。
 	var segmentLoopStartFrame = 0;
 	// M2E37_END
+	// M2E38_BEGIN —— NOSEGEND 负向对照按此标记整段删除
+	// 官方 VideoOverlay 的分段循环结束帧 segmentLoopEndFrame（store() 45 行
+	// 存，99 行 super.setSegmentLoop(start, end) 读回）。裸标识符读、无 super
+	// ⇒ 普通实例成员 ⇒ var。初值 0（与 startFrame 对称）。
+	var segmentLoopEndFrame = 0;
+	// M2E38_END
 	function VideoOverlay(o = void)
 	{
 		owner = o;

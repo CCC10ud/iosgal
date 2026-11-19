@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把三十七个场景拆成独立进程跑（三十二个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把三十八个场景拆成独立进程跑（三十三个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1868,6 +1868,30 @@ ok("var segmentLoopStartFrame = 0;" in verifier,
    "M2e-37：出包核验器第 29 条要求 segmentLoopStartFrame")
 ok("segmentLoopStartFrame" in _closed_block,
    "M2e-37：XP3 场景的「已关闭缺口」清单加上了 segmentLoopStartFrame")
+
+# ---- M2e-38：VideoOverlay 分段循环终点 segmentLoopEndFrame（Movie.tjs:45）-
+_gb_movie38 = open("native/KAG/src/system/GalBoxMovie.tjs", encoding="utf-8").read()
+_m38 = _gb_movie38.split("M2E38_BEGIN",1)[-1].split("M2E38_END",1)[0]
+ok("var segmentLoopEndFrame = 0;" in _m38,
+   "M2e-38：VideoOverlay 声明 segmentLoopEndFrame（初值 0；裸标识符读 ⇒ var 足够）")
+_mv38 = raw("native/KAG/src/original/system/Movie.tjs")
+ok(b"dic.segmentLoopEndFrame = segmentLoopEndFrame" in _mv38.split(b"\n")[44],
+   "M2e-38：官方 Movie.tjs:45 是 dic.segmentLoopEndFrame = segmentLoopEndFrame（精确行号）")
+ok(b"dic.segmentLoopStartFrame, dic.segmentLoopEndFrame" in _mv38,
+   "M2e-38：segmentLoopEndFrame 在 restore() 经 dic 读回 ⇒ 实例成员")
+ok("M2e-38 gap (segmentLoopEndFrame) not cleared" in m2h_test and
+   "Movie.tjs segmentLoopEndFrame line" in m2h_test and
+   "gapLine == 45" in m2h_test,
+   "M2e-38：A 硬判据清掉 segmentLoopEndFrame 且离开旧停点（精确行号 45）")
+ok("NOSEGEND control did not reproduce the segmentLoopEndFrame gap" in m2h_test and
+   "RunCaseNoSegEnd" in m2h_test,
+   "M2e-38：NOSEGEND 用 fatal 精确复现判据")
+ok("M2H_NOSEGEND" in test_sh and "M2E38_BEGIN" in test_sh,
+   "M2e-38：构建脚本生成 NOSEGEND 夹具")
+ok("var segmentLoopEndFrame = 0;" in verifier,
+   "M2e-38：出包核验器第 30 条要求 segmentLoopEndFrame")
+ok("segmentLoopEndFrame" in _closed_block,
+   "M2e-38：XP3 场景的「已关闭缺口」清单加上了 segmentLoopEndFrame")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
