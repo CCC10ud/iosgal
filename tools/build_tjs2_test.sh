@@ -1163,8 +1163,9 @@ PYEOF
           if ! echo "$OUTPUT_M2H" | grep -q "M2H_RESULT=OK"; then
             echo "[tjs2] 场景 $M2H_CASE 未通过"
             # M2e-32 诊断开关：一次跑完全部场景收集实测停点（判据校准用）。
-            # 正常 CI 不设这个变量，仍在第一个失败处退出。
-            if [ "${M2H_COLLECT_ALL:-1}" = "1" ]; then
+            # 默认关闭 —— 正常 CI 在第一个失败处退出；需要一次性收集所有
+            # 负向对照的实测停点时，用 M2H_COLLECT_ALL=1 bash tools/... 调用。
+            if [ "${M2H_COLLECT_ALL:-0}" = "1" ]; then
               M2H_FAILED="$M2H_FAILED $M2H_CASE"
             else
               exit 1
