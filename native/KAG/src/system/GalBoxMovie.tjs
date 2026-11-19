@@ -54,6 +54,13 @@ class VideoOverlay
 	// 初值 0：88 行 `if(dic.frame >= 0)` 表示负值才是「不设置帧」。
 	var frame = 0;
 	// M2E35_END
+	// M2E36_BEGIN —— NOAUDIOSTREAM 负向对照按此标记整段删除
+	// 官方 VideoOverlay 的音频流数量 numberOfAudioStream（store() 37 行与
+	// restore() 91 行都只做 `if(numberOfAudioStream > 0)` 判断）。裸标识符读、
+	// 无 super ⇒ 普通实例成员 ⇒ var。初值 0：默认无音频流，天然跳过 38-40 行
+	// 的 audioBalance/audioVolume/enabledAudioStream（那几个等实测逼出来再补）。
+	var numberOfAudioStream = 0;
+	// M2E36_END
 	function VideoOverlay(o = void)
 	{
 		owner = o;

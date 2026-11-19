@@ -268,6 +268,11 @@ def main(argv):
     if b"var frame = 0;" not in mov:
         return fail("%s 里没有 var frame = 0："
                     "设备端会在 Movie.tjs:35 断链" % mov_name)
+    # 第 28 条（M2e-36）：音频流数量 numberOfAudioStream（Movie.tjs:37
+    # `if(numberOfAudioStream > 0)`）。裸标识符读 ⇒ 普通实例成员，var 即可。
+    if b"var numberOfAudioStream = 0;" not in mov:
+        return fail("%s 里没有 var numberOfAudioStream = 0："
+                    "设备端会在 Movie.tjs:37 断链" % mov_name)
 
     # 第 21 条（M2e-28）：窗口左上角坐标。MainWindow.tjs:438 的
     # `this.width + this.left`（居中修正）要读 Window.left；439 行还会回写。
@@ -301,7 +306,7 @@ def main(argv):
           "Layer 带 imageModified(M2e-21) / Layer 带 colorRect(M2e-22) / "
           "Layer 带 showParentHint(M2e-23) / Layer 带 cursorX+cursorY(M2e-24) / "
           "Sound 骨架 MIDISoundBuffer(M2e-25) / WaveSoundBuffer(M2e-26) / "
-          "Movie 骨架 VideoOverlay+mode+visible+loop+frame(M2e-27/31/33/34/35) / Window 带 left+top(M2e-28) / "
+          "Movie 骨架 VideoOverlay+mode+visible+loop+frame+nAudio(M2e-27/31/33/34/35/36) / Window 带 left+top(M2e-28) / "
           "Sound 带 paused×2(M2e-29) / Wave 带 pan property(M2e-30) / "
           "Scripts.evalStorage 原生方法(M2e-32，二进制内)"
           % (parsed["count"], total, init_bytes, len(SKELETONS)))

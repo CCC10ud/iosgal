@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把三十五个场景拆成独立进程跑（三十个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把三十六个场景拆成独立进程跑（三十一个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1820,6 +1820,30 @@ ok("var frame = 0;" in verifier,
    "M2e-35：出包核验器第 27 条要求 frame")
 ok("frame" in _closed_block,
    "M2e-35：XP3 场景的「已关闭缺口」清单加上了 frame")
+
+# ---- M2e-36：VideoOverlay 音频流数 numberOfAudioStream（Movie.tjs:37）-----
+_gb_movie36 = open("native/KAG/src/system/GalBoxMovie.tjs", encoding="utf-8").read()
+_m36 = _gb_movie36.split("M2E36_BEGIN",1)[-1].split("M2E36_END",1)[0]
+ok("var numberOfAudioStream = 0;" in _m36,
+   "M2e-36：VideoOverlay 声明 numberOfAudioStream（初值 0；裸标识符读 ⇒ var 足够）")
+_mv36 = raw("native/KAG/src/original/system/Movie.tjs")
+ok(b"if( numberOfAudioStream > 0 )" in _mv36,
+   "M2e-36：官方 Movie.tjs:37 是 if(numberOfAudioStream > 0)（精确文本）")
+ok(_mv36.count(b"if( numberOfAudioStream > 0 )") == 2,
+   "M2e-36：numberOfAudioStream 在 store/restore 两处读 ⇒ 实例成员")
+ok("M2e-36 gap (numberOfAudioStream) not cleared" in m2h_test and
+   "Movie.tjs numberOfAudioStream line" in m2h_test and
+   "gapLine == 37" in m2h_test,
+   "M2e-36：A 硬判据清掉 numberOfAudioStream 且离开旧停点（精确行号 37）")
+ok("NOAUDIOSTREAM control did not reproduce the numberOfAudioStream gap" in m2h_test and
+   "RunCaseNoAudioStream" in m2h_test,
+   "M2e-36：NOAUDIOSTREAM 用 fatal 精确复现判据")
+ok("M2H_NOAUDIO" in test_sh and "M2E36_BEGIN" in test_sh,
+   "M2e-36：构建脚本生成 NOAUDIOSTREAM 夹具")
+ok("var numberOfAudioStream = 0;" in verifier,
+   "M2e-36：出包核验器第 28 条要求 numberOfAudioStream")
+ok("numberOfAudioStream" in _closed_block,
+   "M2e-36：XP3 场景的「已关闭缺口」清单加上了 numberOfAudioStream")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
