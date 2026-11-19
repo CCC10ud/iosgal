@@ -601,8 +601,17 @@ static int RunCaseA(const char *game, const char *storage) {
     if (gapBlock.find("Movie.tjs") != std::string::npos && gapLine == 45)
         return Fail("the chain is still stuck at the Movie.tjs segmentLoopEndFrame line", j);
 
+    // M2e-39 硬判据：run 44531943383 的下一缺口是 Movie.tjs:46
+    // `dic.periodEventFrame = periodEventFrame;`（周期事件帧）。
+    // 独立负向对照：NOPERIOD -> 必须复现 periodEventFrame@Movie.tjs:46。
+    if (fatal.find("periodEventFrame") != std::string::npos ||
+        inner.find("periodEventFrame") != std::string::npos)
+        return Fail("M2e-39 gap (periodEventFrame) not cleared", j);
+    if (gapBlock.find("Movie.tjs") != std::string::npos && gapLine == 46)
+        return Fail("the chain is still stuck at the Movie.tjs periodEventFrame line", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
-    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-38)\n",
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-39)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
 
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
@@ -2306,6 +2315,56 @@ static int RunCaseNoSegEnd(const char *nosegend, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOPERIOD：VideoOverlay 缺周期事件帧 periodEventFrame 的负向对照（M2e-39）
+// 段级删除（GalBoxMovie.tjs 的 M2E39 段）。判据：fatal 必须精确复现
+// `Member "periodEventFrame" does not exist` @ Movie.tjs:46。
+static int RunCaseNoPeriod(const char *noperiod, const char *storage) {
+    if (!Exists(std::string(noperiod) + "/system/Config.tjs"))
+        return Fail("NOPERIOD fixture missing Config.tjs", NULL);
+    const std::string mvf = std::string(noperiod) + "/system/GalBoxMovie.tjs";
+    if (!Exists(mvf))
+        return Fail("NOPERIOD fixture must keep GalBoxMovie.tjs", NULL);
+    {
+        std::ifstream f(mvf.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E39_BEGIN") != std::string::npos)
+            return Fail("NOPERIOD fixture must have periodEventFrame removed", NULL);
+        if (body.find("var periodEventFrame = 0;") != std::string::npos)
+            return Fail("NOPERIOD fixture still declares periodEventFrame", NULL);
+        if (body.find("class VideoOverlay") == std::string::npos)
+            return Fail("NOPERIOD fixture lost class VideoOverlay", NULL);
+        // 只有 periodEventFrame 缺失，segmentLoopEndFrame 必须还在 —— 变量唯一。
+        if (body.find("var segmentLoopEndFrame = 0;") == std::string::npos)
+            return Fail("NOPERIOD fixture lost segmentLoopEndFrame too (variable not unique)", NULL);
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(noperiod, storage, arc);
+    if (!j) return Fail("cannot run the NOPERIOD control", NULL);
+    DumpChain("NOPERIOD", j);
+
+    if (StrField(j, "shim").find("M2E27_MOVIE_SKELETON") == std::string::npos)
+        return Fail("NOPERIOD control lost the Movie skeleton tag", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string block = StrField(j, "fatalBlock");
+    const long long line = IntField(j, "fatalLine");
+    if (Has(j, "\"ok\":true"))
+        return Fail("NOPERIOD control unexpectedly completed the startup chain", j);
+    if (fatal.find("periodEventFrame") == std::string::npos)
+        return Fail("NOPERIOD control did not reproduce the periodEventFrame gap — "
+                    "periodEventFrame would not be the variable under test", j);
+    if (block.find("Movie.tjs") == std::string::npos)
+        return Fail("NOPERIOD control's gap is not in Movie.tjs", j);
+
+    std::printf("[m2h] NOPERIOD verdict: without periodEventFrame the chain stops at \"%s\" @ %s:%lld "
+                "(A with periodEventFrame advances past Movie.tjs:46)\n",
+                fatal.c_str(), block.c_str(), line);
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // ---- 场景 NOEVALSTORAGE：Scripts.evalStorage 原生方法缺失的负向对照（M2e-32）
 // 与前面所有 NOxxx 不同：evalStorage 是 C++ 原生方法，不在 TJS 骨架文件里，
 // 没法用 drop_marked/rm 夹具复现。改用宿主开关在**注册时**不挂载该方法 ——
@@ -2480,7 +2539,8 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                                "\"VideoOverlay\"", "\"left\"", "\"paused\"",
                                "\"pan\"", "\"mode\"", "evalStorage", "\"visible\"",
                                "\"loop\"", "\"frame\"", "numberOfAudioStream",
-                               "segmentLoopStartFrame", "segmentLoopEndFrame"}) {
+                               "segmentLoopStartFrame", "segmentLoopEndFrame",
+                               "periodEventFrame"}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -2494,7 +2554,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                 "focusable/setSize/imageModified/colorRect/showParentHint/"
                 "cursorX/MIDISoundBuffer/WaveSoundBuffer/VideoOverlay/left/paused/pan/mode/"
                 "evalStorage/visible/loop/frame/numberOfAudioStream/segmentLoopStartFrame/"
-                "segmentLoopEndFrame all cleared in the device container)\n", scripts);
+                "segmentLoopEndFrame/periodEventFrame all cleared in the device container)\n", scripts);
     GalBoxTJS2Free(j);
     return 0;
 }
@@ -2540,6 +2600,7 @@ int main(int argc, char **argv) {
     const char *noaudio   = (argc > 37) ? argv[37] : "";
     const char *noseg     = (argc > 38) ? argv[38] : "";
     const char *nosegend  = (argc > 39) ? argv[39] : "";
+    const char *noperiod  = (argc > 40) ? argv[40] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -2727,6 +2788,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOPERIOD") == 0) {
+        if (RunCaseNoPeriod(noperiod, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -2745,6 +2811,6 @@ int main(int argc, char **argv) {
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
                 "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / NOWINLEFT / NOPAUSED / "
                 "NOPAN / NOMODE / NOEVALSTORAGE / NOVISIBLE / NOLOOP / NOFRAME / "
-                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / XP3 / LEAK / LEAK2)\n", which);
+                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

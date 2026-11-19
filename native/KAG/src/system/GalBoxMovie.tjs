@@ -73,6 +73,13 @@ class VideoOverlay
 	// ⇒ 普通实例成员 ⇒ var。初值 0（与 startFrame 对称）。
 	var segmentLoopEndFrame = 0;
 	// M2E38_END
+	// M2E39_BEGIN —— NOPERIOD 负向对照按此标记整段删除
+	// 官方 VideoOverlay 的周期事件帧 periodEventFrame（store() 46 行存，
+	// restore() 87 行 `periodEventFrame = dic.periodEventFrame` 回写；注释要求
+	// 此设定必须在 frame 之前）。裸标识符读、无 super ⇒ 普通实例成员 ⇒ var。
+	// 初值 0（与 frame 对称，负值是「不设置」的哨兵）。
+	var periodEventFrame = 0;
+	// M2E39_END
 	function VideoOverlay(o = void)
 	{
 		owner = o;
