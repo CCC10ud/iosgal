@@ -583,8 +583,17 @@ static int RunCaseA(const char *game, const char *storage) {
     if (gapBlock.find("Movie.tjs") != std::string::npos && gapLine == 37)
         return Fail("the chain is still stuck at the Movie.tjs numberOfAudioStream line", j);
 
+    // M2e-37 硬判据：run 44526837834 的下一缺口是 Movie.tjs:44
+    // `dic.segmentLoopStartFrame = segmentLoopStartFrame;`（分段循环起始帧）。
+    // 独立负向对照：NOSEGSTART -> 必须复现 segmentLoopStartFrame@Movie.tjs:44。
+    if (fatal.find("segmentLoopStartFrame") != std::string::npos ||
+        inner.find("segmentLoopStartFrame") != std::string::npos)
+        return Fail("M2e-37 gap (segmentLoopStartFrame) not cleared", j);
+    if (gapBlock.find("Movie.tjs") != std::string::npos && gapLine == 44)
+        return Fail("the chain is still stuck at the Movie.tjs segmentLoopStartFrame line", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
-    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-36)\n",
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-37)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
 
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
@@ -2188,6 +2197,56 @@ static int RunCaseNoAudioStream(const char *noaudio, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOSEGSTART：VideoOverlay 缺分段循环起始帧 segmentLoopStartFrame 的负向对照（M2e-37）
+// 段级删除（GalBoxMovie.tjs 的 M2E37 段）。判据：fatal 必须精确复现
+// `Member "segmentLoopStartFrame" does not exist` @ Movie.tjs:44。
+static int RunCaseNoSegStart(const char *noseg, const char *storage) {
+    if (!Exists(std::string(noseg) + "/system/Config.tjs"))
+        return Fail("NOSEGSTART fixture missing Config.tjs", NULL);
+    const std::string mvf = std::string(noseg) + "/system/GalBoxMovie.tjs";
+    if (!Exists(mvf))
+        return Fail("NOSEGSTART fixture must keep GalBoxMovie.tjs", NULL);
+    {
+        std::ifstream f(mvf.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E37_BEGIN") != std::string::npos)
+            return Fail("NOSEGSTART fixture must have segmentLoopStartFrame removed", NULL);
+        if (body.find("var segmentLoopStartFrame = 0;") != std::string::npos)
+            return Fail("NOSEGSTART fixture still declares segmentLoopStartFrame", NULL);
+        if (body.find("class VideoOverlay") == std::string::npos)
+            return Fail("NOSEGSTART fixture lost class VideoOverlay", NULL);
+        // 只有 segmentLoopStartFrame 缺失，numberOfAudioStream 必须还在 —— 变量唯一。
+        if (body.find("var numberOfAudioStream = 0;") == std::string::npos)
+            return Fail("NOSEGSTART fixture lost numberOfAudioStream too (variable not unique)", NULL);
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(noseg, storage, arc);
+    if (!j) return Fail("cannot run the NOSEGSTART control", NULL);
+    DumpChain("NOSEGSTART", j);
+
+    if (StrField(j, "shim").find("M2E27_MOVIE_SKELETON") == std::string::npos)
+        return Fail("NOSEGSTART control lost the Movie skeleton tag", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string block = StrField(j, "fatalBlock");
+    const long long line = IntField(j, "fatalLine");
+    if (Has(j, "\"ok\":true"))
+        return Fail("NOSEGSTART control unexpectedly completed the startup chain", j);
+    if (fatal.find("segmentLoopStartFrame") == std::string::npos)
+        return Fail("NOSEGSTART control did not reproduce the segmentLoopStartFrame gap — "
+                    "segmentLoopStartFrame would not be the variable under test", j);
+    if (block.find("Movie.tjs") == std::string::npos)
+        return Fail("NOSEGSTART control's gap is not in Movie.tjs", j);
+
+    std::printf("[m2h] NOSEGSTART verdict: without segmentLoopStartFrame the chain stops at \"%s\" @ %s:%lld "
+                "(A with segmentLoopStartFrame advances past Movie.tjs:44)\n",
+                fatal.c_str(), block.c_str(), line);
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // ---- 场景 NOEVALSTORAGE：Scripts.evalStorage 原生方法缺失的负向对照（M2e-32）
 // 与前面所有 NOxxx 不同：evalStorage 是 C++ 原生方法，不在 TJS 骨架文件里，
 // 没法用 drop_marked/rm 夹具复现。改用宿主开关在**注册时**不挂载该方法 ——
@@ -2361,7 +2420,8 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                                "\"MIDISoundBuffer\"", "\"WaveSoundBuffer\"",
                                "\"VideoOverlay\"", "\"left\"", "\"paused\"",
                                "\"pan\"", "\"mode\"", "evalStorage", "\"visible\"",
-                               "\"loop\"", "\"frame\"", "numberOfAudioStream"}) {
+                               "\"loop\"", "\"frame\"", "numberOfAudioStream",
+                               "segmentLoopStartFrame"}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -2374,7 +2434,8 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                 "setImageSize/setSizeToImageSize/face/fillRect/cursor/name/"
                 "focusable/setSize/imageModified/colorRect/showParentHint/"
                 "cursorX/MIDISoundBuffer/WaveSoundBuffer/VideoOverlay/left/paused/pan/mode/"
-                "evalStorage/visible/loop/frame/numberOfAudioStream all cleared in the device container)\n", scripts);
+                "evalStorage/visible/loop/frame/numberOfAudioStream/segmentLoopStartFrame "
+                "all cleared in the device container)\n", scripts);
     GalBoxTJS2Free(j);
     return 0;
 }
@@ -2418,6 +2479,7 @@ int main(int argc, char **argv) {
     const char *noloop    = (argc > 35) ? argv[35] : "";
     const char *noframe   = (argc > 36) ? argv[36] : "";
     const char *noaudio   = (argc > 37) ? argv[37] : "";
+    const char *noseg     = (argc > 38) ? argv[38] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -2595,6 +2657,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOSEGSTART") == 0) {
+        if (RunCaseNoSegStart(noseg, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -2613,6 +2680,6 @@ int main(int argc, char **argv) {
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
                 "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / NOWINLEFT / NOPAUSED / "
                 "NOPAN / NOMODE / NOEVALSTORAGE / NOVISIBLE / NOLOOP / NOFRAME / "
-                "NOAUDIOSTREAM / XP3 / LEAK / LEAK2)\n", which);
+                "NOAUDIOSTREAM / NOSEGSTART / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

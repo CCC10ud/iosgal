@@ -61,6 +61,12 @@ class VideoOverlay
 	// 的 audioBalance/audioVolume/enabledAudioStream（那几个等实测逼出来再补）。
 	var numberOfAudioStream = 0;
 	// M2E36_END
+	// M2E37_BEGIN —— NOSEGSTART 负向对照按此标记整段删除
+	// 官方 VideoOverlay 的分段循环起始帧 segmentLoopStartFrame（store() 44 行
+	// 存，99 行 super.setSegmentLoop(dic.segmentLoopStartFrame, ...) 读回）。
+	// 裸标识符读、无 super 访问自身 ⇒ 普通实例成员 ⇒ var。初值 0。
+	var segmentLoopStartFrame = 0;
+	// M2E37_END
 	function VideoOverlay(o = void)
 	{
 		owner = o;
