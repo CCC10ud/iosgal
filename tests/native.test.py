@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把三十个场景拆成独立进程跑（二十五个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把三十二个场景拆成独立进程跑（二十七个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1711,6 +1711,43 @@ ok("var mode = vomLayer;" in verifier,
    "M2e-31：出包核验器第 24 条要求 mode")
 ok('mode' in _closed_block,
    "M2e-31：XP3 场景的「已关闭缺口」清单加上了 mode")
+
+# ---- M2e-32：Scripts.evalStorage 原生方法（MainWindow.tjs:1032/1045）------
+# 与前面 10 轮不同：这是 C++ 原生方法缺口，不是 TJS 骨架成员。
+_mw32 = raw("native/KAG/src/original/system/MainWindow.tjs")
+ok(_mw32.split(b"\n")[1031].strip().startswith(b"sflags = Scripts.evalStorage(fn)"),
+   "M2e-32：官方 MainWindow.tjs:1032 是 sflags = Scripts.evalStorage(fn)（精确行号）")
+_mw32_text = _mw32.decode("cp932", errors="replace")
+ok(b"Scripts.evalStorage(fn)" in _mw32 and
+   "システム変数データを読み込めないか" in _mw32_text,
+   "M2e-32：evalStorage 调用被官方 catch 包成系统变量数据错误正文")
+# HostBridge.cpp：原生方法 + 条件注册 + 开关 + 诊断字段
+ok("TJS_BEGIN_NATIVE_METHOD_DECL(evalStorage)" in bridge_cpp and
+   "TJS_END_NATIVE_STATIC_METHOD_DECL(evalStorage)" in bridge_cpp,
+   "M2e-32：HostBridge 的 Scripts 类注册 evalStorage 原生方法")
+ok("gEvalStorageEnabled" in bridge_cpp and
+   "if (gEvalStorageEnabled)" in bridge_cpp,
+   "M2e-32：evalStorage 注册受进程级开关控制（负向对照的变量唯一）")
+ok("GalBoxTJS2SetEvalStorageEnabled" in bridge_cpp and
+   "GalBoxTJS2SetEvalStorageEnabled" in bridge_h,
+   "M2e-32：宿主 C API 开关在 .cpp 定义、.h 声明")
+ok("evalStorageEnabled" in bridge_cpp and "evalStorageCalls" in bridge_cpp,
+   "M2e-32：诊断 JSON 带 evalStorageEnabled / evalStorageCalls 字段")
+ok("EvalExpression(body.c_str()" in bridge_cpp,
+   "M2e-32：evalStorage 读 storage 正文后走 EvalExpression 求值返回（区别于 execStorage）")
+# A 判据 + 负向对照场景
+ok("M2e-32 gap (Scripts.evalStorage) not cleared" in m2h_test and
+   "MainWindow.tjs evalStorage line" in m2h_test and
+   '\\"evalStorageEnabled\\":true' in m2h_test,
+   "M2e-32：A 硬判据清掉 evalStorage 缺口且要求方法已注册")
+ok("NOEVALSTORAGE verdict: without the native evalStorage method" in m2h_test and
+   "RunCaseNoEvalStorage" in m2h_test and
+   '\\"evalStorageEnabled\\":false' in m2h_test,
+   "M2e-32：NOEVALSTORAGE 负向对照用宿主开关复现真实 Member 缺失")
+ok("NOEVALSTORAGE" in test_sh,
+   "M2e-32：构建脚本场景循环加入 NOEVALSTORAGE")
+ok("evalStorage" in _closed_block,
+   "M2e-32：XP3 场景的「已关闭缺口」清单加上了 evalStorage")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

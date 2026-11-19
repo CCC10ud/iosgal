@@ -331,6 +331,11 @@ std::string MakeExecResult(bool ok, const char *reason, const char *entry,
     s += ",\"hostReadDelta\":" + std::to_string(readDelta);
     s += ",\"execStorageCalls\":" + std::to_string(execCalls);
     s += ",\"execStorageAttempts\":" + std::to_string(gExecStorageAttempts);
+    // M2e-32：evalStorage 是否被注册 + 成功求值次数。负向对照关掉注册后
+    // enabled=false；正常路径 enabled=true 且 calls>=1（存档文件存在时）。
+    s += ",\"evalStorageEnabled\":"
+       + std::string(gEvalStorageEnabled ? "true" : "false");
+    s += ",\"evalStorageCalls\":" + std::to_string(gEvalStorageCalls);
     s += ",\"build\":\"" + std::string(kBuildTag) + "\"";
     // 这三个固定标记都会被编进 app 二进制，CI 用 strings 逐个硬断言。
     // 历史标记不能因为升级而被替换掉 —— 否则「M2a/M2b 能力是否还在包里」
@@ -397,6 +402,26 @@ std::string MakeExecResult(bool ok, const char *reason, const char *entry,
 tTJS *gActiveEngine = nullptr;
 // gLastScriptError 已上移到诊断状态区（MakeExecResult 要读它）。
 unsigned gExecStorageCalls = 0;      // 成功执行完的次数（gExecStorageAttempts 见上方）
+
+// M2e-32：`Scripts.evalStorage(fn)` 是官方读取「存档/系统变量数据」的原生
+// 入口（MainWindow.tjs:1020/1032/1957/2130）：读一个 storage 的正文，当
+// TJS 表达式求值后返回 Dictionary。与 execStorage 的区别是后者只执行脚本、
+// 不返回值。缺了它，官方 loadSystemVariables() 会抛
+// `Member "evalStorage" does not exist`，被 catch 包成
+// `システム変数データを読み込めないか、あるいは...` @ MainWindow.tjs:1045。
+//
+// 负向对照的「变量唯一」铁律：不能靠删 TJS 文件（这是 C++ 原生方法），
+// 因此用一个进程级开关在**注册时**决定是否挂载 evalStorage。关掉时方法
+// 真的不在 Scripts 类上，TJS 引擎会真抛 Member does not exist —— 与历史
+// 缺口一字不差。默认 true（出包/app 侧永远带这个方法）。
+bool gEvalStorageEnabled = true;
+unsigned gEvalStorageCalls = 0;      // evalStorage 成功求值返回的次数
+
+// 测试专用开关：负向对照场景（独立进程）在 ExecScript 前调用它关掉方法注册。
+// app 侧不调用，因此设备包里 evalStorage 恒在。
+extern "C" void GalBoxTJS2SetEvalStorageEnabled(int enabled) {
+    gEvalStorageEnabled = (enabled != 0);
+}
 
 class tTJSNC_Scripts : public tTJSNativeClass {
 public:
@@ -517,6 +542,69 @@ public:
             return TJS_S_OK;
         }
         TJS_END_NATIVE_STATIC_METHOD_DECL(exec)
+
+        // M2e-32：`evalStorage(name, mode?)` —— 读 storage 正文，当 TJS
+        // **表达式**求值后返回结果（区别于 execStorage 只执行不返回）。
+        // 官方 MainWindow.tjs:1020 `scflags = Scripts.evalStorage(fn)`
+        // 期望拿到一个 Dictionary；1957 `data = Scripts.evalStorage(fn, modestr)`
+        // 随后读 `data.id`。这里语法走 EvalExpression，语义与 eval 一致，
+        // 唯一差别是表达式正文来自 storage 而非直接参数。
+        // 只在 gEvalStorageEnabled 为真时注册：负向对照关掉它，复现缺口。
+        if (gEvalStorageEnabled) {
+            TJS_BEGIN_NATIVE_METHOD_DECL(evalStorage)
+            {
+                if (numparams < 1) return TJS_E_BADPARAMCOUNT;
+                ttstr name(*param[0]);
+                ttstr mode;
+                if (numparams >= 2 && param[1]->Type() != tvtVoid)
+                    mode = *param[1];
+
+                std::string nameU8 = WideToUtf8(name.c_str());
+                // 与 execStorage 一致：先判存在，缺失文件交给调用方兜底
+                // （官方 `x = %[] if x === void`）。不写 gLastScriptError，
+                // 因为「存档不存在」是正常分支，不是错误。
+                if (!galbox::host::IsExistentStorage(nameU8)) {
+                    if (result) *result = tTJSVariant();
+                    return TJS_S_OK;
+                }
+                iTJSTextReadStream *stream = TJSCreateTextStreamForRead(name, mode);
+                if (!stream) {
+                    gLastScriptError = "evalStorage: stream factory returned NULL for " +
+                                       nameU8;
+                    if (result) *result = tTJSVariant();
+                    return TJS_S_OK;
+                }
+                tTJSString body;
+                try {
+                    stream->Read(body, 0);
+                    stream->Destruct();
+                } catch (...) {
+                    try { stream->Destruct(); } catch (...) {}
+                    gLastScriptError = "evalStorage: host read failed for " + nameU8;
+                    if (result) *result = tTJSVariant();
+                    return TJS_S_OK;
+                }
+                if (!gActiveEngine) {
+                    gLastScriptError = "no active TJS2 engine for Scripts.evalStorage";
+                    if (result) *result = tTJSVariant();
+                    return TJS_S_OK;
+                }
+                tTJSVariant local;
+                tTJSVariant *out = result ? result : &local;
+                try {
+                    gActiveEngine->EvalExpression(body.c_str(), out, NULL,
+                                                 name.c_str(), 0);
+                    ++gEvalStorageCalls;
+                } catch (...) {
+                    CaptureCurrentException();
+                    if (gLastScriptError.empty())
+                        gLastScriptError = "Scripts.evalStorage threw for " + nameU8;
+                    return TJS_E_FAIL;
+                }
+                return TJS_S_OK;
+            }
+            TJS_END_NATIVE_STATIC_METHOD_DECL(evalStorage)
+        }
         TJS_END_NATIVE_MEMBERS
     }
 private:
@@ -1280,6 +1368,7 @@ extern "C" char *GalBoxTJS2ExecScript(const char *entryName,
     gLastScriptError.clear();
     gExecStorageCalls = 0;
     gExecStorageAttempts = 0;
+    gEvalStorageCalls = 0;
     ResetDiagnostics();
     long long probeValue = -1;
     bool probeRan = false;

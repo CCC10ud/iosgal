@@ -532,8 +532,23 @@ static int RunCaseA(const char *game, const char *storage) {
     if (gapBlock.find("Movie.tjs") != std::string::npos && gapLine == 30)
         return Fail("the chain is still stuck at the Movie.tjs mode line", j);
 
+    // M2e-32 硬判据：run 44326396559 的下一缺口是 MainWindow.tjs:1045 的
+    // `Scripts.evalStorage(fn)`（读存档/系统变量数据，原生方法缺失），
+    // 被官方 catch 包成「システム変数データを読み込めないか...」。
+    // evalStorage 是 C++ 原生方法，不是 TJS 骨架 —— 负向对照用宿主开关
+    // 关掉注册来复现（见 RunCaseNoEvalStorage）。这里要求缺口清除 +
+    // 方法确实注册（evalStorageEnabled=true）。
+    if (fatal.find("evalStorage") != std::string::npos ||
+        inner.find("evalStorage") != std::string::npos ||
+        fatal.find("システム変数データを読み込めないか") != std::string::npos)
+        return Fail("M2e-32 gap (Scripts.evalStorage) not cleared", j);
+    if (gapBlock.find("MainWindow.tjs") != std::string::npos && gapLine == 1045)
+        return Fail("the chain is still stuck at the MainWindow.tjs evalStorage line", j);
+    if (!Has(j, "\"evalStorageEnabled\":true"))
+        return Fail("M2e-32: Scripts.evalStorage was not registered", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
-    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-31)\n",
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-32)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
 
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
@@ -1927,6 +1942,52 @@ static int RunCaseNoMode(const char *nomode, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOEVALSTORAGE：Scripts.evalStorage 原生方法缺失的负向对照（M2e-32）
+// 与前面所有 NOxxx 不同：evalStorage 是 C++ 原生方法，不在 TJS 骨架文件里，
+// 没法用 drop_marked/rm 夹具复现。改用宿主开关在**注册时**不挂载该方法 ——
+// 引擎调用 Scripts.evalStorage() 时真抛 `Member "evalStorage" does not exist`，
+// 与 run 44326396559 的历史缺口一字不差。夹具与 A 完全相同，唯一变量是开关。
+// 判据（不写死行号）：ok 必须 false，且停在 MainWindow.tjs 的浅层系统变量加载处
+// （带旧缺口的正文），诊断里 evalStorageEnabled 必须为 false。
+static int RunCaseNoEvalStorage(const char *game, const char *storage) {
+    if (!Exists(std::string(game) + "/system/Config.tjs"))
+        return Fail("NOEVALSTORAGE fixture missing Config.tjs", NULL);
+
+    GalBoxTJS2SetEvalStorageEnabled(0);  // 唯一变量：注册时不挂 evalStorage
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(game, storage, arc);
+    GalBoxTJS2SetEvalStorageEnabled(1);  // 恢复（独立进程里也只是好习惯）
+
+    if (!j) return Fail("cannot run the NOEVALSTORAGE control", NULL);
+    DumpChain("NOEVALSTORAGE", j);
+
+    if (!Has(j, "\"evalStorageEnabled\":false"))
+        return Fail("NOEVALSTORAGE control: evalStorage switch did not take effect", j);
+    if (Has(j, "\"ok\":true"))
+        return Fail("NOEVALSTORAGE control unexpectedly completed the startup chain", j);
+    const std::string fatal = StrField(j, "fatal");
+    const std::string inner = StrField(j, "lastScriptError");
+    const std::string block = StrField(j, "fatalBlock");
+    const long long line = IntField(j, "fatalLine");
+    const bool reproduced =
+        fatal.find("evalStorage") != std::string::npos ||
+        inner.find("evalStorage") != std::string::npos ||
+        fatal.find("システム変数データを読み込めないか") != std::string::npos;
+    if (!reproduced)
+        return Fail("NOEVALSTORAGE control did not reproduce the evalStorage gap", j);
+    if (block.find("MainWindow.tjs") == std::string::npos)
+        return Fail("NOEVALSTORAGE control stopped outside MainWindow.tjs — "
+                    "evalStorage would not be the variable under test", j);
+
+    std::printf("[m2h] NOEVALSTORAGE verdict: without the native evalStorage method "
+                "the chain stops at \"%s\" @ %s:%lld "
+                "(A with evalStorage advances past MainWindow.tjs:1045)\n",
+                fatal.c_str(), block.c_str(), line);
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // 打开任意容器（目录 / .xp3）跑一次官方链，返回 JSON。
 // dirMode / entryCount 必须在 close() 之前取（close 会清掉它们）。
 static char *RunArchive(const char *path, const char *storage,
@@ -2053,7 +2114,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                                "\"showParentHint\"", "\"cursorX\"",
                                "\"MIDISoundBuffer\"", "\"WaveSoundBuffer\"",
                                "\"VideoOverlay\"", "\"left\"", "\"paused\"",
-                               "\"pan\"", "\"mode\""}) {
+                               "\"pan\"", "\"mode\"", "evalStorage"}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -2065,8 +2126,8 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                 "(%lld scripts, debugLevel/hitType/hitThreshold/"
                 "setImageSize/setSizeToImageSize/face/fillRect/cursor/name/"
                 "focusable/setSize/imageModified/colorRect/showParentHint/"
-                "cursorX/MIDISoundBuffer/WaveSoundBuffer/VideoOverlay/left/paused/pan/mode "
-                "all cleared in the device container)\n", scripts);
+                "cursorX/MIDISoundBuffer/WaveSoundBuffer/VideoOverlay/left/paused/pan/mode/"
+                "evalStorage all cleared in the device container)\n", scripts);
     GalBoxTJS2Free(j);
     return 0;
 }
@@ -2257,6 +2318,12 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOEVALSTORAGE") == 0) {
+        // 夹具与 A 完全相同；变量是宿主开关，不是文件，故复用 game 路径。
+        if (RunCaseNoEvalStorage(game, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -2274,6 +2341,6 @@ int main(int argc, char **argv) {
                 "NOFILLRECT / NOCURSOR / NONAME / NOFOCUSABLE / NOSIZE / "
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
                 "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / NOWINLEFT / NOPAUSED / "
-                "NOPAN / NOMODE / XP3 / LEAK / LEAK2)\n", which);
+                "NOPAN / NOMODE / NOEVALSTORAGE / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

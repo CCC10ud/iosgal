@@ -45,6 +45,11 @@ char *GalBoxTJS2ExecScript(const char *entryName, const char *probeExpression);
    desktopWidth). Optional; defaults to 1280x720 until the UI layer calls it. */
 void GalBoxTJS2SetScreenSize(int width, int height);
 
+/* M2e-32 负向对照专用：在 ExecScript 之前关掉 Scripts.evalStorage 的注册，
+   让引擎在官方 MainWindow.tjs 调用它时真抛 Member does not exist。默认开启；
+   app 侧不要调用。传 0 关闭、非 0 开启。 */
+void GalBoxTJS2SetEvalStorageEnabled(int enabled);
+
 void GalBoxTJS2Free(char *p);
 
 /* 供 UI 判断本包是否真的链接了 TJS2（无库时降级出包会返回 0）。 */
