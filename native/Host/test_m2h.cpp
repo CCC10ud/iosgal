@@ -644,8 +644,22 @@ static int RunCaseA(const char *game, const char *storage) {
         inner.find("curLine") != std::string::npos)
         return Fail("M2e-42 gap (curLine) not cleared", j);
 
+    // M2e-43 硬判据：run 44684761294 的下一缺口是 Conductor.tjs:81
+    // `obj = getNextTag();`（timerCallback 里裸标识符调用的 KAGParser 原生方法）。
+    // 独立负向对照：NOGETNEXT -> 必须复现 getNextTag 缺口。
+    //
+    // ⚠️ fatal 形态变了：getNextTag 在 try 块内抛错 → 被 172 行 catch 捕获 →
+    // catch 里拼错误信息（此时才用到 curStorage/curLine）→ 186 行
+    // `throw new ConductorException(msg)` 重抛。所以 A 场景的 fatal 是
+    // **多行 script exception 文本**（内含 `Member "getNextTag" does not exist`），
+    // 且 fatalLine 报的是**重抛点 189**而非调用点 81。
+    // ⇒ 判据按**变量名**命中（fatal 多行文本里含该成员名），不绑行号。
+    if (fatal.find("getNextTag") != std::string::npos ||
+        inner.find("getNextTag") != std::string::npos)
+        return Fail("M2e-43 gap (getNextTag) not cleared", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
-    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-42)\n",
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-43)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
 
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
@@ -2570,6 +2584,68 @@ static int RunCaseNoCurLine(const char *nocurline, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOGETNEXT：KAGParser 骨架缺 getNextTag() 方法的负向对照（M2e-43）
+// 骨架文件保留（M2E11 tag 仍应出现），只把 M2E43_BEGIN/END 之间的
+// `function getNextTag() { return void; }` 整段删掉。判据：fatal 必须
+// 复现 `Member "getNextTag" does not exist`。
+//
+// ⚠️ fatal 形态与前几个对照不同：getNextTag 在 try 块内（Conductor.tjs:81）
+// 抛错 → 被 172 行 catch 捕获 → catch 里拼错误信息 → 186 行
+// `throw new ConductorException(msg)` 重抛。于是 fatal 是**多行 script
+// exception 文本**，fatalLine 报的是**重抛点 189**而不是调用点 81。
+// ⇒ 判据按**变量名**命中（fatal 文本里含成员名），不绑行号；
+//   也不绑 fatalBlock 的具体文件行号。
+static int RunCaseNoGetNext(const char *nogetnext, const char *storage) {
+    if (!Exists(std::string(nogetnext) + "/system/Config.tjs"))
+        return Fail("NOGETNEXT fixture missing Config.tjs", NULL);
+    const std::string skel = std::string(nogetnext) + "/system/GalBoxKAGParser.tjs";
+    if (!Exists(skel))
+        return Fail("NOGETNEXT fixture must keep the KAGParser skeleton", NULL);
+    {
+        std::ifstream f(skel.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E43_BEGIN") != std::string::npos)
+            return Fail("NOGETNEXT fixture must have getNextTag removed", NULL);
+        // 查声明形态而非裸字样：M2E43 段内的注释也提到 getNextTag，
+        // 但整段会被 drop_marked 一并删掉。
+        if (body.find("function getNextTag") != std::string::npos)
+            return Fail("NOGETNEXT fixture still declares getNextTag", NULL);
+        if (body.find("class KAGParser") == std::string::npos)
+            return Fail("NOGETNEXT fixture lost the KAGParser class itself", NULL);
+        // 只有 getNextTag 缺失，其他 KAGParser 成员/方法必须还在 —— 变量唯一。
+        if (body.find("function goToLabel()") == std::string::npos)
+            return Fail("NOGETNEXT fixture lost goToLabel too (variable not unique)", NULL);
+        if (body.find("function resetInterrupt()") == std::string::npos)
+            return Fail("NOGETNEXT fixture lost resetInterrupt too (variable not unique)", NULL);
+        if (body.find("var curStorage") == std::string::npos)
+            return Fail("NOGETNEXT fixture lost curStorage too (variable not unique)", NULL);
+        if (body.find("var curLine") == std::string::npos)
+            return Fail("NOGETNEXT fixture lost curLine too (variable not unique)", NULL);
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(nogetnext, storage, arc);
+    if (!j) return Fail("cannot run the NOGETNEXT control", NULL);
+    DumpChain("NOGETNEXT", j);
+
+    if (StrField(j, "shim").find("M2E11_KAGPARSER_SKELETON") == std::string::npos)
+        return Fail("NOGETNEXT control lost the KAGParser skeleton tag", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    if (Has(j, "\"ok\":true"))
+        return Fail("NOGETNEXT control unexpectedly completed the startup chain", j);
+    if (fatal.find("getNextTag") == std::string::npos)
+        return Fail("NOGETNEXT control did not reproduce the getNextTag gap — "
+                    "getNextTag would not be the variable under test", j);
+
+    std::printf("[m2h] NOGETNEXT verdict: without getNextTag the chain stops at \"%s\" "
+                "(A with getNextTag advances past Conductor.tjs:81)\n",
+                fatal.c_str());
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // ---- 场景 NOEVALSTORAGE：Scripts.evalStorage 原生方法缺失的负向对照（M2e-32）
 // 与前面所有 NOxxx 不同：evalStorage 是 C++ 原生方法，不在 TJS 骨架文件里，
 // 没法用 drop_marked/rm 夹具复现。改用宿主开关在**注册时**不挂载该方法 ——
@@ -2745,7 +2821,8 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                                "\"pan\"", "\"mode\"", "evalStorage", "\"visible\"",
                                "\"loop\"", "\"frame\"", "numberOfAudioStream",
                                "segmentLoopStartFrame", "segmentLoopEndFrame",
-                               "periodEventFrame", "resetInterrupt", "curStorage", "curLine"}) {
+                               "periodEventFrame", "resetInterrupt", "curStorage", "curLine",
+                               "getNextTag"}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -2759,7 +2836,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                 "focusable/setSize/imageModified/colorRect/showParentHint/"
                 "cursorX/MIDISoundBuffer/WaveSoundBuffer/VideoOverlay/left/paused/pan/mode/"
                 "evalStorage/visible/loop/frame/numberOfAudioStream/segmentLoopStartFrame/"
-                "segmentLoopEndFrame/periodEventFrame/resetInterrupt/curStorage/curLine all cleared in the device container)\n", scripts);
+                "segmentLoopEndFrame/periodEventFrame/resetInterrupt/curStorage/curLine/getNextTag all cleared in the device container)\n", scripts);
     GalBoxTJS2Free(j);
     return 0;
 }
@@ -2809,6 +2886,7 @@ int main(int argc, char **argv) {
     const char *noresint  = (argc > 41) ? argv[41] : "";
     const char *nocurstor = (argc > 42) ? argv[42] : "";
     const char *nocurline = (argc > 43) ? argv[43] : "";
+    const char *nogetnext = (argc > 44) ? argv[44] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -3016,6 +3094,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOGETNEXT") == 0) {
+        if (RunCaseNoGetNext(nogetnext, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -3034,6 +3117,6 @@ int main(int argc, char **argv) {
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
                 "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / NOWINLEFT / NOPAUSED / "
                 "NOPAN / NOMODE / NOEVALSTORAGE / NOVISIBLE / NOLOOP / NOFRAME / "
-                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / XP3 / LEAK / LEAK2)\n", which);
+                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

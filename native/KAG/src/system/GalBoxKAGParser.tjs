@@ -90,4 +90,23 @@ class KAGParser
 	// 骨架给 0 占位，让异常信息能拼出来而不抛 Member 错。
 	var curLine = 0;
 	// M2E42_END
+
+	// M2E43_BEGIN —— NOGETNEXT 负向对照按此标记整段删除
+	// 官方 KAGParser 原生类的 getNextTag()：取下一个 scenario 标签对象。
+	// 官方 Conductor.tjs:81 在 timerCallback() 里裸标识符调用一次
+	//（`obj = getNextTag();`），全仓只调不定义 ⇒ 父类 KAGParser 的方法。
+	//
+	// 返回值语义（关键）：官方脚本 91 行紧跟着
+	//     if(obj === void) { ... シナリオ終了 ... return; }
+	// ⇒ getNextTag() 在没有更多标签时必须返回 **void**，官方才走"结束"分支。
+	// 骨架不真解析 scenario，所以恒返回 void：让 91 行判定成立，
+	// timerCallback 走完 onStop() 正常收尾，而不是掉进 onTag(obj) 分支
+	// 去读 obj.tagname（那样会立刻炸出下一个缺口）。
+	//
+	// TJS2 语义依据（引擎源码实测）：tjsInterCodeGen.cpp 的 `case T_VOID:
+	// return 0; // 0 is always void`；ReturnFromFunc() 里 `if(!node)`
+	// 无 return 表达式时返回 register #0 = void。写 `return void;` 是
+	// 显式版本，与官方脚本里 `return void;` 的写法一致。
+	function getNextTag() { return void; }
+	// M2E43_END
 }
