@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把四十一个场景拆成独立进程跑（三十六个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把四十二个场景拆成独立进程跑（三十七个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1967,6 +1967,34 @@ ok('var curStorage = "";' in verifier,
    "M2e-41：出包核验器第 33 条要求 KAGParser.curStorage")
 ok("curStorage" in _closed_block,
    "M2e-41：XP3 场景的「已关闭缺口」清单加上了 curStorage")
+
+# ---- M2e-42：KAGParser 场景行号 curLine（Conductor.tjs:180）----
+_gb_kp42 = open("native/KAG/src/system/GalBoxKAGParser.tjs", encoding="utf-8").read()
+_m42 = _gb_kp42.split("M2E42_BEGIN",1)[-1].split("M2E42_END",1)[0]
+ok("var curLine = 0;" in _m42,
+   "M2e-42：KAGParser 骨架声明 var curLine = 0（裸标识符读的父类槽位）")
+_mv42 = raw("native/KAG/src/original/system/Conductor.tjs")
+ok(b"curLine" in _mv42.split(b"\n")[179],
+   "M2e-42：官方 Conductor.tjs:180 裸标识符读 curLine（精确行号）")
+ok(b"class BaseConductor extends KAGParser" in _mv42 and
+   b"var curLine" not in _mv42,
+   "M2e-42：官方 BaseConductor 自身不声明 curLine ⇒ 属父类 KAGParser")
+ok(_mv42.count(b"curLine") == 1,
+   "M2e-42：curLine 全仓只读一次、从不写 ⇒ 纯父类槽位")
+ok("M2e-42 gap (curLine) not cleared" in m2h_test,
+   "M2e-42：A 硬判据清掉 curLine")
+ok("the chain is still stuck at the Conductor.tjs curLine line" not in m2h_test,
+   "M2e-42：A 判据不绑行号 180（该行已被 curStorage 用过，绑行号会让两个"
+   "里程碑互相打架）")
+ok("NOCURLINE control did not reproduce the curLine gap" in m2h_test and
+   "RunCaseNoCurLine" in m2h_test,
+   "M2e-42：NOCURLINE 用 fatal 精确复现判据（Conductor.tjs:180）")
+ok("M2H_NOCURLINE" in test_sh and "M2E42_BEGIN" in test_sh,
+   "M2e-42：构建脚本生成 NOCURLINE 夹具")
+ok("var curLine = 0;" in verifier,
+   "M2e-42：出包核验器第 34 条要求 KAGParser.curLine")
+ok("curLine" in _closed_block,
+   "M2e-42：XP3 场景的「已关闭缺口」清单加上了 curLine")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

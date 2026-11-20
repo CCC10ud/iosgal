@@ -298,6 +298,12 @@ def main(argv):
     if b'var curStorage = "";' not in kp41:
         return fail('system/GalBoxKAGParser.tjs 里没有 var curStorage = ""：'
                     "设备端会在 Conductor.tjs:180 断链")
+    # 第 34 条（M2e-42）：KAGParser.curLine（Conductor.tjs:180 `(curLine+1)`
+    # 裸标识符读，父类 KAGParser 的 scenario 行号槽位；与 curStorage 同行）。
+    kp42 = by_name["system/GalBoxKAGParser.tjs"]["data"]
+    if b"var curLine = 0;" not in kp42:
+        return fail("system/GalBoxKAGParser.tjs 里没有 var curLine = 0："
+                    "设备端会在 Conductor.tjs:180 断链")
 
     # 第 21 条（M2e-28）：窗口左上角坐标。MainWindow.tjs:438 的
     # `this.width + this.left`（居中修正）要读 Window.left；439 行还会回写。
@@ -323,7 +329,7 @@ def main(argv):
 
     print("[m2e12b] 内置包核验通过: %d 个文件 / 解压后 %d B / "
           "Initialize.tjs %d B / startup.tjs 真调 Initialize / %d 个骨架全在 / "
-          "KAGParser 带 debugLevel(M2e-13)+resetInterrupt(M2e-40)+curStorage(M2e-41) / Layer 带 hitType+hitThreshold(M2e-14) / "
+          "KAGParser 带 debugLevel(M2e-13)+resetInterrupt(M2e-40)+curStorage+curLine(M2e-41/42) / Layer 带 hitType+hitThreshold(M2e-14) / "
           "Layer 带 setImageSize+setSizeToImageSize(M2e-15) / "
           "Layer 带 face+fillRect(M2e-16) / Layer 带 cursor(M2e-17) / "
           "Layer 带 name(M2e-18) / Layer 带 focusable(M2e-19) / "

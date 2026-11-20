@@ -79,4 +79,15 @@ class KAGParser
 	// 骨架给一个空串占位，让异常信息能拼出来而不抛 Member 错。
 	var curStorage = "";
 	// M2E41_END
+
+	// M2E42_BEGIN —— NOCURLINE 负向对照按此标记整段删除
+	// 官方 KAGParser 原生类的 curLine：当前正在解析的 scenario 行号。
+	// 官方 Conductor.tjs:180 与 curStorage 在**同一行**里并列出现
+	//（`"ファイル : " + curStorage + "   行 : " + (curLine+1)`），
+	// 而 TJS2 的字符串拼接从左到右求值 ⇒ 补完 curStorage 后，下一个缺口
+	// 就是 curLine@180（行号不变、变量换了）。
+	// 官方脚本全仓只在此处读它一次、从不写 ⇒ 父类 KAGParser 的槽位。
+	// 骨架给 0 占位，让异常信息能拼出来而不抛 Member 错。
+	var curLine = 0;
+	// M2E42_END
 }
