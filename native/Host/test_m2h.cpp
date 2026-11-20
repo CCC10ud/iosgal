@@ -619,8 +619,22 @@ static int RunCaseA(const char *game, const char *storage) {
     if (gapBlock.find("Conductor.tjs") != std::string::npos && gapLine == 213)
         return Fail("the chain is still stuck at the Conductor.tjs resetInterrupt line", j);
 
+    // M2e-41 硬判据：run 44679025740 的下一缺口是 Conductor.tjs:180
+    // `"ファイル : " + curStorage + ...`（timerCallback catch 里的裸标识符读，
+    // 属父类 KAGParser 的 scenario 文件名槽位）。
+    // 独立负向对照：NOCURSTOR -> 必须复现 curStorage@Conductor.tjs:180。
+    //
+    // ⚠️ 判据只能落在**变量名**上，不能加行号断言：180 行里并列着
+    // `curStorage` 和 `curLine`（`(curLine+1)`），而 TJS2 的字符串拼接是
+    // 从左到右求值的 —— 补完 curStorage 后，下一缺口就是 **curLine@180**，
+    // 行号仍是 180 但变量换了。若在这里按行号判失败，
+    // 判据就会变成自我实现的假红（下一轮补 curLine 时必然撞上）。
+    if (fatal.find("curStorage") != std::string::npos ||
+        inner.find("curStorage") != std::string::npos)
+        return Fail("M2e-41 gap (curStorage) not cleared", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
-    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-40)\n",
+    std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-41)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
 
     // 历史标记回归：官方常量表必须还在（appLock 在新路径下尚未创建，不再当判据）。
@@ -2425,6 +2439,61 @@ static int RunCaseNoResInt(const char *noresint, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOCURSTOR：KAGParser 骨架缺 curStorage 成员的负向对照（M2e-41）
+// 骨架文件保留（M2E11 tag 仍应出现），只把 M2E41_BEGIN/END 之间的
+// `var curStorage = "";` 整段删掉。判据：fatal 必须精确复现
+// `Member "curStorage" does not exist` @ Conductor.tjs:180。
+static int RunCaseNoCurStorage(const char *nocurstor, const char *storage) {
+    if (!Exists(std::string(nocurstor) + "/system/Config.tjs"))
+        return Fail("NOCURSTOR fixture missing Config.tjs", NULL);
+    const std::string skel = std::string(nocurstor) + "/system/GalBoxKAGParser.tjs";
+    if (!Exists(skel))
+        return Fail("NOCURSTOR fixture must keep the KAGParser skeleton", NULL);
+    {
+        std::ifstream f(skel.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E41_BEGIN") != std::string::npos)
+            return Fail("NOCURSTOR fixture must have curStorage removed", NULL);
+        // 查声明形态而非裸字样：M2E41 段内的注释也提到 curStorage，
+        // 但整段会被 drop_marked 一并删掉；将来头部注释若提到它也不该假红。
+        if (body.find("var curStorage") != std::string::npos)
+            return Fail("NOCURSTOR fixture still declares curStorage", NULL);
+        if (body.find("class KAGParser") == std::string::npos)
+            return Fail("NOCURSTOR fixture lost the KAGParser class itself", NULL);
+        // 只有 curStorage 缺失，其他 KAGParser 成员/方法必须还在 —— 变量唯一。
+        if (body.find("function goToLabel()") == std::string::npos)
+            return Fail("NOCURSTOR fixture lost goToLabel too (variable not unique)", NULL);
+        if (body.find("function resetInterrupt()") == std::string::npos)
+            return Fail("NOCURSTOR fixture lost resetInterrupt too (variable not unique)", NULL);
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(nocurstor, storage, arc);
+    if (!j) return Fail("cannot run the NOCURSTOR control", NULL);
+    DumpChain("NOCURSTOR", j);
+
+    if (StrField(j, "shim").find("M2E11_KAGPARSER_SKELETON") == std::string::npos)
+        return Fail("NOCURSTOR control lost the KAGParser skeleton tag", j);
+
+    const std::string fatal = StrField(j, "fatal");
+    const std::string block = StrField(j, "fatalBlock");
+    const long long line = IntField(j, "fatalLine");
+    if (Has(j, "\"ok\":true"))
+        return Fail("NOCURSTOR control unexpectedly completed the startup chain", j);
+    if (fatal.find("curStorage") == std::string::npos)
+        return Fail("NOCURSTOR control did not reproduce the curStorage gap — "
+                    "curStorage would not be the variable under test", j);
+    if (block.find("Conductor.tjs") == std::string::npos || line != 180)
+        return Fail("NOCURSTOR control's gap is not the curStorage read @ Conductor.tjs:180", j);
+
+    std::printf("[m2h] NOCURSTOR verdict: without curStorage the chain stops at \"%s\" @ %s:%lld "
+                "(A with curStorage advances past Conductor.tjs:180)\n",
+                fatal.c_str(), block.c_str(), line);
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // ---- 场景 NOEVALSTORAGE：Scripts.evalStorage 原生方法缺失的负向对照（M2e-32）
 // 与前面所有 NOxxx 不同：evalStorage 是 C++ 原生方法，不在 TJS 骨架文件里，
 // 没法用 drop_marked/rm 夹具复现。改用宿主开关在**注册时**不挂载该方法 ——
@@ -2600,7 +2669,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                                "\"pan\"", "\"mode\"", "evalStorage", "\"visible\"",
                                "\"loop\"", "\"frame\"", "numberOfAudioStream",
                                "segmentLoopStartFrame", "segmentLoopEndFrame",
-                               "periodEventFrame", "resetInterrupt"}) {
+                               "periodEventFrame", "resetInterrupt", "curStorage"}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -2614,7 +2683,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                 "focusable/setSize/imageModified/colorRect/showParentHint/"
                 "cursorX/MIDISoundBuffer/WaveSoundBuffer/VideoOverlay/left/paused/pan/mode/"
                 "evalStorage/visible/loop/frame/numberOfAudioStream/segmentLoopStartFrame/"
-                "segmentLoopEndFrame/periodEventFrame/resetInterrupt all cleared in the device container)\n", scripts);
+                "segmentLoopEndFrame/periodEventFrame/resetInterrupt/curStorage all cleared in the device container)\n", scripts);
     GalBoxTJS2Free(j);
     return 0;
 }
@@ -2662,6 +2731,7 @@ int main(int argc, char **argv) {
     const char *nosegend  = (argc > 39) ? argv[39] : "";
     const char *noperiod  = (argc > 40) ? argv[40] : "";
     const char *noresint  = (argc > 41) ? argv[41] : "";
+    const char *nocurstor = (argc > 42) ? argv[42] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -2859,6 +2929,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOCURSTOR") == 0) {
+        if (RunCaseNoCurStorage(nocurstor, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -2877,6 +2952,6 @@ int main(int argc, char **argv) {
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
                 "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / NOWINLEFT / NOPAUSED / "
                 "NOPAN / NOMODE / NOEVALSTORAGE / NOVISIBLE / NOLOOP / NOFRAME / "
-                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / XP3 / LEAK / LEAK2)\n", which);
+                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

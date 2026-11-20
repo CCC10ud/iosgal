@@ -67,4 +67,16 @@ class KAGParser
 	// 骨架里给一个空实现即可让调用不抛 Member 错。
 	function resetInterrupt() {}
 	// M2E40_END
+
+	// M2E41_BEGIN —— NOCURSTOR 负向对照按此标记整段删除
+	// 官方 KAGParser 原生类的 curStorage：当前正在解析的 scenario 文件名。
+	// 官方 Conductor.tjs:180 在 timerCallback() 的 catch 里裸标识符读它
+	//（`"ファイル : " + curStorage + ...`）⇒ 缺失即抛
+	//     Member "curStorage" does not exist @ Conductor.tjs:180
+	// BaseConductor 自身没有该成员（class BaseConductor extends KAGParser，
+	// 官方脚本只在 180 行读、从不写），MainWindow.tjs 那边是
+	// `conductor.curStorage` 形式读取 —— 故属父类 KAGParser 的槽位。
+	// 骨架给一个空串占位，让异常信息能拼出来而不抛 Member 错。
+	var curStorage = "";
+	// M2E41_END
 }
