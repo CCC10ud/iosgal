@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把三十九个场景拆成独立进程跑（三十四个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把四十个场景拆成独立进程跑（三十五个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -1916,6 +1916,31 @@ ok("var periodEventFrame = 0;" in verifier,
    "M2e-39：出包核验器第 31 条要求 periodEventFrame")
 ok("periodEventFrame" in _closed_block,
    "M2e-39：XP3 场景的「已关闭缺口」清单加上了 periodEventFrame")
+
+# ---- M2e-40：KAGParser 中断重置 resetInterrupt（Conductor.tjs:213）-
+_gb_kp40 = open("native/KAG/src/system/GalBoxKAGParser.tjs", encoding="utf-8").read()
+_m40 = _gb_kp40.split("M2E40_BEGIN",1)[-1].split("M2E40_END",1)[0]
+ok("function resetInterrupt()" in _m40,
+   "M2e-40：KAGParser 骨架声明 resetInterrupt()（裸标识符方法调用 ⇒ 空实现即可）")
+_mv40 = raw("native/KAG/src/original/system/Conductor.tjs")
+ok(b"resetInterrupt();" in _mv40.split(b"\n")[212],
+   "M2e-40：官方 Conductor.tjs:213 是裸标识符调用 resetInterrupt();（精确行号）")
+ok(b"class BaseConductor extends KAGParser" in _mv40 and
+   _mv40.count(b"resetInterrupt") == 1,
+   "M2e-40：resetInterrupt 只调用不定义 ⇒ 父类 KAGParser 的方法")
+ok("M2e-40 gap (resetInterrupt) not cleared" in m2h_test and
+   "Conductor.tjs resetInterrupt line" in m2h_test and
+   "gapLine == 213" in m2h_test,
+   "M2e-40：A 硬判据清掉 resetInterrupt 且离开旧停点（精确行号 213）")
+ok("NORESINT control did not reproduce the resetInterrupt gap" in m2h_test and
+   "RunCaseNoResInt" in m2h_test,
+   "M2e-40：NORESINT 用 fatal 精确复现判据（Conductor.tjs:213）")
+ok("M2H_NORESINT" in test_sh and "M2E40_BEGIN" in test_sh,
+   "M2e-40：构建脚本生成 NORESINT 夹具")
+ok("function resetInterrupt()" in verifier,
+   "M2e-40：出包核验器第 32 条要求 KAGParser.resetInterrupt()")
+ok("resetInterrupt" in _closed_block,
+   "M2e-40：XP3 场景的「已关闭缺口」清单加上了 resetInterrupt")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

@@ -59,4 +59,12 @@ class KAGParser
 	function loadScenario() {}
 
 	function goToLabel() {}
+
+	// M2E40_BEGIN —— NORESINT 负向对照按此标记整段删除
+	// 官方 KAGParser 原生类的 resetInterrupt()：清除中断状态。官方
+	// Conductor.tjs 只在 startProcess() 213 行裸标识符调用一次
+	// `resetInterrupt();`，不定义、无返回值依赖 ⇒ 父类 KAGParser 的方法。
+	// 骨架里给一个空实现即可让调用不抛 Member 错。
+	function resetInterrupt() {}
+	// M2E40_END
 }
