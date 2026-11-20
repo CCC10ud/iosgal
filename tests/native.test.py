@@ -2038,6 +2038,44 @@ ok('if b"function getNextTag()" not in kp43:' in verifier,
 ok("getNextTag" in _closed_block,
    "M2e-43：XP3 场景的「已关闭缺口」清单加上了 getNextTag")
 
+# ---- M2e-43 出口判据：官方 KAG 启动链必须完整跑通 ----
+# M2e-43 的真实成果不是"又补了一个成员"，而是**链条首次完整跑通**：
+# getNextTag() 返回 void ⇒ 官方 91 行 `obj === void` 成立 ⇒ timerCallback
+# 走「シナリオ終了」分支 ⇒ 不进 catch 块 ⇒ 16 个官方脚本全部读完、
+# 脚本级 fatal 为空。所以判据必须落在"跑通"上，而不只是"缺口名没出现"。
+ok('if (!fatalOk.empty() || !innerOk.empty())\n'
+   '            return Fail("M2e-43: the startup chain reported success but a "'
+   in m2h_test and
+   'if (IntField(j, "fatalLine") != -1)\n'
+   '            return Fail("M2e-43: the startup chain reported success but still "'
+   in m2h_test and
+   "startup chain COMPLETED (fatal empty" in m2h_test,
+   "M2e-43 出口判据：ok:true 时还要查脚本级 fatal/lastScriptError 为空、"
+   "fatalLine 为 -1（宿主说成功 ≠ 脚本没抛错）")
+_a43fatal = m2h_test.find('const std::string fatalOk = StrField(j, "fatal");')
+_a43okpos = m2h_test.rfind('if (Has(j, ', 0, _a43fatal)
+ok(_a43fatal > 0 and _a43okpos > 0 and _a43fatal - _a43okpos < 2200 and
+   'startup chain COMPLETED (fatal empty' in m2h_test[_a43fatal:_a43fatal + 2000],
+   "M2e-43：出口判据挂在 ok:true 的早退分支里（ok:false 分支永远走不到它）")
+# 🔴 M2e-41/42 的负向对照前提：curStorage/curLine 只在 catch 块里被读，
+# 而 catch 块只有 try 块抛异常才进（唯一异常源是 81 行的 getNextTag()）。
+# M2e-43 补上 getNextTag 后链条走「シナリオ終了」分支 ⇒ 不进 catch 块 ⇒
+# 只删 curStorage/curLine 反而链条畅通 ⇒ 对照失效。
+# ⇒ 这两个夹具必须**额外删掉 M2E43 段**，强制回到历史路径。
+ok('drop_marked "$M2H_NOCURSTOR/system/GalBoxKAGParser.tjs" M2E43_BEGIN M2E43_END' in test_sh and
+   'drop_marked "$M2H_NOCURLINE/system/GalBoxKAGParser.tjs" M2E43_BEGIN M2E43_END' in test_sh,
+   "M2e-43：NOCURSTOR/NOCURLINE 夹具额外删 M2E43 段（强制进 catch 块，对照才有效）")
+# ⚠️ 必须匹配**判断语句的形态**（`if (body.find(...) != npos)`），
+# 不能只搜错误消息字样 —— 消息文本在源码里一直存在，把判断改成 `if (false)`
+# 断言照样全绿 ⇒ 恒真。
+# ⚠️ 两个夹具必须**分别**校验：只断言"两处都在"的话，破坏其中一处不会变红。
+ok('if (body.find("function getNextTag") != std::string::npos)\n'
+   '            return Fail("NOCURSTOR fixture must also drop getNextTag' in m2h_test,
+   "M2e-43：C++ 侧校验 NOCURSTOR 夹具确实缺 getNextTag（断言判断语句形态）")
+ok('if (body.find("function getNextTag") != std::string::npos)\n'
+   '            return Fail("NOCURLINE fixture must also drop getNextTag' in m2h_test,
+   "M2e-43：C++ 侧校验 NOCURLINE 夹具确实缺 getNextTag（断言判断语句形态）")
+
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))
 sys.exit(0 if F == 0 else 1)

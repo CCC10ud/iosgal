@@ -192,6 +192,24 @@ static int RunCaseA(const char *game, const char *storage) {
         }
         if (shimOk.find("!failed:") != std::string::npos)
             return Fail("startup reported success but a skeleton failed to load", j);
+        // 🔴 M2e-43 的**出口判据**：官方 KAG 启动链必须**完整跑通**。
+        // 补上 getNextTag() 返回 void 后，官方 91 行 `obj === void` 成立 ⇒
+        // timerCallback 走「シナリオ終了」分支正常收尾 ⇒ **不进 catch 块** ⇒
+        // 链条 16 个脚本全部读完、无任何脚本级异常。
+        //
+        // ⚠️ 判据不能用 `ok` 字段本身（ok = reason.empty()，reason 是宿主层
+        // 执行结果）；脚本级异常要看 fatal / lastScriptError / fatalLine。
+        // 这三项在本分支里必须全空 —— 否则就是「宿主说成功但脚本其实抛了错」。
+        const std::string fatalOk = StrField(j, "fatal");
+        const std::string innerOk = StrField(j, "lastScriptError");
+        if (!fatalOk.empty() || !innerOk.empty())
+            return Fail("M2e-43: the startup chain reported success but a "
+                        "script-level exception was still raised", j);
+        if (IntField(j, "fatalLine") != -1)
+            return Fail("M2e-43: the startup chain reported success but still "
+                        "reports a fatal line", j);
+        std::printf("[m2h] A: startup chain COMPLETED (fatal empty, %d scripts, "
+                    "trace ends at MainWindow.tjs)\n", nOk);
         GalBoxTJS2Free(j);
         return 0;
     }
@@ -2484,6 +2502,15 @@ static int RunCaseNoCurStorage(const char *nocurstor, const char *storage) {
         // 但整段会被 drop_marked 一并删掉；将来头部注释若提到它也不该假红。
         if (body.find("var curStorage") != std::string::npos)
             return Fail("NOCURSTOR fixture still declares curStorage", NULL);
+        // 🔴 getNextTag 必须**同时**缺失：curStorage 只在官方 Conductor.tjs:180
+        // 的 catch 块里被读，而 catch 块只有在 try 块抛异常时才进入（唯一异常源
+        // 是 81 行的 getNextTag()）。M2e-43 补上 getNextTag 后链条走
+        // 「シナリオ終了」分支就不进 catch 块 ⇒ 只删 curStorage 反而链条畅通
+        // ⇒ 对照失效。额外删掉它，强制回到历史路径；被测变量仍是 curStorage。
+        if (body.find("function getNextTag") != std::string::npos)
+            return Fail("NOCURSTOR fixture must also drop getNextTag "
+                        "(otherwise the chain never enters the catch block and "
+                        "curStorage is never read — the control would be vacuous)", NULL);
         if (body.find("class KAGParser") == std::string::npos)
             return Fail("NOCURSTOR fixture lost the KAGParser class itself", NULL);
         // 只有 curStorage 缺失，其他 KAGParser 成员/方法必须还在 —— 变量唯一。
@@ -2542,6 +2569,14 @@ static int RunCaseNoCurLine(const char *nocurline, const char *storage) {
         // 但整段会被 drop_marked 一并删掉。
         if (body.find("var curLine") != std::string::npos)
             return Fail("NOCURLINE fixture still declares curLine", NULL);
+        // 🔴 getNextTag 必须**同时**缺失：curLine 与 curStorage 都只在官方
+        // Conductor.tjs:180 的 catch 块里被读，而 catch 块只有在 try 块抛异常时
+        // 才进入（唯一异常源是 81 行的 getNextTag()）。M2e-43 补上 getNextTag
+        // 后链条走「シナリオ終了」分支就不进 catch 块 ⇒ 对照失效。
+        if (body.find("function getNextTag") != std::string::npos)
+            return Fail("NOCURLINE fixture must also drop getNextTag "
+                        "(otherwise the chain never enters the catch block and "
+                        "curLine is never read — the control would be vacuous)", NULL);
         if (body.find("class KAGParser") == std::string::npos)
             return Fail("NOCURLINE fixture lost the KAGParser class itself", NULL);
         // 只有 curLine 缺失，其他 KAGParser 成员/方法必须还在 —— 变量唯一。

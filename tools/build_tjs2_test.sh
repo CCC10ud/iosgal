@@ -1186,12 +1186,27 @@ PYEOF
   # ⚠️ 不能像别的夹具那样查"文件里还有没有 curStorage 字样" —— M2E41 段里
   # 本身就有大段注释提到 curStorage，drop_marked 删整段后字样会一并消失，
   # 这里改查 M2E41 段标记 + var 声明两种形态都清干净。
+  #
+  # 🔴 **为什么还要额外删 M2E43 段（getNextTag）**：
+  # curStorage 只在官方 Conductor.tjs:180 的 **catch 块**里被读。而 catch 块
+  # 只有在 try 块抛异常时才进入 —— try 块里唯一的异常源就是 81 行的
+  # `obj = getNextTag();`。M2e-43 补上 getNextTag() 后它返回 void，
+  # 官方 91 行 `obj === void` 成立 ⇒ 走「シナリオ終了」分支 ⇒ **不进 catch 块**
+  # ⇒ curStorage 永远不被读 ⇒ 只删 curStorage 反而链条畅通（这个对照失效）。
+  # M2e-41/42 当年能复现缺口，正是因为当时基线骨架里也还没有 getNextTag。
+  # ⇒ 这里额外删掉 M2E43 段，强制链条回到「进 catch 块」的历史路径，
+  # 被测变量仍是 curStorage（getNextTag 只是制造入口的手段）。
   M2H_NOCURSTOR="$OUT/m2h_nocurstor"
   rm -rf "$M2H_NOCURSTOR"
   cp -R "$M2H_GAME" "$M2H_NOCURSTOR"
   drop_marked "$M2H_NOCURSTOR/system/GalBoxKAGParser.tjs" M2E41_BEGIN M2E41_END
+  drop_marked "$M2H_NOCURSTOR/system/GalBoxKAGParser.tjs" M2E43_BEGIN M2E43_END
   if grep -q "M2E41_BEGIN\|var curStorage" "$M2H_NOCURSTOR/system/GalBoxKAGParser.tjs"; then
     echo "[tjs2] M2e-41 NOCURSTOR 夹具里 curStorage 还在"
+    exit 1
+  fi
+  if grep -q "M2E43_BEGIN\|function getNextTag" "$M2H_NOCURSTOR/system/GalBoxKAGParser.tjs"; then
+    echo "[tjs2] M2e-41 NOCURSTOR 夹具里 getNextTag 还在（链条不会进 catch 块，对照失效）"
     exit 1
   fi
   if ! grep -q "function goToLabel()" "$M2H_NOCURSTOR/system/GalBoxKAGParser.tjs"; then
@@ -1206,12 +1221,19 @@ PYEOF
   # M2e-42 负向对照：只删 KAGParser 的 curLine 成员（段级，其他成员必须保留）。
   # curLine 与 curStorage 在官方脚本里是同一行（Conductor.tjs:180）的两个读，
   # TJS2 拼接从左到右求值 ⇒ 本夹具必须保留 curStorage，否则先撞上的是它。
+  # 🔴 同样要额外删 M2E43 段（getNextTag）—— 理由同 NOCURSTOR：不删它，
+  # 链条走「シナリオ終了」分支就不进 catch 块，读不到 curLine，对照失效。
   M2H_NOCURLINE="$OUT/m2h_nocurline"
   rm -rf "$M2H_NOCURLINE"
   cp -R "$M2H_GAME" "$M2H_NOCURLINE"
   drop_marked "$M2H_NOCURLINE/system/GalBoxKAGParser.tjs" M2E42_BEGIN M2E42_END
+  drop_marked "$M2H_NOCURLINE/system/GalBoxKAGParser.tjs" M2E43_BEGIN M2E43_END
   if grep -q "M2E42_BEGIN\|var curLine" "$M2H_NOCURLINE/system/GalBoxKAGParser.tjs"; then
     echo "[tjs2] M2e-42 NOCURLINE 夹具里 curLine 还在"
+    exit 1
+  fi
+  if grep -q "M2E43_BEGIN\|function getNextTag" "$M2H_NOCURLINE/system/GalBoxKAGParser.tjs"; then
+    echo "[tjs2] M2e-42 NOCURLINE 夹具里 getNextTag 还在（链条不会进 catch 块，对照失效）"
     exit 1
   fi
   if ! grep -q "var curStorage" "$M2H_NOCURLINE/system/GalBoxKAGParser.tjs"; then
