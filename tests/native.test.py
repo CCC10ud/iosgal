@@ -2265,18 +2265,19 @@ ok('bool gIdlePumpEnabled = true;' in hb_test,
    "M2e-47：宿主空闲泵全局开关默认开启（与 evalStorage 开关同款布局）")
 ok('extern "C" void GalBoxTJS2SetIdlePumpEnabled(int enabled) {' in hb_test,
    "M2e-47：GalBoxTJS2SetIdlePumpEnabled C API 存在（NOPUMP 开关负向对照用）")
-# 🔴 CI 实测教训（run 44883210035 红）：守卫最初写成
-# `(typeof global.kag) != "void"` —— TJS2 的 typeof 对缺失成员返回的是
-# **"undefined"**（官方 Initialize.tjs:232 `typeof global.kag ==
-# "undefined"` 是先例），"void" 永不成立 ⇒ 守卫放行 ⇒ 前 KAG 时代的链
-# （m2a）在泵里撞 `kag.conductor` 抛 Member does not exist。改为全项目
-# 通用的 `!== void` 语义（读缺失成员不抛、返回 void），彻底避开 typeof
-# 返回值歧义。
-ok('if(global.kag !== void && ' in hb_test and
-   'global.kag.conductor.pendings.count > 0) ' in hb_test and
-   'global.kag.conductor.timerCallback();' in hb_test,
-   "M2e-47：泵语句形态（!== void 守卫让前 KAG 时代的链静默跳过 + pendings>0 才分发）"
-   "—— typeof 守卫的返回值歧义已被 run 44883210035 实测证伪")
+# 🔴 CI 实测教训（run 44883210035 / 44883670820 连续两轮红）：全局成员的
+# 缺失守卫只能用 **typeof 软访问**，且比较值必须是 "undefined"：
+# - `(typeof global.kag) != "void"` —— 永不成立（typeof 返回
+#   "undefined" 不是 "void"）⇒ 守卫放行 ⇒ 泵里撞 kag 抛缺成员；
+# - `global.kag !== void` —— 直接读缺失全局成员**本身就会抛**
+#   `Member "kag" does not exist`（typeof 是唯一的软访问）。
+# 官方 Initialize.tjs:232 `global.kag = new KAGWindow() if
+# typeof global.kag == "undefined";` 是先例：软访问 + "undefined"。
+ok('if((typeof global.kag) != \\"undefined\\" && ' in hb_test and
+   'kag.conductor.pendings.count > 0) ' in hb_test and
+   'kag.conductor.timerCallback();' in hb_test,
+   "M2e-47：泵语句形态（typeof 软访问守卫 + \"undefined\" 比较，让前 KAG "
+   "时代的链静默跳过）——两轮 CI 红实测出 typeof/硬读的语义坑")
 ok('"m2e47-idle-pump"' in hb_test,
    "M2e-47：泵以独立脚本名执行（异常时可定位）")
 ok('reason.empty() && gIdlePumpEnabled' in hb_test,

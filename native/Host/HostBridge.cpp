@@ -1448,10 +1448,16 @@ extern "C" char *GalBoxTJS2ExecScript(const char *entryName,
         // ok=false —— 上层判据按「タグ : ch (」口径识别。
         if (reason.empty() && gIdlePumpEnabled) {
             try {
+                // ⚠️ 守卫必须用 typeof 软访问：TJS2 里直接读缺失的全局成员
+                // （global.kag !== void / kag.conductor）会真抛
+                // `Member "kag" does not exist` —— run 44883210035 与
+                // 44883670820 两轮红都在同一处实测了这一点。typeof 是唯一
+                // 的软访问（官方 Initialize.tjs:232 同款写法），缺失时返回
+                // "undefined"。
                 static const char *kIdlePumpSnippet =
-                    "if(global.kag !== void && "
-                    "global.kag.conductor.pendings.count > 0) "
-                    "global.kag.conductor.timerCallback();";
+                    "if((typeof global.kag) != \"undefined\" && "
+                    "kag.conductor.pendings.count > 0) "
+                    "kag.conductor.timerCallback();";
                 std::wstring pump = Utf8ToWide(kIdlePumpSnippet);
                 engine->ExecScript(pump.c_str(), NULL, NULL,
                                    TJS_W("m2e47-idle-pump"), 0);
