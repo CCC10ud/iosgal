@@ -1449,9 +1449,9 @@ extern "C" char *GalBoxTJS2ExecScript(const char *entryName,
         if (reason.empty() && gIdlePumpEnabled) {
             try {
                 static const char *kIdlePumpSnippet =
-                    "if((typeof global.kag) != \"void\" && "
-                    "kag.conductor.pendings.count > 0) "
-                    "kag.conductor.timerCallback();";
+                    "if(global.kag !== void && "
+                    "global.kag.conductor.pendings.count > 0) "
+                    "global.kag.conductor.timerCallback();";
                 std::wstring pump = Utf8ToWide(kIdlePumpSnippet);
                 engine->ExecScript(pump.c_str(), NULL, NULL,
                                    TJS_W("m2e47-idle-pump"), 0);
