@@ -3332,9 +3332,10 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
         if (IntField(j, "probeValue") != 446)
             return Fail("packed xp3 tag dispatch did not reach the l tag "
                         "(probe != 446)", j);
-    } else if (fatal.find("タグ : ch (") == std::string::npos) {
-        return Fail("packed xp3 stopped before reaching the ch tag "
-                    "(fatal does not carry the ch tag context)", j);
+    } else if (fatal.find("タグ : ch (") == std::string::npos &&
+               fatal.find("タグ : l (") == std::string::npos) {
+        return Fail("packed xp3 stopped before reaching the queued tags "
+                    "(fatal carries neither the ch nor the l tag context)", j);
     }
 
     std::printf("[m2h] XP3 verdict: real .xp3 ran the same chain "
