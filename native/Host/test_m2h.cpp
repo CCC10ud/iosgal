@@ -132,6 +132,8 @@ static void DumpChain(const char *tag, const char *j) {
     std::printf("[m2h] %s fatal=\"%s\"\n", tag, StrField(j, "fatal").c_str());
     std::printf("[m2h] %s inner=\"%s\"\n", tag,
                 StrField(j, "lastScriptError").c_str());
+    std::printf("[m2h] %s probe=\"%s\" probeValue=%lld\n", tag,
+                StrField(j, "probe").c_str(), IntField(j, "probeValue"));
     std::printf("[m2h] %s scriptsRead=%lld attempts=%lld calls=%lld "
                 "autoPathCount=%lld autoPathHits=%lld hostReadDelta=%lld "
                 "appLock=%s\n",
@@ -143,13 +145,21 @@ static void DumpChain(const char *tag, const char *j) {
                 StrField(j, "scriptTrace").c_str());
 }
 
+// M2e-44 的 probe 表达式：链条跑完后求值，整数结果进 JSON 的 probeValue。
+// 官方 Conductor.onTag(elm)（433 行）只在 handler 命中分支里写 lastTagName，
+// 它等于 "clickskip" 就证明 onTag 分发链路真跑过了；没跑过时官方初始值
+// 是 ''（Conductor.tjs:341），表达式取 0。
+static const char *kTagPathProbe =
+    "kag.mainConductor.lastTagName == \"clickskip\" ? 444 : 0";
+
 // 跑一次完整官方启动链，返回 JSON（调用方负责 free）；失败返回 NULL。
+// probe 可选：非 NULL 时链条成功收尾后求值（见 kTagPathProbe）。
 static char *RunChain(const char *dir, const char *storage,
-                      galbox::XP3Archive &arc) {
+                      galbox::XP3Archive &arc, const char *probe = NULL) {
     if (!OpenDir(dir, arc)) return NULL;
     if (!GalBoxTJS2Install(&arc, storage, ""))
         return NULL;
-    char *j = GalBoxTJS2ExecScript("startup.tjs", NULL);
+    char *j = GalBoxTJS2ExecScript("startup.tjs", probe);
     GalBoxTJS2Uninstall();
     arc.close();
     return j;
@@ -161,7 +171,7 @@ static int RunCaseA(const char *game, const char *storage) {
         return Fail("fixture missing Config.tjs", NULL);
 
     galbox::XP3Archive arc;
-    char *j = RunChain(game, storage, arc);
+    char *j = RunChain(game, storage, arc, kTagPathProbe);
     if (!j) return Fail("cannot run the official startup chain", NULL);
     std::printf("[m2h] A (official Config.tjs) -> %s\n", j);
     DumpChain("A", j);
@@ -208,8 +218,22 @@ static int RunCaseA(const char *game, const char *storage) {
         if (IntField(j, "fatalLine") != -1)
             return Fail("M2e-43: the startup chain reported success but still "
                         "reports a fatal line", j);
+        // 🔴 M2e-44 的出口判据：链条不只收尾干净，还必须真走过 onTag 分发。
+        // getNextTag() 首调返回最小 tag 字典 ⇒ 官方 Conductor.tjs:104
+        // `var step = onTag(obj);` 首次真执行 ⇒ handlers["clickskip"] 命中 ⇒
+        // 官方 handler 把 lastTagName 写成 "clickskip" ⇒ probe 表达式取 444。
+        // lastTagName 是官方 Conductor 成员（341 行初始 ''），只在 onTag 的
+        // handler 分支里被写 —— 它等于 clickskip 就证明分发链路真跑了。
+        // 判据匹配判断语句 + return Fail 连续文本（铁律 1：把 444 改成别的
+        // 值、或把判断改成 if(false) 都必须让静态断言变红）。
+        const long long probeOk = IntField(j, "probeValue");
+        if (probeOk != 444)
+            return Fail("M2e-44: the tag dispatch path did not run "
+                        "(mainConductor.lastTagName != \"clickskip\")", j);
         std::printf("[m2h] A: startup chain COMPLETED (fatal empty, %d scripts, "
                     "trace ends at MainWindow.tjs)\n", nOk);
+        std::printf("[m2h] A: tag dispatch path verified (probeValue=%lld, "
+                    "lastTagName=clickskip)\n", probeOk);
         GalBoxTJS2Free(j);
         return 0;
     }
@@ -2681,6 +2705,67 @@ static int RunCaseNoGetNext(const char *nogetnext, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOTAG44：M2e-44 one-shot 分发分支缺失的负向对照 --------------
+// 删掉 M2E44 两个段（getNextTag 体内的 one-shot 分支 + 状态槽位声明）后，
+// getNextTag 退回 M2e-43 的恒 void 版本 ⇒ 链条仍干净跑通（所以 ok 仍 true），
+// 但 onTag 分发链路从未执行 ⇒ lastTagName 保持官方初始值 '' ⇒ probe 取 0。
+// A（有 M2E44）probe=444、本对照 probe=0，唯一变量是那一段分发分支 ——
+// 这证明 A 判据里的 probe==444 不是恒真，而是真的由 M2E44 段驱动的。
+// 夹具检查查声明形态（var gp44Left / 字典字面量），不查裸字样：
+// M2E44 段内的注释也提到 gp44Left，drop_marked 删整段后字样一并消失。
+static int RunCaseNoTag44(const char *notag44, const char *storage) {
+    if (!Exists(std::string(notag44) + "/system/Config.tjs"))
+        return Fail("NOTAG44 fixture missing Config.tjs", NULL);
+    const std::string skel = std::string(notag44) + "/system/GalBoxKAGParser.tjs";
+    if (!Exists(skel))
+        return Fail("NOTAG44 fixture must keep the KAGParser skeleton", NULL);
+    {
+        std::ifstream f(skel.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E44_BEGIN") != std::string::npos)
+            return Fail("NOTAG44 fixture must have the M2E44 sections removed", NULL);
+        if (body.find("var gp44Left") != std::string::npos)
+            return Fail("NOTAG44 fixture still declares the one-shot slot", NULL);
+        if (body.find("%[\"tagname\"") != std::string::npos)
+            return Fail("NOTAG44 fixture still builds the tag object", NULL);
+        // getNextTag 本体（M2e-43 的恒 void 版本）必须还在 —— 删的只是 one-shot。
+        if (body.find("function getNextTag") == std::string::npos)
+            return Fail("NOTAG44 fixture lost getNextTag itself", NULL);
+        // 变量唯一：其他 KAGParser 成员/方法必须还在。
+        if (body.find("var curStorage") == std::string::npos)
+            return Fail("NOTAG44 fixture lost curStorage too (variable not unique)", NULL);
+        if (body.find("var curLine") == std::string::npos)
+            return Fail("NOTAG44 fixture lost curLine too (variable not unique)", NULL);
+        if (body.find("function goToLabel()") == std::string::npos)
+            return Fail("NOTAG44 fixture lost goToLabel too (variable not unique)", NULL);
+        if (body.find("function resetInterrupt()") == std::string::npos)
+            return Fail("NOTAG44 fixture lost resetInterrupt too (variable not unique)", NULL);
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(notag44, storage, arc, kTagPathProbe);
+    if (!j) return Fail("cannot run the NOTAG44 control", NULL);
+    DumpChain("NOTAG44", j);
+
+    if (StrField(j, "shim").find("M2E11_KAGPARSER_SKELETON") == std::string::npos)
+        return Fail("NOTAG44 control lost the KAGParser skeleton tag", j);
+
+    if (!Has(j, "\"ok\":true"))
+        return Fail("NOTAG44 control unexpectedly failed the startup chain", j);
+    if (StrField(j, "fatal").size() != 0)
+        return Fail("NOTAG44 control raised a script-level exception", j);
+    if (IntField(j, "probeValue") != 0)
+        return Fail("NOTAG44 control ran the tag dispatch path without the "
+                    "M2E44 branch — the control is not a negative contrast", j);
+
+    std::printf("[m2h] NOTAG44 verdict: without the one-shot branch the chain is still "
+                "clean but lastTagName stays empty (probe=0); with M2E44 the A case "
+                "sees probe=444\n");
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // ---- 场景 NOEVALSTORAGE：Scripts.evalStorage 原生方法缺失的负向对照（M2e-32）
 // 与前面所有 NOxxx 不同：evalStorage 是 C++ 原生方法，不在 TJS 骨架文件里，
 // 没法用 drop_marked/rm 夹具复现。改用宿主开关在**注册时**不挂载该方法 ——
@@ -2731,7 +2816,8 @@ static int RunCaseNoEvalStorage(const char *game, const char *storage) {
 // dirMode / entryCount 必须在 close() 之前取（close 会清掉它们）。
 static char *RunArchive(const char *path, const char *storage,
                         galbox::XP3Archive &arc, bool *opened,
-                        bool *dirMode, size_t *entryCount) {
+                        bool *dirMode, size_t *entryCount,
+                        const char *probe = NULL) {
     *opened = false;
     *dirMode = false;
     *entryCount = 0;
@@ -2744,7 +2830,7 @@ static char *RunArchive(const char *path, const char *storage,
     *dirMode = arc.isDirectoryMode();
     *entryCount = arc.count();
     if (!GalBoxTJS2Install(&arc, storage, "")) return NULL;
-    char *j = GalBoxTJS2ExecScript("startup.tjs", NULL);
+    char *j = GalBoxTJS2ExecScript("startup.tjs", probe);
     GalBoxTJS2Uninstall();
     arc.close();
     return j;
@@ -2785,7 +2871,8 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
     // 官方 Initialize 走「配置已存在」的分支，停点就不是 A 场景那个了。
     std::string st = std::string(storage) + "/xp3_storage";
     mkdir(st.c_str(), 0755);
-    char *j = RunArchive(xp3, st.c_str(), arc, &opened, &dirMode, &cntXp3);
+    char *j = RunArchive(xp3, st.c_str(), arc, &opened, &dirMode, &cntXp3,
+                         kTagPathProbe);
     if (!j) return Fail("cannot open/run the packed xp3", NULL);
     DumpChain("XP3", j);
 
@@ -2857,7 +2944,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                                "\"loop\"", "\"frame\"", "numberOfAudioStream",
                                "segmentLoopStartFrame", "segmentLoopEndFrame",
                                "periodEventFrame", "resetInterrupt", "curStorage", "curLine",
-                               "getNextTag"}) {
+                               "getNextTag", "gp44Left"}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -2865,13 +2952,18 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
         }
     }
 
+    // M2e-44：包内链路与 A 场景同口径 —— onTag 分发必须真跑过（probe 444）。
+    if (IntField(j, "probeValue") != 444)
+        return Fail("packed xp3 did not run the tag dispatch path "
+                    "(mainConductor.lastTagName != \"clickskip\")", j);
+
     std::printf("[m2h] XP3 verdict: real .xp3 ran the same chain "
                 "(%lld scripts, debugLevel/hitType/hitThreshold/"
                 "setImageSize/setSizeToImageSize/face/fillRect/cursor/name/"
                 "focusable/setSize/imageModified/colorRect/showParentHint/"
                 "cursorX/MIDISoundBuffer/WaveSoundBuffer/VideoOverlay/left/paused/pan/mode/"
                 "evalStorage/visible/loop/frame/numberOfAudioStream/segmentLoopStartFrame/"
-                "segmentLoopEndFrame/periodEventFrame/resetInterrupt/curStorage/curLine/getNextTag all cleared in the device container)\n", scripts);
+                "segmentLoopEndFrame/periodEventFrame/resetInterrupt/curStorage/curLine/getNextTag/gp44Left all cleared in the device container)\n", scripts);
     GalBoxTJS2Free(j);
     return 0;
 }
@@ -2922,6 +3014,7 @@ int main(int argc, char **argv) {
     const char *nocurstor = (argc > 42) ? argv[42] : "";
     const char *nocurline = (argc > 43) ? argv[43] : "";
     const char *nogetnext = (argc > 44) ? argv[44] : "";
+    const char *notag44   = (argc > 45) ? argv[45] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -3134,6 +3227,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOTAG44") == 0) {
+        if (RunCaseNoTag44(notag44, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -3152,6 +3250,6 @@ int main(int argc, char **argv) {
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
                 "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / NOWINLEFT / NOPAUSED / "
                 "NOPAN / NOMODE / NOEVALSTORAGE / NOVISIBLE / NOLOOP / NOFRAME / "
-                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / XP3 / LEAK / LEAK2)\n", which);
+                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / NOTAG44 / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

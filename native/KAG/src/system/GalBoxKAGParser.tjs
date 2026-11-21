@@ -99,14 +99,50 @@ class KAGParser
 	// 返回值语义（关键）：官方脚本 91 行紧跟着
 	//     if(obj === void) { ... シナリオ終了 ... return; }
 	// ⇒ getNextTag() 在没有更多标签时必须返回 **void**，官方才走"结束"分支。
-	// 骨架不真解析 scenario，所以恒返回 void：让 91 行判定成立，
-	// timerCallback 走完 onStop() 正常收尾，而不是掉进 onTag(obj) 分支
-	// 去读 obj.tagname（那样会立刻炸出下一个缺口）。
+	//
+	// M2e-44 起本方法**有状态化**（见下方 M2E44 段）：首次调用返回一个
+	// 最小 tag 对象，让官方 Conductor.tjs:104 `var step = onTag(obj);` 的
+	// 分发链路第一次真执行；之后返回 void，官方仍走"结束"分支干净收尾。
+	// 链条若无标签可发，下面的 return void; 仍是唯一出口 —— 这行就是
+	// M2e-43 判据锁住的语义本体（空 ⇒ void）。
 	//
 	// TJS2 语义依据（引擎源码实测）：tjsInterCodeGen.cpp 的 `case T_VOID:
 	// return 0; // 0 is always void`；ReturnFromFunc() 里 `if(!node)`
 	// 无 return 表达式时返回 register #0 = void。写 `return void;` 是
 	// 显式版本，与官方脚本里 `return void;` 的写法一致。
-	function getNextTag() { return void; }
+	function getNextTag()
+	{
+		// M2E44_BEGIN —— NOTAG44 负向对照按此标记整段删除
+		// one-shot 分支：把 gp44Left 从 0 翻到 1，返回最小 tag 字典。
+		// tagname 选官方 handlers 字典里真实注册的 "clickskip"（MainWindow
+		// getHandlers() 有 `clickskip : function(elm)`），其 handler 只读
+		// elm.enabled、写 MainWindow 已声明的 clickSkipEnabled、返回 0 ——
+		// 是官方 handler 表里最浅的一条，专门用来打通 onTag 分发链路本身。
+		// 返回 0 ⇒ 官方走 `step == 0` 分支 `timer.interval = 0; continue;`
+		// ⇒ 第二次 getNextTag() 落到下面的 return void; ⇒ 干净收尾。
+		if(gp44Left == 0)
+		{
+			gp44Left = 1;
+			return %["tagname" => "clickskip", "enabled" => 1];
+		}
+		// M2E44_END
+		return void;
+	}
 	// M2E43_END
+
+	// M2E44_BEGIN —— NOTAG44 负向对照按此标记整段删除
+	// gp44Left：getNextTag() 的 one-shot 状态槽位。0 = 还没发过标签；
+	// 1 = 已发过，之后恒走 void 收尾。放成实例成员而不是局部变量，
+	// 是因为 getNextTag() 是无参方法，状态必须挂在 this 上；每个
+	// Conductor 实例（mainConductor / extraConductor）各有一份，
+	// 互不串扰。
+	//
+	// 为什么是「固定发一条 clickskip」而不是真解析 first.ks：真解析需要
+	// Storages.readFile（宿主还没注册这个原生方法，TJS2 侧读不到文件
+	// 内容），那是实现层工作（交接文档方向 A 的范围）。M2e-44 的目标是
+	// 用最小改动让官方 onTag 分发链路首次真执行，并把「分发跑过没有」
+	// 变成 A 判据可断言的硬指标（probe 444）。链路打通后，后续里程碑
+	// 换更深的 tag（wait / s / ch / bg）或补 readFile 就能继续按停点推进。
+	var gp44Left = 0;
+	// M2E44_END
 }
