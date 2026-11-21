@@ -360,6 +360,14 @@ def main(argv):
     if b"function adjustGamma(rgamma" not in lay51:
         return fail("system/GalBoxLayer.tjs 里没有 function adjustGamma(rgamma："
                     "设备端官方 l 路径会在 applyColorCorrection 断链")
+    # 第 43 条（M2e-54）：KAGParser.clearCallStack（清空调用栈）。M2e-53
+    # 修复后泵驱动的 l 路径走到 AnimationLayer.loadImages 尾部：elm.storage
+    # = "linebreak" 有官方包内 LineBreak.asd ⇒ loadAnimInfo ⇒ seg.
+    # clearCallStack（seg 是 AnimationConductor extends KAGParser）——
+    # run 44899892227 的实测停点 Member "clearCallStack" does not exist。
+    if b"function clearCallStack()" not in kp43:
+        return fail("system/GalBoxKAGParser.tjs 里没有 function clearCallStack()："
+                    "设备端官方 l 路径会在 AnimationLayer.loadAnimInfo 断链")
 
     # 第 21 条（M2e-28）：窗口左上角坐标。MainWindow.tjs:438 的
     # `this.width + this.left`（居中修正）要读 Window.left；439 行还会回写。

@@ -186,4 +186,18 @@ class KAGParser
 	// 保留 M2e-44/45 的 clickskip/ch 路径（变量唯一性纪律）。
 	var gp49Left = 0;
 	// M2E49_END
+
+	// M2E54_BEGIN —— NOCLEARSTACK 负向对照按此标记整段删除
+	// 官方 KAGParser 原生类的 clearCallStack()：清空调用栈（subroutine
+	// call/return 栈）。M2e-53 修复后泵驱动的 l 路径走到
+	// AnimationLayer.loadImages 尾部：elm.storage="linebreak" 有同名
+	// .asd 动画信息文件（官方包内 LineBreak.asd）⇒ loadAnimInfo(0,'') ⇒
+	// seg.clearCallStack()（AnimationLayer.tjs:431，seg 是
+	// AnimationConductor extends Conductor extends KAGParser）⇒ run
+	// 44899892227 的实测停点 `Member "clearCallStack" does not exist`。
+	// 骨架无调用栈可清，空实现即可；返回值官方为 void。
+	function clearCallStack()
+	{
+	}
+	// M2E54_END
 }

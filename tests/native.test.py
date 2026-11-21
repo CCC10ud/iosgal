@@ -826,7 +826,7 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT NOTAG49 NOLVOID NOHOLDALPHA NOADJUSTGAMMA XP3 LEAK LEAK2" in test_sh,
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT NOTAG49 NOLVOID NOHOLDALPHA NOADJUSTGAMMA NOCLEARSTACK XP3 LEAK LEAK2" in test_sh,
    "构建脚本把五十三个场景拆成独立进程跑（四十七个负向对照 + GEO 几何诊断 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
@@ -2523,7 +2523,7 @@ ok('if (fatal.find("adjustGamma") != std::string::npos ||\n'
    '        inner.find("adjustGamma") != std::string::npos)\n'
    '        return Fail("M2e-53 gap (adjustGamma) not cleared", j);' in m2h_test,
    "M2e-53：A 判据按变量名命中（判断语句 + Fail 连续文本形态）")
-ok('"holdAlpha", "adjustGamma"}) {' in m2h_test,
+ok('"holdAlpha", "adjustGamma"' in m2h_test,
    "M2e-53：XP3 场景的「已关闭缺口」清单加上了 adjustGamma")
 ok("RunCaseNoAdjustGamma" in m2h_test and
    'if (fatal.find("adjustGamma") == std::string::npos)\n'
@@ -2540,17 +2540,63 @@ ok('M2H_NOADJUSTGAMMA="$OUT/m2h_noadjustgamma"' in test_sh and
 ok('if grep -q "M2E53_BEGIN\\|function adjustGamma"' in test_sh and
    '! grep -q "var holdAlpha" "$M2H_NOADJUSTGAMMA' in test_sh,
    "M2e-53：NOADJUSTGAMMA 夹具检查真的在查 adjustGamma 段（检查语句形态）")
-ok('"$M2H_NOHOLDALPHA" "$M2H_NOADJUSTGAMMA"' in test_sh,
+ok('"$M2H_NOHOLDALPHA" "$M2H_NOADJUSTGAMMA" "$M2H_NOCLEARSTACK"' in test_sh,
    "M2e-53：m2h 调用参数加了 $M2H_NOADJUSTGAMMA")
-ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT NOTAG49 NOLVOID NOHOLDALPHA NOADJUSTGAMMA XP3" in test_sh,
+ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT NOTAG49 NOLVOID NOHOLDALPHA NOADJUSTGAMMA" in test_sh,
    "M2e-53：场景循环 for 行加了 NOADJUSTGAMMA")
-ok("NOTAG45|GEO|NOPUMP|NODRAWTEXT|NOTAG49|NOLVOID|NOHOLDALPHA|NOADJUSTGAMMA|XP3" in test_sh,
+ok("NOTAG45|GEO|NOPUMP|NODRAWTEXT|NOTAG49|NOLVOID|NOHOLDALPHA|NOADJUSTGAMMA|" in test_sh,
    "M2e-53：OK 判定清单加了 NOADJUSTGAMMA")
 ok("Layer.adjustGamma 伽马修正" in test_sh,
    "M2e-53：构建脚本 M2e-53 文案同步")
 # 出包核验器第 42 条：断言整条判断语句的形态。
 ok('if b"function adjustGamma(rgamma" not in lay51:' in verifier,
    "M2e-53：出包核验器第 42 条要求 GalBoxLayer.adjustGamma"
+   "（断言整条判断语句的形态 —— 只搜字样会被检查代码自身满足，恒真）")
+
+# ---- M2e-54：KAGParser.clearCallStack（清空调用栈）--------------------
+# M2e-53 修复后泵驱动的 l 路径走到 AnimationLayer.loadImages 尾部：
+# elm.storage="linebreak" 有官方包内 LineBreak.asd ⇒ loadAnimInfo(0,'')
+# ⇒ seg.clearCallStack()（AnimationLayer.tjs:431，seg 是
+# AnimationConductor extends Conductor extends KAGParser 骨架）⇒ run
+# 44899892227 的实测停点 `Member "clearCallStack" does not exist`。
+_gb_kp54 = open("native/KAG/src/system/GalBoxKAGParser.tjs", encoding="utf-8").read()
+_m54 = _gb_kp54.split("M2E54_BEGIN",1)[-1].split("M2E54_END",1)[0]
+ok("function clearCallStack()" in _m54,
+   "M2e-54：KAGParser 骨架声明 clearCallStack（官方原生方法，空实现）")
+ok("M2e-54 gap (clearCallStack) not cleared" in m2h_test,
+   "M2e-54：A 硬判据清掉 clearCallStack")
+ok('if (fatal.find("clearCallStack") != std::string::npos ||\n'
+   '        inner.find("clearCallStack") != std::string::npos)\n'
+   '        return Fail("M2e-54 gap (clearCallStack) not cleared", j);' in m2h_test,
+   "M2e-54：A 判据按变量名命中（判断语句 + Fail 连续文本形态）")
+ok('"holdAlpha", "adjustGamma", "clearCallStack"}) {' in m2h_test,
+   "M2e-54：XP3 场景的「已关闭缺口」清单加上了 clearCallStack")
+ok("RunCaseNoClearStack" in m2h_test and
+   'if (fatal.find("clearCallStack") == std::string::npos)\n'
+   '        return Fail("NOCLEARSTACK control did not reproduce the clearCallStack gap' in m2h_test,
+   "M2e-54：NOCLEARSTACK 独立负向对照用 fatal 精确复现判据（判断语句 + Fail 连续文本）")
+ok('if (body.find("function clearCallStack") != std::string::npos)\n'
+   '            return Fail("NOCLEARSTACK fixture still declares clearCallStack' in m2h_test and
+   'if (body.find("var gp49Left") == std::string::npos)\n'
+   '            return Fail("NOCLEARSTACK fixture lost gp49Left too' in m2h_test,
+   "M2e-54：C++ 侧校验 NOCLEARSTACK 夹具确实缺 clearCallStack 且变量唯一（判断语句形态）")
+ok('M2H_NOCLEARSTACK="$OUT/m2h_noclearstack"' in test_sh and
+   'drop_marked "$M2H_NOCLEARSTACK/system/GalBoxKAGParser.tjs" M2E54_BEGIN M2E54_END' in test_sh,
+   "M2e-54：构建脚本生成 NOCLEARSTACK 夹具（drop_marked M2E54 段）")
+ok('if grep -q "M2E54_BEGIN\\|function clearCallStack"' in test_sh and
+   '! grep -q "var gp49Left" "$M2H_NOCLEARSTACK' in test_sh,
+   "M2e-54：NOCLEARSTACK 夹具检查真的在查 clearCallStack 段（检查语句形态）")
+ok('"$M2H_NOADJUSTGAMMA" "$M2H_NOCLEARSTACK"' in test_sh,
+   "M2e-54：m2h 调用参数加了 $M2H_NOCLEARSTACK")
+ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT NOTAG49 NOLVOID NOHOLDALPHA NOADJUSTGAMMA NOCLEARSTACK XP3" in test_sh,
+   "M2e-54：场景循环 for 行加了 NOCLEARSTACK")
+ok("NOTAG45|GEO|NOPUMP|NODRAWTEXT|NOTAG49|NOLVOID|NOHOLDALPHA|NOADJUSTGAMMA|NOCLEARSTACK|XP3" in test_sh,
+   "M2e-54：OK 判定清单加了 NOCLEARSTACK")
+ok("KAGParser.clearCallStack 清空调用栈" in test_sh,
+   "M2e-54：构建脚本 M2e-54 文案同步")
+# 出包核验器第 43 条：断言整条判断语句的形态。
+ok('if b"function clearCallStack()" not in kp43:' in verifier,
+   "M2e-54：出包核验器第 43 条要求 KAGParser.clearCallStack"
    "（断言整条判断语句的形态 —— 只搜字样会被检查代码自身满足，恒真）")
 
 print("\n========================================")
