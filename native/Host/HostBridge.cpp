@@ -1464,7 +1464,10 @@ extern "C" char *GalBoxTJS2ExecScript(const char *entryName,
                     "if((typeof global.kag) != \"undefined\") {"
                     " var b = 0;"
                     " while(b < 8 && kag.conductor.status != 0) {"
-                    " kag.conductor.timerCallback();"
+                    " try { kag.conductor.timerCallback(); }"
+                    " catch(e) { throw new Exception(\"beat\" + b + \" | \"
+                    " + e.message + \" | TRACE: \" + ((typeof e.trace) != "
+                    " \"undefined\" ? e.trace : \"none\")); }"
                     " b++;"
                     " }"
                     " }";

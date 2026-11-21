@@ -2276,9 +2276,24 @@ ok('extern "C" void GalBoxTJS2SetIdlePumpEnabled(int enabled) {' in hb_test,
 # typeof global.kag == "undefined";` 是先例：软访问 + "undefined"。
 ok('if((typeof global.kag) != \\"undefined\\") {' in hb_test and
    'while(b < 8 && kag.conductor.status != 0) {' in hb_test and
-   'kag.conductor.timerCallback();' in hb_test,
-   "M2e-47/49：泵语句形态（typeof 软访问守卫 + 有界 8 拍事件循环 —— 单拍泵"
-   "在 step>0 等待后够不到队列更深的标签）——两轮 CI 红实测出 typeof/硬读的语义坑")
+   'try { kag.conductor.timerCallback(); }' in hb_test and
+   'catch(e) { throw new Exception(' in hb_test,
+   "M2e-47/49/50：泵语句形态（typeof 软访问守卫 + 有界 8 拍事件循环 + per-beat "
+   "捕获包装重抛）——单拍泵在 step>0 等待后够不到队列更深的标签；两轮 CI 红"
+   "实测出 typeof/硬读的语义坑")
+
+# ---- M2e-50：泵 per-beat 诊断（包装重抛携带拍号 + 原始 trace）----------
+# M2e-49 实测停点 `Cannot convert (int)-1 to Object`（タグ : l）发生在
+# showLineBreak 内部，但经官方 catch 重抛后原始行号丢失。本轮把泵的每拍
+# 包在 try/catch 里：捕获后重抛包装异常（beat 号 + e.message + e.trace）
+# —— TJS2 脚本异常自带 trace（tjsError.cpp 在抛出时挂 trace 成员），
+# fatal 消息即可携带原始调用栈，CI 日志的 A next gap 一次定位到行。
+ok('throw new Exception(\\"beat\\" + b + \\" | \\"' in hb_test,
+   "M2e-50：包装异常携带拍号（beat 号定位是哪一拍的 timerCallback 抛错）")
+ok('e.message + \\" | TRACE: \\" + ((typeof e.trace) != ' in hb_test and
+   '\\"undefined\\" ? e.trace : \\"none\\")); }' in hb_test,
+   "M2e-50：包装异常携带原始 trace（TJS2 脚本异常自带 trace 成员；"
+   "typeof 守卫防无 trace 的异常）")
 ok('"m2e47-idle-pump"' in hb_test,
    "M2e-47：泵以独立脚本名执行（异常时可定位）")
 ok('reason.empty() && gIdlePumpEnabled' in hb_test,
