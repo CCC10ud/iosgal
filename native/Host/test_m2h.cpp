@@ -778,6 +778,16 @@ static int RunCaseA(const char *game, const char *storage) {
         inner.find("drawText") != std::string::npos)
         return Fail("M2e-48 gap (drawText) not cleared", j);
 
+    // M2e-51 硬判据：run 44896874644 的实测停点是
+    // `Cannot convert the variable type ((int)-1 to Object)`（タグ : l，
+    // showLineBreak → showBreakGlyph → ClickGlyphLayer.loadImages →
+    // AnimationLayer.loadImages 的 if(taginfo) 消费骨架 loadImages 的 -1
+    // 返回值）。GalBoxLayer.loadImages 改返回 void 后，泵驱动的链不许再
+    // 停在这个转换错误上（按错误文本命中，不绑行号）。
+    if (fatal.find("Cannot convert") != std::string::npos ||
+        inner.find("Cannot convert") != std::string::npos)
+        return Fail("M2e-51 gap (int-to-Object conversion) not cleared", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
     std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-43)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
@@ -3138,6 +3148,64 @@ static int RunCaseNoTag49(const char *notag49, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOLVOID：loadImages void 契约缺失的负向对照（M2e-51）--------
+// run 44896874644 的实测停点：宿主空闲泵把 l 送进 showLineBreak →
+// showBreakGlyph → ClickGlyphLayer.loadImages → AnimationLayer.loadImages
+// ⇒ `Cannot convert the variable type ((int)-1 to Object)`（骨架
+// loadImages 返回的 -1 被 if(taginfo) 当 Dictionary 用）。对照翻转法：
+// drop_marked M2E51 段（void return;）后，函数体只剩 return -1; 死代码
+// 并被激活 ⇒ 精确复现同一实测停点。
+static int RunCaseNoLVoid(const char *nolvoid, const char *storage) {
+    if (!Exists(std::string(nolvoid) + "/system/Config.tjs"))
+        return Fail("NOLVOID fixture missing Config.tjs", NULL);
+    const std::string skel = std::string(nolvoid) + "/system/GalBoxLayer.tjs";
+    if (!Exists(skel))
+        return Fail("NOLVOID fixture must keep the Layer skeleton", NULL);
+    {
+        std::ifstream f(skel.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E51_BEGIN") != std::string::npos)
+            return Fail("NOLVOID fixture must have the M2E51 section removed", NULL);
+        // 翻转有效性：drop 后 void-return 必须不在、死代码 return -1; 必须
+        // 在（否则翻转没发生，对照不是同一变量的复现）。
+        if (body.find("return;") != std::string::npos)
+            return Fail("NOLVOID fixture still carries the void return", NULL);
+        if (body.find("return -1;") == std::string::npos)
+            return Fail("NOLVOID fixture lost the legacy return -1 (the flip "
+                        "did not expose the historical behavior)", NULL);
+        // 变量唯一：drawText 等 Layer 成员必须还在。
+        if (body.find("function drawText") == std::string::npos)
+            return Fail("NOLVOID fixture lost drawText too (variable not unique)", NULL);
+        if (body.find("var imageWidth") == std::string::npos)
+            return Fail("NOLVOID fixture lost imageWidth too (variable not unique)", NULL);
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(nolvoid, storage, arc, kTagPathProbe);
+    if (!j) return Fail("cannot run the NOLVOID control", NULL);
+    DumpChain("NOLVOID", j);
+
+    if (StrField(j, "shim").find("M2E2_LAYER_SKELETON") == std::string::npos)
+        return Fail("NOLVOID control lost the Layer skeleton tag", j);
+
+    if (Has(j, "\"ok\":true"))
+        return Fail("NOLVOID control unexpectedly completed the startup chain", j);
+    const std::string fatal = StrField(j, "fatal");
+    if (fatal.find("Cannot convert") == std::string::npos)
+        return Fail("NOLVOID control did not reproduce the int-to-Object "
+                    "conversion gap — the return value would not be the "
+                    "variable under test", j);
+    if (fatal.find("タグ : l (") == std::string::npos)
+        return Fail("NOLVOID control fatal does not carry the l tag "
+                    "context (the pump-driven path is not exercised)", j);
+
+    std::printf("[m2h] NOLVOID verdict: with the legacy return -1 the pump-driven l "
+                "processing stops exactly at the measured M2e-49 stop point\n");
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // ---- 场景 NOEVALSTORAGE：Scripts.evalStorage 原生方法缺失的负向对照（M2e-32）
 // 与前面所有 NOxxx 不同：evalStorage 是 C++ 原生方法，不在 TJS 骨架文件里，
 // 没法用 drop_marked/rm 夹具复现。改用宿主开关在**注册时**不挂载该方法 ——
@@ -3316,7 +3384,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                                "\"loop\"", "\"frame\"", "numberOfAudioStream",
                                "segmentLoopStartFrame", "segmentLoopEndFrame",
                                "periodEventFrame", "resetInterrupt", "curStorage", "curLine",
-                               "getNextTag", "gp44Left", "gp45Left", "drawText"}) {
+                               "getNextTag", "gp44Left", "gp45Left", "drawText", "Cannot convert"}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -3399,6 +3467,7 @@ int main(int argc, char **argv) {
     const char *notag45   = (argc > 46) ? argv[46] : "";
     const char *nodrawtext = (argc > 47) ? argv[47] : "";
     const char *notag49   = (argc > 48) ? argv[48] : "";
+    const char *nolvoid   = (argc > 49) ? argv[49] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -3643,6 +3712,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOLVOID") == 0) {
+        if (RunCaseNoLVoid(nolvoid, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -3661,6 +3735,6 @@ int main(int argc, char **argv) {
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
                 "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / NOWINLEFT / NOPAUSED / "
                 "NOPAN / NOMODE / NOEVALSTORAGE / NOVISIBLE / NOLOOP / NOFRAME / "
-                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / NOTAG44 / NOTAG45 / GEO / NOPUMP / NODRAWTEXT / NOTAG49 / XP3 / LEAK / LEAK2)\n", which);
+                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / NOTAG44 / NOTAG45 / GEO / NOPUMP / NODRAWTEXT / NOTAG49 / NOLVOID / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

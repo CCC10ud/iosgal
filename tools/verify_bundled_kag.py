@@ -338,6 +338,15 @@ def main(argv):
     if b"var gp49Left = 0;" not in kp43:
         return fail("system/GalBoxKAGParser.tjs 里没有 var gp49Left = 0："
                     "设备端 l tag 路径无从验证（MainWindow.showLineBreak）")
+    # 第 40 条（M2e-51）：loadImages 返回 void（官方契约）。宿主空闲泵把
+    # 挂起的 l 送进 showLineBreak → showBreakGlyph → ClickGlyphLayer.
+    # loadImages → AnimationLayer.loadImages 的 if(taginfo) 判定消费返回值
+    # —— 骨架曾返回 -1 ⇒ 实测停点 Cannot convert (int)-1 to Object。
+    lay51 = by_name["system/GalBoxLayer.tjs"]["data"]
+    if b"M2E51_BEGIN" not in lay51 or b"return -1;" not in lay51:
+        return fail("system/GalBoxLayer.tjs 里没有 M2E51 段（loadImages 的 "
+                    "void 返回 + 死代码翻转对照）：设备端官方行末路径的 "
+                    "(int)-1→Object 停点无从验证与回归")
 
     # 第 21 条（M2e-28）：窗口左上角坐标。MainWindow.tjs:438 的
     # `this.width + this.left`（居中修正）要读 Window.left；439 行还会回写。

@@ -826,8 +826,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT NOTAG49 XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把四十九个场景拆成独立进程跑（四十三个负向对照 + GEO 几何诊断 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT NOTAG49 NOLVOID XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把五十个场景拆成独立进程跑（四十四个负向对照 + GEO 几何诊断 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -2342,7 +2342,7 @@ ok('if (fatal.find("drawText") != std::string::npos ||\n'
    '        inner.find("drawText") != std::string::npos)\n'
    '        return Fail("M2e-48 gap (drawText) not cleared", j);' in m2h_test,
    "M2e-48：A 判据按变量名命中（判断语句 + Fail 连续文本形态）")
-ok('"gp45Left", "drawText"}) {' in m2h_test,
+ok('"gp45Left", "drawText", "Cannot convert"}) {' in m2h_test,
    "M2e-48：XP3 场景的「已关闭缺口」清单加上了 drawText")
 # NODRAWTEXT 负向对照：删 M2E48 段 ⇒ 泵驱动的链精确复现实测停点。
 ok("RunCaseNoDrawText" in m2h_test and
@@ -2406,11 +2406,61 @@ ok('drop_marked "$M2H_NOTAG44/system/GalBoxKAGParser.tjs" M2E49_BEGIN M2E49_END'
 ok('drop_marked "$M2H_NOTAG45/system/GalBoxKAGParser.tjs" M2E49_BEGIN M2E49_END' in test_sh and
    'if grep -q "M2E49_BEGIN\\|var gp49Left" "$M2H_NOTAG45' in test_sh,
    "M2e-49：NOTAG45 夹具连带删 M2E49 段（同上）")
-ok('"$M2H_NODRAWTEXT" "$M2H_NOTAG49"' in test_sh,
+ok('"$M2H_NODRAWTEXT" "$M2H_NOTAG49" "$M2H_NOLVOID"' in test_sh,
    "M2e-49：m2h 调用参数加了 $M2H_NOTAG49")
 # 出包核验器第 39 条：断言整条判断语句的形态。
 ok('if b"var gp49Left = 0;" not in kp43:' in verifier,
    "M2e-49：出包核验器第 39 条要求 KAGParser 的 l 队列槽位"
+   "（断言整条判断语句的形态 —— 只搜字样会被检查代码自身满足，恒真）")
+
+# ---- M2e-51：loadImages void 契约（对照翻转法）-------------------------
+# M2e-50 诊断（beat1 = l 处理拍 + 官方 AnimationLayer.loadImages 源码）定位：
+# `Cannot convert (int)-1 to Object` 的根因是骨架 loadImages 返回 -1，官方
+# AnimationLayer.loadImages（AnimationLayer.tjs:483-487）的 if(taginfo) 把
+# -1 当 Dictionary 参与 incontextof 调用。官方契约：无 taginfo 时返回 void。
+# 对照翻转法：NOLVOID 夹具 drop M2E51 段（void return;）后，函数体只剩
+# return -1; 死代码并被激活 ⇒ 精确复现实测停点。
+_gb_lay51 = open("native/KAG/src/system/GalBoxLayer.tjs", encoding="utf-8").read()
+_lay51_full = _gb_lay51.split("function loadImages(storage, key)")[1].split("function assignImages")[0]
+ok("M2E51_BEGIN" in _lay51_full and "return;" in _lay51_full and "return -1;" in _lay51_full,
+   "M2e-51：loadImages 函数体内 M2E51 段（void return;）+ 死代码 return -1; 共存"
+   "（A 夹具走 void，NOLVOID 夹具 drop 后翻转激活 -1）")
+ok("官方契约（M2e-51 实测修正）" in _gb_lay51,
+   "M2e-51：骨架注释记录官方契约修正（void 而非「图像编号 -1 表示失败」）")
+ok("M2e-51 gap (int-to-Object conversion) not cleared" in m2h_test,
+   "M2e-51：A 硬判据清掉 int-to-Object 转换错误")
+ok('if (fatal.find("Cannot convert") != std::string::npos ||\n'
+   '        inner.find("Cannot convert") != std::string::npos)\n'
+   '        return Fail("M2e-51 gap (int-to-Object conversion) not cleared", j);' in m2h_test,
+   "M2e-51：A 判据按错误文本命中（判断语句 + Fail 连续文本形态）")
+ok('"drawText", "Cannot convert"}) {' in m2h_test,
+   "M2e-51：XP3 场景的「已关闭缺口」清单加上了 Cannot convert")
+ok("RunCaseNoLVoid" in m2h_test and
+   'if (fatal.find("Cannot convert") == std::string::npos)\n'
+   '        return Fail("NOLVOID control did not reproduce the int-to-Object ' in m2h_test,
+   "M2e-51：NOLVOID 翻转对照用 fatal 精确复现判据（判断语句 + Fail 连续文本）")
+ok('if (body.find("return;") != std::string::npos)\n'
+   '            return Fail("NOLVOID fixture still carries the void return' in m2h_test and
+   'if (body.find("return -1;") == std::string::npos)\n'
+   '            return Fail("NOLVOID fixture lost the legacy return -1' in m2h_test,
+   "M2e-51：C++ 侧校验翻转有效性（void 不在 + 死代码 -1 在，判断语句形态）")
+ok('M2H_NOLVOID="$OUT/m2h_nolvoid"' in test_sh and
+   'drop_marked "$M2H_NOLVOID/system/GalBoxLayer.tjs" M2E51_BEGIN M2E51_END' in test_sh,
+   "M2e-51：构建脚本生成 NOLVOID 夹具（drop_marked M2E51 段）")
+ok('if grep -q "return;" "$M2H_NOLVOID' in test_sh and
+   '! grep -q "return -1;" "$M2H_NOLVOID' in test_sh,
+   "M2e-51：NOLVOID 夹具检查真的在查翻转（void 不在 + -1 在，检查语句形态）")
+ok('"$M2H_NOTAG49" "$M2H_NOLVOID"' in test_sh,
+   "M2e-51：m2h 调用参数加了 $M2H_NOLVOID")
+ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT NOTAG49 NOLVOID XP3" in test_sh,
+   "M2e-51：场景循环 for 行加了 NOLVOID")
+ok("NOTAG45|GEO|NOPUMP|NODRAWTEXT|NOTAG49|NOLVOID|XP3" in test_sh,
+   "M2e-51：OK 判定清单加了 NOLVOID")
+ok("loadImages void 契约" in test_sh,
+   "M2e-51：构建脚本 M2e-51 文案同步")
+# 出包核验器第 40 条：断言整条判断语句的形态。
+ok('if b"M2E51_BEGIN" not in lay51 or b"return -1;" not in lay51:' in verifier,
+   "M2e-51：出包核验器第 40 条要求 M2E51 段 + 死代码 -1 共存"
    "（断言整条判断语句的形态 —— 只搜字样会被检查代码自身满足，恒真）")
 
 print("\n========================================")

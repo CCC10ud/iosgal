@@ -280,8 +280,25 @@ class Layer
 
 	function finalize() {}
 
-	// 官方签名：loadImages(storage, key) -> 图像编号（-1 表示失败）
-	function loadImages(storage, key) { return -1; }
+	function loadImages(storage, key)
+	{
+		// M2E51_BEGIN —— NOLVOID 负向对照按此标记整段删除
+		// 官方契约（M2e-51 实测修正）：loadImages(storage, key) 无 taginfo
+		// 时返回 **void** —— 官方 AnimationLayer.loadImages
+		//（AnimationLayer.tjs:483-487）这样消费返回值：
+		//     var taginfo = super.loadImages(elm.storage, elm.key);
+		//     if(taginfo) { (Dictionary.assign incontextof taginfo)(elm, false); }
+		// 骨架曾返回 -1（M2e-2 时代的「图像编号，-1 表示失败」是错误契约）
+		// ⇒ -1 为真值 ⇒ 被当 taginfo 参与 incontextof 调用 ⇒ AsObject on
+		// int 抛错 = M2e-49/50 的实测停点 `Cannot convert the variable type
+		// ((int)-1 to Object)`。修复后语义：无 taginfo ⇒ void ⇒
+		// if(taginfo) 走 false 分支。
+		// （对照翻转法：NOLVOID 夹具 drop 本段后，函数体只剩下面的
+		// return -1; 并被激活，精确复现同一实测停点。）
+		return;
+		// M2E51_END
+		return -1;
+	}
 
 	function assignImages(src) {}
 
