@@ -347,6 +347,12 @@ def main(argv):
         return fail("system/GalBoxLayer.tjs 里没有 M2E51 段（loadImages 的 "
                     "void 返回 + 死代码翻转对照）：设备端官方行末路径的 "
                     "(int)-1→Object 停点无从验证与回归")
+    # 第 41 条（M2e-52）：Layer.holdAlpha（alpha 保持开关）。M2e-51 修复后
+    # 官方 AnimationLayer.loadImages（AnimationLayer.tjs:703）写它 ——
+    # run 44899892227 的实测停点 Member "holdAlpha" does not exist。
+    if b"var holdAlpha = false;" not in lay51:
+        return fail("system/GalBoxLayer.tjs 里没有 var holdAlpha = false："
+                    "设备端官方 l 路径会在 AnimationLayer.loadImages 断链")
 
     # 第 21 条（M2e-28）：窗口左上角坐标。MainWindow.tjs:438 的
     # `this.width + this.left`（居中修正）要读 Window.left；439 行还会回写。

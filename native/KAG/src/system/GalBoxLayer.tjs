@@ -339,6 +339,18 @@ class Layer
 	}
 	// M2E48_END
 
+	// M2E52_BEGIN —— NOHOLDALPHA 负向对照按此标记整段删除
+	// 官方 LayerIntf.cpp 的 holdAlpha 成员：「アルファ情報を保持」——
+	// loadImage 系操作时是否保留 alpha 通道的开关。官方
+	// AnimationLayer.loadImages（AnimationLayer.tjs:703，M2e-51 修复后
+	// 泵驱动的 l 路径真执行到此处）写它：`holdAlpha = false;`（elm.mode
+	// 分支）—— run 44899892227 的实测停点
+	// `Member "holdAlpha" does not exist`。骨架不真画，只把布尔状态存住
+	// 让官方脚本继续往前跑。KAGLayer.tjs:376-397 还会读/写它（fill/operate
+	// 助手的前后保存），所以必须是可读写的实例成员。
+	var holdAlpha = false;
+	// M2E52_END
+
 	function beginTransition(method, withchildren, src, elm) {}
 	function onTransitionCompleted(dest, src) {}
 }

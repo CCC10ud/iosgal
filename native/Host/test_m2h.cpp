@@ -788,6 +788,14 @@ static int RunCaseA(const char *game, const char *storage) {
         inner.find("Cannot convert") != std::string::npos)
         return Fail("M2e-51 gap (int-to-Object conversion) not cleared", j);
 
+    // M2e-52 硬判据：run 44899892227 的实测停点是
+    // `Member "holdAlpha" does not exist`（AnimationLayer.loadImages:703
+    // 的 `holdAlpha = false`，官方原生 Layer 成员）。GalBoxLayer 补上
+    // holdAlpha 后，泵驱动的链不许再停在这个成员上。
+    if (fatal.find("holdAlpha") != std::string::npos ||
+        inner.find("holdAlpha") != std::string::npos)
+        return Fail("M2e-52 gap (holdAlpha) not cleared", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
     std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-43)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
@@ -3206,6 +3214,58 @@ static int RunCaseNoLVoid(const char *nolvoid, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOHOLDALPHA：Layer.holdAlpha 缺失的负向对照（M2e-52）--------
+// run 44899892227 的实测停点：M2e-51 修复后泵驱动的 l 路径走进
+// AnimationLayer.loadImages（ClickGlyphLayer 覆盖层 → super 链）⇒
+// `holdAlpha = false`（AnimationLayer.tjs:703）⇒ `Member "holdAlpha"
+// does not exist`。对照 drop_marked M2E52 段复现该缺口。
+static int RunCaseNoHoldAlpha(const char *noholdalpha, const char *storage) {
+    if (!Exists(std::string(noholdalpha) + "/system/Config.tjs"))
+        return Fail("NOHOLDALPHA fixture missing Config.tjs", NULL);
+    const std::string skel = std::string(noholdalpha) + "/system/GalBoxLayer.tjs";
+    if (!Exists(skel))
+        return Fail("NOHOLDALPHA fixture must keep the Layer skeleton", NULL);
+    {
+        std::ifstream f(skel.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E52_BEGIN") != std::string::npos)
+            return Fail("NOHOLDALPHA fixture must have the M2E52 section removed", NULL);
+        if (body.find("var holdAlpha") != std::string::npos)
+            return Fail("NOHOLDALPHA fixture still declares holdAlpha", NULL);
+        // 变量唯一：M2e-51 的 loadImages void 契约与其他 Layer 成员必须还在。
+        if (body.find("M2E51_BEGIN") == std::string::npos)
+            return Fail("NOHOLDALPHA fixture lost M2E51 too (variable not unique)", NULL);
+        if (body.find("function drawText") == std::string::npos)
+            return Fail("NOHOLDALPHA fixture lost drawText too (variable not unique)", NULL);
+        if (body.find("var imageWidth") == std::string::npos)
+            return Fail("NOHOLDALPHA fixture lost imageWidth too (variable not unique)", NULL);
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(noholdalpha, storage, arc, kTagPathProbe);
+    if (!j) return Fail("cannot run the NOHOLDALPHA control", NULL);
+    DumpChain("NOHOLDALPHA", j);
+
+    if (StrField(j, "shim").find("M2E2_LAYER_SKELETON") == std::string::npos)
+        return Fail("NOHOLDALPHA control lost the Layer skeleton tag", j);
+
+    if (Has(j, "\"ok\":true"))
+        return Fail("NOHOLDALPHA control unexpectedly completed the startup chain", j);
+    const std::string fatal = StrField(j, "fatal");
+    if (fatal.find("holdAlpha") == std::string::npos)
+        return Fail("NOHOLDALPHA control did not reproduce the holdAlpha gap — "
+                    "holdAlpha would not be the variable under test", j);
+    if (fatal.find("タグ : l (") == std::string::npos)
+        return Fail("NOHOLDALPHA control fatal does not carry the l tag "
+                    "context (the pump-driven path is not exercised)", j);
+
+    std::printf("[m2h] NOHOLDALPHA verdict: without holdAlpha the pump-driven l "
+                "processing stops exactly at the measured M2e-51 stop point\n");
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // ---- 场景 NOEVALSTORAGE：Scripts.evalStorage 原生方法缺失的负向对照（M2e-32）
 // 与前面所有 NOxxx 不同：evalStorage 是 C++ 原生方法，不在 TJS 骨架文件里，
 // 没法用 drop_marked/rm 夹具复现。改用宿主开关在**注册时**不挂载该方法 ——
@@ -3384,7 +3444,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                                "\"loop\"", "\"frame\"", "numberOfAudioStream",
                                "segmentLoopStartFrame", "segmentLoopEndFrame",
                                "periodEventFrame", "resetInterrupt", "curStorage", "curLine",
-                               "getNextTag", "gp44Left", "gp45Left", "drawText", "Cannot convert"}) {
+                               "getNextTag", "gp44Left", "gp45Left", "drawText", "Cannot convert", "holdAlpha"}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -3468,6 +3528,7 @@ int main(int argc, char **argv) {
     const char *nodrawtext = (argc > 47) ? argv[47] : "";
     const char *notag49   = (argc > 48) ? argv[48] : "";
     const char *nolvoid   = (argc > 49) ? argv[49] : "";
+    const char *noholdalpha = (argc > 50) ? argv[50] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -3717,6 +3778,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOHOLDALPHA") == 0) {
+        if (RunCaseNoHoldAlpha(noholdalpha, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -3735,6 +3801,6 @@ int main(int argc, char **argv) {
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
                 "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / NOWINLEFT / NOPAUSED / "
                 "NOPAN / NOMODE / NOEVALSTORAGE / NOVISIBLE / NOLOOP / NOFRAME / "
-                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / NOTAG44 / NOTAG45 / GEO / NOPUMP / NODRAWTEXT / NOTAG49 / NOLVOID / XP3 / LEAK / LEAK2)\n", which);
+                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / NOTAG44 / NOTAG45 / GEO / NOPUMP / NODRAWTEXT / NOTAG49 / NOLVOID / NOHOLDALPHA / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }
