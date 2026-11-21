@@ -303,6 +303,25 @@ class Layer
 	function focus() {}
 	function removeMode() {}
 
+	// M2E48_BEGIN —— NODRAWTEXT 负向对照按此标记整段删除
+	// 官方 LayerIntf.cpp 的**文字绘制面**：drawText(x, y, text, color, opa,
+	// type, shadowlevel, shadowcolor, shadowwidth, shadowofsx, shadowofsy)。
+	// MessageLayer.processCh（MessageLayer.tjs:1287-1296）布局计算后调
+	// lineLayer.drawText —— M2e-47 宿主空闲泵落地后 processCh 首次真执行，
+	// run 44883997275 实测停点正是 `Member "drawText" does not exist`
+	//（经 Conductor.tjs:189 重抛，タグ : ch 上下文）。
+	//
+	// 官方调用形态有两种：6 参（无阴影/无镶边）与 11 参（edge / shadow），
+	// 第 7 参起给官方默认值即可同时覆盖两种形态。骨架不真画（无字形、
+	// 无光栅化），只把参数收下来让布局脚本继续往前跑；返回值官方为
+	// void，调用方不读。
+	function drawText(x, y, text, color, opa, type,
+		shadowlevel = 0, shadowcolor = 0, shadowwidth = 1,
+		shadowofsx = 0, shadowofsy = 0)
+	{
+	}
+	// M2E48_END
+
 	function beginTransition(method, withchildren, src, elm) {}
 	function onTransitionCompleted(dest, src) {}
 }

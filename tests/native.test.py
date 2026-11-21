@@ -826,8 +826,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把四十七个场景拆成独立进程跑（四十一个负向对照 + GEO 几何诊断 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把四十八个场景拆成独立进程跑（四十二个负向对照 + GEO 几何诊断 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -2209,7 +2209,7 @@ ok('if b"var gp45Left = 0;" not in kp43:' in verifier,
    "M2e-45：出包核验器第 37 条要求 KAGParser 的 ch 队列槽位"
    "（断言整条判断语句的形态 —— 只搜字样会被检查代码自身满足，恒真）")
 # XP3 场景「已关闭缺口」清单加 gp45Left（防包内骨架丢槽位的悬空引用）。
-ok('"gp44Left", "gp45Left"})' in m2h_test,
+ok('"gp44Left", "gp45Left"' in m2h_test,
    "M2e-45：XP3 场景的「已关闭缺口」清单加上了 gp45Left")
 
 # ---- M2e-46：GEO 几何诊断场景（纯测量，无骨架改动）---------------------
@@ -2300,14 +2300,62 @@ ok('if (StrField(j, "fatal").find("タグ : ch (") == std::string::npos)\n'
    '            return Fail("GEO: chain failed without the ch tag context ' in m2h_test,
    "M2e-47：GEO 判据双形态化（链不再干净时按 タグ : ch 口径识别泵驱动的缺口）")
 ok('if (std::strcmp(which, "NOPUMP") == 0) {' in m2h_test and
-   "NOTAG45 / GEO / NOPUMP / XP3" in m2h_test,
+   "NOTAG45 / GEO / NOPUMP /" in m2h_test,
    "M2e-47：NOPUMP 分发与 usage 同步（无新夹具无新 argv，NOEVALSTORAGE 模式）")
-ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP XP3" in test_sh,
+ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP" in test_sh,
    "M2e-47：场景循环 for 行加了 NOPUMP")
-ok("NOTAG45|GEO|NOPUMP|XP3" in test_sh,
+ok("NOTAG45|GEO|NOPUMP|" in test_sh,
    "M2e-47：OK 判定清单加了 NOPUMP")
 ok("宿主空闲泵" in test_sh,
    "M2e-47：构建脚本 M2e-47 文案同步")
+
+# ---- M2e-48：Layer.drawText（官方文字绘制面）---------------------------
+# run 44883997275 的实测停点：宿主空闲泵把挂起的 ch 送进 processCh，
+# 布局计算后调 lineLayer.drawText ⇒ `Member "drawText" does not exist`
+#（经 Conductor.tjs:189 重抛）。本轮补骨架方法（11 参带默认值，覆盖 6 参
+# 与 11 参两种官方调用形态），锁判据。
+_gb_lay48 = open("native/KAG/src/system/GalBoxLayer.tjs", encoding="utf-8").read()
+_lay48 = _gb_lay48.split("M2E48_BEGIN",1)[-1].split("M2E48_END",1)[0]
+ok("function drawText(x" in _lay48,
+   "M2e-48：Layer 骨架声明 drawText（官方文字绘制面入口）")
+ok("shadowlevel = 0, shadowcolor = 0, shadowwidth = 1," in _lay48,
+   "M2e-48：第 7 参起带官方默认值（同时覆盖 6 参与 11 参两种调用形态）")
+ok("M2e-48 gap (drawText) not cleared" in m2h_test,
+   "M2e-48：A 硬判据清掉 drawText")
+ok('if (fatal.find("drawText") != std::string::npos ||\n'
+   '        inner.find("drawText") != std::string::npos)\n'
+   '        return Fail("M2e-48 gap (drawText) not cleared", j);' in m2h_test,
+   "M2e-48：A 判据按变量名命中（判断语句 + Fail 连续文本形态）")
+ok('"gp45Left", "drawText"}) {' in m2h_test,
+   "M2e-48：XP3 场景的「已关闭缺口」清单加上了 drawText")
+# NODRAWTEXT 负向对照：删 M2E48 段 ⇒ 泵驱动的链精确复现实测停点。
+ok("RunCaseNoDrawText" in m2h_test and
+   'if (fatal.find("drawText") == std::string::npos)\n'
+   '        return Fail("NODRAWTEXT control did not reproduce the drawText gap' in m2h_test,
+   "M2e-48：NODRAWTEXT 用 fatal 精确复现判据（判断语句 + Fail 连续文本）")
+ok('if (body.find("function drawText") != std::string::npos)\n'
+   '            return Fail("NODRAWTEXT fixture still declares drawText' in m2h_test and
+   'if (body.find("var imageWidth") == std::string::npos)\n'
+   '            return Fail("NODRAWTEXT fixture lost imageWidth too' in m2h_test,
+   "M2e-48：C++ 侧校验 NODRAWTEXT 夹具确实缺 drawText 且变量唯一（判断语句形态）")
+ok('M2H_NODRAWTEXT="$OUT/m2h_nodrawtext"' in test_sh and
+   'drop_marked "$M2H_NODRAWTEXT/system/GalBoxLayer.tjs" M2E48_BEGIN M2E48_END' in test_sh,
+   "M2e-48：构建脚本生成 NODRAWTEXT 夹具（drop_marked M2E48 段）")
+ok('if grep -q "M2E48_BEGIN\\|function drawText"' in test_sh and
+   '! grep -q "function setImageSize" "$M2H_NODRAWTEXT' in test_sh,
+   "M2e-48：夹具检查真的在查 drawText 段（断言检查语句形态，非仅字样）")
+ok('"$M2H_NOTAG45" "$M2H_NODRAWTEXT"' in test_sh,
+   "M2e-48：m2h 调用参数加了 $M2H_NODRAWTEXT")
+ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT XP3" in test_sh,
+   "M2e-48：场景循环 for 行加了 NODRAWTEXT")
+ok("NOTAG45|GEO|NOPUMP|NODRAWTEXT|XP3" in test_sh,
+   "M2e-48：OK 判定清单加了 NODRAWTEXT")
+ok("Layer.drawText 文字绘制面" in test_sh,
+   "M2e-48：构建脚本 M2e-48 文案同步")
+# 出包核验器第 38 条：断言整条判断语句的形态。
+ok('if b"function drawText(x" not in lay48:' in verifier,
+   "M2e-48：出包核验器第 38 条要求 GalBoxLayer.drawText"
+   "（断言整条判断语句的形态 —— 只搜字样会被检查代码自身满足，恒真）")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

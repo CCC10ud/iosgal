@@ -759,6 +759,14 @@ static int RunCaseA(const char *game, const char *storage) {
         return Fail("M2e-45: the chain stopped before reaching the ch tag "
                     "(fatal does not carry the ch tag context)", j);
 
+    // M2e-48 硬判据：run 44883997275 的实测停点是
+    // `Member "drawText" does not exist`（MessageLayer.processCh 布局计算
+    // 后调 lineLayer.drawText）。GalBoxLayer 补上 drawText 后，泵驱动的链
+    // 不许再停在这个成员上（按变量名命中，不绑行号）。
+    if (fatal.find("drawText") != std::string::npos ||
+        inner.find("drawText") != std::string::npos)
+        return Fail("M2e-48 gap (drawText) not cleared", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
     std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-43)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
@@ -2993,6 +3001,61 @@ static int RunCaseNoPump(const char *game, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NODRAWTEXT：Layer.drawText 缺失的负向对照（M2e-48）-----------
+// run 44883997275 的实测停点：宿主空闲泵把挂起的 ch 送进 processCh，
+// 布局计算后调 lineLayer.drawText ⇒ `Member "drawText" does not exist`
+//（经 Conductor.tjs:189 重抛，タグ : ch 上下文）。本对照删掉 M2E48 段
+// 复现该缺口，锁死「A 不再停在 drawText」判据非恒真。
+static int RunCaseNoDrawText(const char *nodrawtext, const char *storage) {
+    if (!Exists(std::string(nodrawtext) + "/system/Config.tjs"))
+        return Fail("NODRAWTEXT fixture missing Config.tjs", NULL);
+    const std::string skel = std::string(nodrawtext) + "/system/GalBoxLayer.tjs";
+    if (!Exists(skel))
+        return Fail("NODRAWTEXT fixture must keep the Layer skeleton", NULL);
+    {
+        std::ifstream f(skel.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E48_BEGIN") != std::string::npos)
+            return Fail("NODRAWTEXT fixture must have the M2E48 section removed", NULL);
+        // 查声明形态而非裸字样：M2E48 段内的注释也提到 drawText。
+        if (body.find("function drawText") != std::string::npos)
+            return Fail("NODRAWTEXT fixture still declares drawText", NULL);
+        // 变量唯一：其他 Layer 成员/方法必须还在。
+        if (body.find("var imageWidth") == std::string::npos)
+            return Fail("NODRAWTEXT fixture lost imageWidth too (variable not unique)", NULL);
+        if (body.find("function setImageSize") == std::string::npos)
+            return Fail("NODRAWTEXT fixture lost setImageSize too (variable not unique)", NULL);
+        if (body.find("function setPos") == std::string::npos)
+            return Fail("NODRAWTEXT fixture lost setPos too (variable not unique)", NULL);
+        if (body.find("var hitType") == std::string::npos)
+            return Fail("NODRAWTEXT fixture lost hitType too (variable not unique)", NULL);
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(nodrawtext, storage, arc, kTagPathProbe);
+    if (!j) return Fail("cannot run the NODRAWTEXT control", NULL);
+    DumpChain("NODRAWTEXT", j);
+
+    if (StrField(j, "shim").find("M2E2_LAYER_SKELETON") == std::string::npos)
+        return Fail("NODRAWTEXT control lost the Layer skeleton tag", j);
+
+    if (Has(j, "\"ok\":true"))
+        return Fail("NODRAWTEXT control unexpectedly completed the startup chain", j);
+    const std::string fatal = StrField(j, "fatal");
+    if (fatal.find("drawText") == std::string::npos)
+        return Fail("NODRAWTEXT control did not reproduce the drawText gap — "
+                    "drawText would not be the variable under test", j);
+    if (fatal.find("タグ : ch (") == std::string::npos)
+        return Fail("NODRAWTEXT control fatal does not carry the ch tag "
+                    "context (the pump-driven path is not exercised)", j);
+
+    std::printf("[m2h] NODRAWTEXT verdict: without drawText the pump-driven ch "
+                "processing stops exactly at the measured M2e-47 stop point\n");
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // ---- 场景 NOEVALSTORAGE：Scripts.evalStorage 原生方法缺失的负向对照（M2e-32）
 // 与前面所有 NOxxx 不同：evalStorage 是 C++ 原生方法，不在 TJS 骨架文件里，
 // 没法用 drop_marked/rm 夹具复现。改用宿主开关在**注册时**不挂载该方法 ——
@@ -3171,7 +3234,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                                "\"loop\"", "\"frame\"", "numberOfAudioStream",
                                "segmentLoopStartFrame", "segmentLoopEndFrame",
                                "periodEventFrame", "resetInterrupt", "curStorage", "curLine",
-                               "getNextTag", "gp44Left", "gp45Left"}) {
+                               "getNextTag", "gp44Left", "gp45Left", "drawText"}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -3251,6 +3314,7 @@ int main(int argc, char **argv) {
     const char *nogetnext = (argc > 44) ? argv[44] : "";
     const char *notag44   = (argc > 45) ? argv[45] : "";
     const char *notag45   = (argc > 46) ? argv[46] : "";
+    const char *nodrawtext = (argc > 47) ? argv[47] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -3485,6 +3549,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NODRAWTEXT") == 0) {
+        if (RunCaseNoDrawText(nodrawtext, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -3503,6 +3572,6 @@ int main(int argc, char **argv) {
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
                 "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / NOWINLEFT / NOPAUSED / "
                 "NOPAN / NOMODE / NOEVALSTORAGE / NOVISIBLE / NOLOOP / NOFRAME / "
-                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / NOTAG44 / NOTAG45 / GEO / NOPUMP / XP3 / LEAK / LEAK2)\n", which);
+                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / NOTAG44 / NOTAG45 / GEO / NOPUMP / NODRAWTEXT / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

@@ -324,6 +324,14 @@ def main(argv):
     if b"var gp45Left = 0;" not in kp43:
         return fail("system/GalBoxKAGParser.tjs 里没有 var gp45Left = 0："
                     "设备端 ch tag 路径无从验证（MessageLayer.processCh）")
+    # 第 38 条（M2e-48）：Layer.drawText（官方文字绘制面）。宿主空闲泵
+    # （M2e-47）落地后 MessageLayer.processCh 首次真执行，布局计算后调
+    # lineLayer.drawText —— run 44883997275 的实测停点；没有它，官方
+    # 文字路径必在此断链。
+    lay48 = by_name["system/GalBoxLayer.tjs"]["data"]
+    if b"function drawText(x" not in lay48:
+        return fail("system/GalBoxLayer.tjs 里没有 function drawText(x："
+                    "设备端官方文字路径会在 MessageLayer.processCh 断链")
 
     # 第 21 条（M2e-28）：窗口左上角坐标。MainWindow.tjs:438 的
     # `this.width + this.left`（居中修正）要读 Window.left；439 行还会回写。
@@ -359,7 +367,8 @@ def main(argv):
           "Sound 骨架 MIDISoundBuffer(M2e-25) / WaveSoundBuffer(M2e-26) / "
           "Movie 骨架 VideoOverlay+mode+visible+loop+frame+nAudio+segStart+segEnd+periodEvent(M2e-27/31/33/34/35/36/37/38/39) / Window 带 left+top(M2e-28) / "
           "Sound 带 paused×2(M2e-29) / Wave 带 pan property(M2e-30) / "
-          "Scripts.evalStorage 原生方法(M2e-32，二进制内)"
+          "Scripts.evalStorage 原生方法(M2e-32，二进制内) / "
+          "Layer 带 drawText(M2e-48) / 宿主空闲泵(M2e-47，二进制内)"
           % (parsed["count"], total, init_bytes, len(SKELETONS)))
     return 0
 
