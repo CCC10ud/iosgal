@@ -351,6 +351,20 @@ class Layer
 	var holdAlpha = false;
 	// M2E52_END
 
+	// M2E53_BEGIN —— NOADJUSTGAMMA 负向对照按此标记整段删除
+	// 官方 LayerIntf.cpp 的 adjustGamma(rgamma, rfloor, rceil, ggamma,
+	// gfloor, gceil, bgamma, bfloor, bceil)：伽马修正（9 参）。官方
+	// AnimationLayer.applyColorCorrection（AnimationLayer.tjs:796，M2e-52
+	// 修复后泵驱动的 l 路径真执行到此处）调用它 —— run 44899892227 的
+	// 实测停点 `Member "adjustGamma" does not exist`（param.grayscale void
+	// 跳过 doGrayScale 后第一个缺的就是它）。骨架不真画，收参不画；
+	// 返回值官方为 void，调用方不读。
+	function adjustGamma(rgamma, rfloor, rceil, ggamma, gfloor, gceil,
+		bgamma, bfloor, bceil)
+	{
+	}
+	// M2E53_END
+
 	function beginTransition(method, withchildren, src, elm) {}
 	function onTransitionCompleted(dest, src) {}
 }

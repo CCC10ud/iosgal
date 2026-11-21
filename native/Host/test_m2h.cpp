@@ -796,6 +796,14 @@ static int RunCaseA(const char *game, const char *storage) {
         inner.find("holdAlpha") != std::string::npos)
         return Fail("M2e-52 gap (holdAlpha) not cleared", j);
 
+    // M2e-53 硬判据：run 44899892227 的实测停点是
+    // `Member "adjustGamma" does not exist`（applyColorCorrection:796 在
+    // holdAlpha 写完后调它，param.grayscale void 跳过 doGrayScale）。补上
+    // adjustGamma 后，泵驱动的链不许再停在这个成员上。
+    if (fatal.find("adjustGamma") != std::string::npos ||
+        inner.find("adjustGamma") != std::string::npos)
+        return Fail("M2e-53 gap (adjustGamma) not cleared", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
     std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-43)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
@@ -3266,6 +3274,58 @@ static int RunCaseNoHoldAlpha(const char *noholdalpha, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOADJUSTGAMMA：Layer.adjustGamma 缺失的负向对照（M2e-53）----
+// run 44899892227 的实测停点：M2e-52 修复后泵驱动的 l 路径走进
+// applyColorCorrection ⇒ `layer.adjustGamma(...)`（AnimationLayer.tjs
+// 796，param.grayscale void 跳过 doGrayScale 后第一个缺的就是它）⇒
+// `Member "adjustGamma" does not exist`。对照 drop_marked M2E53 段复现。
+static int RunCaseNoAdjustGamma(const char *noadjustgamma, const char *storage) {
+    if (!Exists(std::string(noadjustgamma) + "/system/Config.tjs"))
+        return Fail("NOADJUSTGAMMA fixture missing Config.tjs", NULL);
+    const std::string skel = std::string(noadjustgamma) + "/system/GalBoxLayer.tjs";
+    if (!Exists(skel))
+        return Fail("NOADJUSTGAMMA fixture must keep the Layer skeleton", NULL);
+    {
+        std::ifstream f(skel.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E53_BEGIN") != std::string::npos)
+            return Fail("NOADJUSTGAMMA fixture must have the M2E53 section removed", NULL);
+        if (body.find("function adjustGamma") != std::string::npos)
+            return Fail("NOADJUSTGAMMA fixture still declares adjustGamma", NULL);
+        // 变量唯一：M2e-52 的 holdAlpha 与其他 Layer 成员必须还在。
+        if (body.find("var holdAlpha") == std::string::npos)
+            return Fail("NOADJUSTGAMMA fixture lost holdAlpha too (variable not unique)", NULL);
+        if (body.find("M2E52_BEGIN") == std::string::npos)
+            return Fail("NOADJUSTGAMMA fixture lost M2E52 too (variable not unique)", NULL);
+        if (body.find("function drawText") == std::string::npos)
+            return Fail("NOADJUSTGAMMA fixture lost drawText too (variable not unique)", NULL);
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(noadjustgamma, storage, arc, kTagPathProbe);
+    if (!j) return Fail("cannot run the NOADJUSTGAMMA control", NULL);
+    DumpChain("NOADJUSTGAMMA", j);
+
+    if (StrField(j, "shim").find("M2E2_LAYER_SKELETON") == std::string::npos)
+        return Fail("NOADJUSTGAMMA control lost the Layer skeleton tag", j);
+
+    if (Has(j, "\"ok\":true"))
+        return Fail("NOADJUSTGAMMA control unexpectedly completed the startup chain", j);
+    const std::string fatal = StrField(j, "fatal");
+    if (fatal.find("adjustGamma") == std::string::npos)
+        return Fail("NOADJUSTGAMMA control did not reproduce the adjustGamma gap — "
+                    "adjustGamma would not be the variable under test", j);
+    if (fatal.find("タグ : l (") == std::string::npos)
+        return Fail("NOADJUSTGAMMA control fatal does not carry the l tag "
+                    "context (the pump-driven path is not exercised)", j);
+
+    std::printf("[m2h] NOADJUSTGAMMA verdict: without adjustGamma the pump-driven l "
+                "processing stops exactly at the measured M2e-52 stop point\n");
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // ---- 场景 NOEVALSTORAGE：Scripts.evalStorage 原生方法缺失的负向对照（M2e-32）
 // 与前面所有 NOxxx 不同：evalStorage 是 C++ 原生方法，不在 TJS 骨架文件里，
 // 没法用 drop_marked/rm 夹具复现。改用宿主开关在**注册时**不挂载该方法 ——
@@ -3444,7 +3504,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                                "\"loop\"", "\"frame\"", "numberOfAudioStream",
                                "segmentLoopStartFrame", "segmentLoopEndFrame",
                                "periodEventFrame", "resetInterrupt", "curStorage", "curLine",
-                               "getNextTag", "gp44Left", "gp45Left", "drawText", "Cannot convert", "holdAlpha"}) {
+                               "getNextTag", "gp44Left", "gp45Left", "drawText", "Cannot convert", "holdAlpha", "adjustGamma"}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -3529,6 +3589,7 @@ int main(int argc, char **argv) {
     const char *notag49   = (argc > 48) ? argv[48] : "";
     const char *nolvoid   = (argc > 49) ? argv[49] : "";
     const char *noholdalpha = (argc > 50) ? argv[50] : "";
+    const char *noadjustgamma = (argc > 51) ? argv[51] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -3783,6 +3844,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOADJUSTGAMMA") == 0) {
+        if (RunCaseNoAdjustGamma(noadjustgamma, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -3801,6 +3867,6 @@ int main(int argc, char **argv) {
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
                 "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / NOWINLEFT / NOPAUSED / "
                 "NOPAN / NOMODE / NOEVALSTORAGE / NOVISIBLE / NOLOOP / NOFRAME / "
-                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / NOTAG44 / NOTAG45 / GEO / NOPUMP / NODRAWTEXT / NOTAG49 / NOLVOID / NOHOLDALPHA / XP3 / LEAK / LEAK2)\n", which);
+                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / NOTAG44 / NOTAG45 / GEO / NOPUMP / NODRAWTEXT / NOTAG49 / NOLVOID / NOHOLDALPHA / NOADJUSTGAMMA / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

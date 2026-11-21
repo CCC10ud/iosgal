@@ -353,6 +353,13 @@ def main(argv):
     if b"var holdAlpha = false;" not in lay51:
         return fail("system/GalBoxLayer.tjs 里没有 var holdAlpha = false："
                     "设备端官方 l 路径会在 AnimationLayer.loadImages 断链")
+    # 第 42 条（M2e-53）：Layer.adjustGamma（伽马修正，9 参）。M2e-52 修复后
+    # 官方 applyColorCorrection（AnimationLayer.tjs:796）写完 holdAlpha 后
+    # 调它 —— run 44899892227 的实测停点 Member "adjustGamma" does not
+    # exist。
+    if b"function adjustGamma(rgamma" not in lay51:
+        return fail("system/GalBoxLayer.tjs 里没有 function adjustGamma(rgamma："
+                    "设备端官方 l 路径会在 applyColorCorrection 断链")
 
     # 第 21 条（M2e-28）：窗口左上角坐标。MainWindow.tjs:438 的
     # `this.width + this.left`（居中修正）要读 Window.left；439 行还会回写。

@@ -826,8 +826,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT NOTAG49 NOLVOID NOHOLDALPHA XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把五十一个场景拆成独立进程跑（四十五个负向对照 + GEO 几何诊断 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT NOTAG49 NOLVOID NOHOLDALPHA NOADJUSTGAMMA XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把五十三个场景拆成独立进程跑（四十七个负向对照 + GEO 几何诊断 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -2342,7 +2342,7 @@ ok('if (fatal.find("drawText") != std::string::npos ||\n'
    '        inner.find("drawText") != std::string::npos)\n'
    '        return Fail("M2e-48 gap (drawText) not cleared", j);' in m2h_test,
    "M2e-48：A 判据按变量名命中（判断语句 + Fail 连续文本形态）")
-ok('"gp45Left", "drawText", "Cannot convert", "holdAlpha"}) {' in m2h_test,
+ok('"gp45Left", "drawText", "Cannot convert", "holdAlpha"' in m2h_test,
    "M2e-48：XP3 场景的「已关闭缺口」清单加上了 drawText")
 # NODRAWTEXT 负向对照：删 M2E48 段 ⇒ 泵驱动的链精确复现实测停点。
 ok("RunCaseNoDrawText" in m2h_test and
@@ -2452,9 +2452,9 @@ ok('if grep -q "return;" "$M2H_NOLVOID' in test_sh and
    "M2e-51：NOLVOID 夹具检查真的在查翻转（void 不在 + -1 在，检查语句形态）")
 ok('"$M2H_NOTAG49" "$M2H_NOLVOID"' in test_sh,
    "M2e-51：m2h 调用参数加了 $M2H_NOLVOID")
-ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT NOTAG49 NOLVOID" in test_sh,
+ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT NOTAG49 NOLVOID NOHOLDALPHA" in test_sh,
    "M2e-51：场景循环 for 行加了 NOLVOID")
-ok("NOTAG45|GEO|NOPUMP|NODRAWTEXT|NOTAG49|NOLVOID|" in test_sh,
+ok("NOTAG45|GEO|NOPUMP|NODRAWTEXT|NOTAG49|NOLVOID|NOHOLDALPHA|" in test_sh,
    "M2e-51：OK 判定清单加了 NOLVOID")
 ok("loadImages void 契约" in test_sh,
    "M2e-51：构建脚本 M2e-51 文案同步")
@@ -2478,8 +2478,8 @@ ok('if (fatal.find("holdAlpha") != std::string::npos ||\n'
    '        inner.find("holdAlpha") != std::string::npos)\n'
    '        return Fail("M2e-52 gap (holdAlpha) not cleared", j);' in m2h_test,
    "M2e-52：A 判据按变量名命中（判断语句 + Fail 连续文本形态）")
-ok('"Cannot convert", "holdAlpha"}) {' in m2h_test,
-   "M2e-52：XP3 场景的「已关闭缺口」清单加上了 holdAlpha")
+ok('"Cannot convert", "holdAlpha"' in m2h_test,
+   "M2e-52：XP3 场景的「已关闭缺口」清单加上了 holdAlpha（M2e-53 阶梯化：adjustGamma 由 M2e-53 块查）")
 ok("RunCaseNoHoldAlpha" in m2h_test and
    'if (fatal.find("holdAlpha") == std::string::npos)\n'
    '        return Fail("NOHOLDALPHA control did not reproduce the holdAlpha gap' in m2h_test,
@@ -2497,15 +2497,60 @@ ok('if grep -q "M2E52_BEGIN\\|var holdAlpha"' in test_sh and
    "M2e-52：NOHOLDALPHA 夹具检查真的在查 holdAlpha 段（检查语句形态）")
 ok('"$M2H_NOLVOID" "$M2H_NOHOLDALPHA"' in test_sh,
    "M2e-52：m2h 调用参数加了 $M2H_NOHOLDALPHA")
-ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT NOTAG49 NOLVOID NOHOLDALPHA XP3" in test_sh,
-   "M2e-52：场景循环 for 行加了 NOHOLDALPHA")
-ok("NOTAG45|GEO|NOPUMP|NODRAWTEXT|NOTAG49|NOLVOID|NOHOLDALPHA|XP3" in test_sh,
-   "M2e-52：OK 判定清单加了 NOHOLDALPHA")
+ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT NOTAG49 NOLVOID NOHOLDALPHA" in test_sh,
+   "M2e-52：场景循环 for 行加了 NOHOLDALPHA（M2e-53 阶梯化：NOADJUSTGAMMA 由 M2e-53 块查）")
+ok("NOTAG45|GEO|NOPUMP|NODRAWTEXT|NOTAG49|NOLVOID|NOHOLDALPHA|" in test_sh,
+   "M2e-52：OK 判定清单加了 NOHOLDALPHA（M2e-53 阶梯化：NOADJUSTGAMMA 由 M2e-53 块查）")
 ok("Layer.holdAlpha alpha 保持开关" in test_sh,
    "M2e-52：构建脚本 M2e-52 文案同步")
 # 出包核验器第 41 条：断言整条判断语句的形态。
 ok('if b"var holdAlpha = false;" not in lay51:' in verifier,
    "M2e-52：出包核验器第 41 条要求 GalBoxLayer.holdAlpha"
+   "（断言整条判断语句的形态 —— 只搜字样会被检查代码自身满足，恒真）")
+
+# ---- M2e-53：Layer.adjustGamma（伽马修正，9 参）-----------------------
+# M2e-52 修复后泵驱动的 l 路径走进 applyColorCorrection（官方
+# AnimationLayer.tjs:796）：param.grayscale void 跳过 doGrayScale 后调
+# layer.adjustGamma(...) ⇒ run 44899892227 的实测停点
+# `Member "adjustGamma" does not exist`。9 参收参不画。
+_gb_lay53 = open("native/KAG/src/system/GalBoxLayer.tjs", encoding="utf-8").read()
+_lay53 = _gb_lay53.split("M2E53_BEGIN",1)[-1].split("M2E53_END",1)[0]
+ok("function adjustGamma(rgamma, rfloor, rceil, ggamma, gfloor, gceil," in _lay53,
+   "M2e-53：Layer 骨架声明 adjustGamma（官方伽马修正，9 参收参不画）")
+ok("M2e-53 gap (adjustGamma) not cleared" in m2h_test,
+   "M2e-53：A 硬判据清掉 adjustGamma")
+ok('if (fatal.find("adjustGamma") != std::string::npos ||\n'
+   '        inner.find("adjustGamma") != std::string::npos)\n'
+   '        return Fail("M2e-53 gap (adjustGamma) not cleared", j);' in m2h_test,
+   "M2e-53：A 判据按变量名命中（判断语句 + Fail 连续文本形态）")
+ok('"holdAlpha", "adjustGamma"}) {' in m2h_test,
+   "M2e-53：XP3 场景的「已关闭缺口」清单加上了 adjustGamma")
+ok("RunCaseNoAdjustGamma" in m2h_test and
+   'if (fatal.find("adjustGamma") == std::string::npos)\n'
+   '        return Fail("NOADJUSTGAMMA control did not reproduce the adjustGamma gap' in m2h_test,
+   "M2e-53：NOADJUSTGAMMA 独立负向对照用 fatal 精确复现判据（判断语句 + Fail 连续文本）")
+ok('if (body.find("function adjustGamma") != std::string::npos)\n'
+   '            return Fail("NOADJUSTGAMMA fixture still declares adjustGamma' in m2h_test and
+   'if (body.find("var holdAlpha") == std::string::npos)\n'
+   '            return Fail("NOADJUSTGAMMA fixture lost holdAlpha too' in m2h_test,
+   "M2e-53：C++ 侧校验 NOADJUSTGAMMA 夹具确实缺 adjustGamma 且变量唯一（判断语句形态）")
+ok('M2H_NOADJUSTGAMMA="$OUT/m2h_noadjustgamma"' in test_sh and
+   'drop_marked "$M2H_NOADJUSTGAMMA/system/GalBoxLayer.tjs" M2E53_BEGIN M2E53_END' in test_sh,
+   "M2e-53：构建脚本生成 NOADJUSTGAMMA 夹具（drop_marked M2E53 段）")
+ok('if grep -q "M2E53_BEGIN\\|function adjustGamma"' in test_sh and
+   '! grep -q "var holdAlpha" "$M2H_NOADJUSTGAMMA' in test_sh,
+   "M2e-53：NOADJUSTGAMMA 夹具检查真的在查 adjustGamma 段（检查语句形态）")
+ok('"$M2H_NOHOLDALPHA" "$M2H_NOADJUSTGAMMA"' in test_sh,
+   "M2e-53：m2h 调用参数加了 $M2H_NOADJUSTGAMMA")
+ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT NOTAG49 NOLVOID NOHOLDALPHA NOADJUSTGAMMA XP3" in test_sh,
+   "M2e-53：场景循环 for 行加了 NOADJUSTGAMMA")
+ok("NOTAG45|GEO|NOPUMP|NODRAWTEXT|NOTAG49|NOLVOID|NOHOLDALPHA|NOADJUSTGAMMA|XP3" in test_sh,
+   "M2e-53：OK 判定清单加了 NOADJUSTGAMMA")
+ok("Layer.adjustGamma 伽马修正" in test_sh,
+   "M2e-53：构建脚本 M2e-53 文案同步")
+# 出包核验器第 42 条：断言整条判断语句的形态。
+ok('if b"function adjustGamma(rgamma" not in lay51:' in verifier,
+   "M2e-53：出包核验器第 42 条要求 GalBoxLayer.adjustGamma"
    "（断言整条判断语句的形态 —— 只搜字样会被检查代码自身满足，恒真）")
 
 print("\n========================================")
