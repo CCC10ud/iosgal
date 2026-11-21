@@ -1465,9 +1465,9 @@ extern "C" char *GalBoxTJS2ExecScript(const char *entryName,
                     " var b = 0;"
                     " while(b < 8 && kag.conductor.status != 0) {"
                     " try { kag.conductor.timerCallback(); }"
-                    " catch(e) { throw new Exception(\"beat\" + b + \" | \"
+                    " catch(e) { throw new Exception(\"beat\" + b + \" | \""
                     " + e.message + \" | TRACE: \" + ((typeof e.trace) != "
-                    " \"undefined\" ? e.trace : \"none\")); }"
+                    "\"undefined\" ? e.trace : \"none\")); }"
                     " b++;"
                     " }"
                     " }";
