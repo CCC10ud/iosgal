@@ -826,8 +826,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把四十八个场景拆成独立进程跑（四十二个负向对照 + GEO 几何诊断 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT NOTAG49 XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把四十九个场景拆成独立进程跑（四十三个负向对照 + GEO 几何诊断 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -2099,9 +2099,10 @@ ok("gp44Left = 1;" in _m44,
    "M2e-44：one-shot 分支真的翻转状态槽位（没有它就不是 one-shot，会无限循环）")
 # A 判据的 probe 表达式（C++ 源码里是转义引号的字符串字面量）。
 # M2e-45 起为嵌套三元式：ch→445 / clickskip→444 / 其他→0。
-ok('kag.mainConductor.lastTagName == \\"ch\\" ? 445 : ' in m2h_test and
-   '(kag.mainConductor.lastTagName == \\"clickskip\\" ? 444 : 0)' in m2h_test,
-   "M2e-44/45：A 场景挂上嵌套 probe 表达式（lastTagName 判分发深度）")
+ok('kag.mainConductor.lastTagName == \\"l\\" ? 446 : ' in m2h_test and
+   '(kag.mainConductor.lastTagName == \\"ch\\" ? 445 : ' in m2h_test and
+   '(kag.mainConductor.lastTagName == \\"clickskip\\" ? 444 : 0))' in m2h_test,
+   "M2e-44/45/49：A 场景挂上四级嵌套 probe 表达式（lastTagName 判分发深度）")
 ok("RunChain(game, storage, arc, kTagPathProbe)" in m2h_test,
    "M2e-44：A 场景的 RunChain 真把 probe 传给宿主（不是声明了却没用）")
 # 🔴 出口判据必须匹配「判断语句 + return Fail」连续文本形态（铁律 1）：
@@ -2114,8 +2115,8 @@ ok('if (probeOk < 444)\n'
 ok("RunArchive(xp3, st.c_str(), arc, &opened, &dirMode, &cntXp3,\n"
    "                         kTagPathProbe)" in m2h_test,
    "M2e-44：XP3 场景的 RunArchive 也传 probe（包内链路与目录侧同口径）")
-ok('if (IntField(j, "probeValue") != 445)\n'
-   '            return Fail("packed xp3 tag dispatch did not reach the ch tag '
+ok('if (IntField(j, "probeValue") != 446)\n'
+   '            return Fail("packed xp3 tag dispatch did not reach the l tag '
    in m2h_test,
    "M2e-44/45：XP3 出口判据 ok:true ⇒ probe==445（判断语句 + return Fail 连续文本形态）")
 # NOTAG44 负向对照：夹具删 M2E44+M2E45 段后链条仍干净、但 probe 必须 0 ——
@@ -2168,15 +2169,14 @@ ok("var gp45Left = 0;" in _gb_kp45,
    "M2e-45：KAGParser 骨架声明 ch 队列段状态槽位 var gp45Left = 0")
 ok("gp45Left = 1;" in _m45,
    "M2e-45：ch 分支真的翻转状态槽位（与 gp44Left 独立，NOTAG45 才能只删它）")
-ok('if (probeOk != 445)\n'
+ok('if (probeOk < 445)\n'
    '            return Fail("M2e-45: the ch tag path did not run '
    in m2h_test,
-   "M2e-45：A 出口判据 ok:true ⇒ probe==445（判断语句 + return Fail 连续文本）")
-ok('if (fatal.find("タグ : ch (") == std::string::npos)\n'
-   '        return Fail("M2e-45: the chain stopped before reaching the ch tag '
-   in m2h_test,
-   "M2e-45：A 出口判据 ok:false ⇒ fatal 带 ch 标签上下文（带尾括号防 clickskip 误命中）")
-# NOTAG45 负向对照：只删 M2E45 ⇒ 队列退化 clickskip → void ⇒ probe==444。
+   "M2e-45：A 出口判据 ok:true ⇒ probe>=445（M2e-49 阶梯化；判断语句 + return Fail 连续文本）")
+ok('if (fatal.find("タグ : ch (") == std::string::npos &&\n'
+   '        fatal.find("タグ : l (") == std::string::npos)\n'
+   '        return Fail("M2e-45: the chain stopped before reaching the queued tags ' in m2h_test,
+   "M2e-45：A 出口判据 ok:false ⇒ fatal 带队列标签上下文（ch 或 l；M2e-49 阶梯化）")
 ok("RunCaseNoTag45" in m2h_test and
    'if (IntField(j, "probeValue") != 444)\n'
    '        return Fail("NOTAG45 control did not stop at the clickskip path '
@@ -2220,7 +2220,8 @@ ok('"gp44Left", "gp45Left"' in m2h_test,
 #   combined = status*10000 + pendings.count*1000 + (interval>0)*100 + voidFlags
 #   R' = relinexpos+5000 / X' = x+5000 / W' = imageWidth（typeof 守卫防抛）
 # 链没走到 ch 返回 -333。判据：链干净 + probe 真求值 + 真走到 ch。
-ok('kag.mainConductor.lastTagName == \\"ch\\" ? (' in m2h_test and
+ok('(kag.mainConductor.lastTagName == \\"ch\\" || ' in m2h_test and
+   'kag.mainConductor.lastTagName == \\"l\\") ? (' in m2h_test and
    '"kag.mainConductor.status * 10000"' in m2h_test and
    '" + kag.mainConductor.pendings.count * 1000"' in m2h_test and
    '" + (kag.mainConductor.timer.interval > 0 ? 1 : 0) * 100"' in m2h_test,
@@ -2273,11 +2274,11 @@ ok('extern "C" void GalBoxTJS2SetIdlePumpEnabled(int enabled) {' in hb_test,
 #   `Member "kag" does not exist`（typeof 是唯一的软访问）。
 # 官方 Initialize.tjs:232 `global.kag = new KAGWindow() if
 # typeof global.kag == "undefined";` 是先例：软访问 + "undefined"。
-ok('if((typeof global.kag) != \\"undefined\\" && ' in hb_test and
-   'kag.conductor.pendings.count > 0) ' in hb_test and
+ok('if((typeof global.kag) != \\"undefined\\") {' in hb_test and
+   'while(b < 8 && kag.conductor.status != 0) {' in hb_test and
    'kag.conductor.timerCallback();' in hb_test,
-   "M2e-47：泵语句形态（typeof 软访问守卫 + \"undefined\" 比较，让前 KAG "
-   "时代的链静默跳过）——两轮 CI 红实测出 typeof/硬读的语义坑")
+   "M2e-47/49：泵语句形态（typeof 软访问守卫 + 有界 8 拍事件循环 —— 单拍泵"
+   "在 step>0 等待后够不到队列更深的标签）——两轮 CI 红实测出 typeof/硬读的语义坑")
 ok('"m2e47-idle-pump"' in hb_test,
    "M2e-47：泵以独立脚本名执行（异常时可定位）")
 ok('reason.empty() && gIdlePumpEnabled' in hb_test,
@@ -2296,9 +2297,9 @@ ok('if (Has(j, "\\"idlePumpEnabled\\":true"))\n'
    '        return Fail("NOPUMP control ran with the idle pump still enabled ' in m2h_test,
    "M2e-47：NOPUMP 校验开关真的是唯一变量（判断语句 + Fail 连续文本）")
 # GEO 双形态：泵开后链不再干净，GEO 必须接受 fatal 形态
-ok('if (StrField(j, "fatal").find("タグ : ch (") == std::string::npos)\n'
-   '            return Fail("GEO: chain failed without the ch tag context ' in m2h_test,
-   "M2e-47：GEO 判据双形态化（链不再干净时按 タグ : ch 口径识别泵驱动的缺口）")
+ok('if (StrField(j, "fatal").find("タグ : ch (") == std::string::npos &&\n'
+   '            StrField(j, "fatal").find("タグ : l (") == std::string::npos)' in m2h_test,
+   "M2e-47/49：GEO 判据双形态化（链不干净时按 タグ : ch 或 l 口径识别泵驱动的缺口）")
 ok('if (std::strcmp(which, "NOPUMP") == 0) {' in m2h_test and
    "NOTAG45 / GEO / NOPUMP /" in m2h_test,
    "M2e-47：NOPUMP 分发与 usage 同步（无新夹具无新 argv，NOEVALSTORAGE 模式）")
@@ -2346,15 +2347,55 @@ ok('if grep -q "M2E48_BEGIN\\|function drawText"' in test_sh and
    "M2e-48：夹具检查真的在查 drawText 段（断言检查语句形态，非仅字样）")
 ok('"$M2H_NOTAG45" "$M2H_NODRAWTEXT"' in test_sh,
    "M2e-48：m2h 调用参数加了 $M2H_NODRAWTEXT")
-ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT XP3" in test_sh,
+ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT" in test_sh,
    "M2e-48：场景循环 for 行加了 NODRAWTEXT")
-ok("NOTAG45|GEO|NOPUMP|NODRAWTEXT|XP3" in test_sh,
+ok("NOTAG45|GEO|NOPUMP|NODRAWTEXT|" in test_sh,
    "M2e-48：OK 判定清单加了 NODRAWTEXT")
 ok("Layer.drawText 文字绘制面" in test_sh,
    "M2e-48：构建脚本 M2e-48 文案同步")
 # 出包核验器第 38 条：断言整条判断语句的形态。
 ok('if b"function drawText(x" not in lay48:' in verifier,
    "M2e-48：出包核验器第 38 条要求 GalBoxLayer.drawText"
+   "（断言整条判断语句的形态 —— 只搜字样会被检查代码自身满足，恒真）")
+
+# ---- M2e-49：getNextTag 队列第三发 —— l tag（行末点击等待）-------------
+# 单发队列的 ch 路径已全覆盖；本轮队列第三发 l，同时把宿主空闲泵从单拍
+# 升级为有界 8 拍事件循环（step>0 的 acs 等待后单拍泵够不到 l）。
+# 官方 l handler → showLineBreak（MainWindow.tjs:4080）：elm.canskip 缺省
+# void ⇒ 短路 -4 短返回，或行末 glyph + conductor.wait(click) ⇒ -2 ——
+# 两条出口都干净，lastTagName 停在 "l"。
+_gb_kp49 = open("native/KAG/src/system/GalBoxKAGParser.tjs", encoding="utf-8").read()
+_m49 = _gb_kp49.split("M2E49_BEGIN",1)[-1].split("M2E49_END",1)[0]
+ok('return %["tagname" => "l"];' in _m49,
+   "M2e-49：getNextTag 队列第三发返回 l tag 字典（行末点击等待入口）")
+ok("var gp49Left = 0;" in _gb_kp49,
+   "M2e-49：KAGParser 骨架声明 l 队列段状态槽位 var gp49Left = 0")
+ok("gp49Left = 1;" in _m49,
+   "M2e-49：l 分支真的翻转状态槽位（与 gp44/45Left 独立，NOTAG49 才能只删它）")
+ok('if (probeOk != 446)\n'
+   '            return Fail("M2e-49: the l tag path did not run ' in m2h_test,
+   "M2e-49：A 出口判据 ok:true ⇒ probe==446（判断语句 + return Fail 连续文本；"
+   "破坏自检 2 曾抓出只匹配消息的恒真形态）")
+ok("NOTAG49 control did not stop at the ch path " in m2h_test,
+   "M2e-49：NOTAG49 负向对照断言链退回 ch 形态（probe==445）")
+ok('if (body.find("var gp49Left") != std::string::npos)\n'
+   '            return Fail("NOTAG49 fixture still declares the M2e-49 slot' in m2h_test,
+   "M2e-49：C++ 侧校验 NOTAG49 夹具确实缺 l 段（判断语句形态）")
+ok("M2H_NOTAG49=\"$OUT/m2h_notag49\"" in test_sh and
+   'drop_marked "$M2H_NOTAG49/system/GalBoxKAGParser.tjs" M2E49_BEGIN M2E49_END' in test_sh,
+   "M2e-49：构建脚本生成 NOTAG49 夹具（drop_marked M2E49 两段）")
+# 级联：NOTAG44/45 夹具连带删 M2E49（保持各自历史路径语义）。
+ok('drop_marked "$M2H_NOTAG44/system/GalBoxKAGParser.tjs" M2E49_BEGIN M2E49_END' in test_sh and
+   'if grep -q "M2E49_BEGIN\\|var gp49Left" "$M2H_NOTAG44' in test_sh,
+   "M2e-49：NOTAG44 夹具连带删 M2E49 段（不删的话链落到 l tag，对照失效）")
+ok('drop_marked "$M2H_NOTAG45/system/GalBoxKAGParser.tjs" M2E49_BEGIN M2E49_END' in test_sh and
+   'if grep -q "M2E49_BEGIN\\|var gp49Left" "$M2H_NOTAG45' in test_sh,
+   "M2e-49：NOTAG45 夹具连带删 M2E49 段（同上）")
+ok('"$M2H_NODRAWTEXT" "$M2H_NOTAG49"' in test_sh,
+   "M2e-49：m2h 调用参数加了 $M2H_NOTAG49")
+# 出包核验器第 39 条：断言整条判断语句的形态。
+ok('if b"var gp49Left = 0;" not in kp43:' in verifier,
+   "M2e-49：出包核验器第 39 条要求 KAGParser 的 l 队列槽位"
    "（断言整条判断语句的形态 —— 只搜字样会被检查代码自身满足，恒真）")
 
 print("\n========================================")

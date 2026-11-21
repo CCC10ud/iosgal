@@ -1454,10 +1454,20 @@ extern "C" char *GalBoxTJS2ExecScript(const char *entryName,
                 // 44883670820 两轮红都在同一处实测了这一点。typeof 是唯一
                 // 的软访问（官方 Initialize.tjs:232 同款写法），缺失时返回
                 // "undefined"。
+                //
+                // M2e-49：单拍升级为**有界 8 拍事件循环** —— step>0 的
+                // acs 等待会让单拍泵停在队列中途（ch 之后够不到 l）；每拍
+                // 一次 timerCallback = 官方语义里「定时器到点/空闲重发」，
+                // status=mStop（シナリオ終了收尾）或 8 拍封顶退出。某拍抛
+                // 错（实测停点）照常向上传播走 CaptureCurrentException。
                 static const char *kIdlePumpSnippet =
-                    "if((typeof global.kag) != \"undefined\" && "
-                    "kag.conductor.pendings.count > 0) "
-                    "kag.conductor.timerCallback();";
+                    "if((typeof global.kag) != \"undefined\") {"
+                    " var b = 0;"
+                    " while(b < 8 && kag.conductor.status != 0) {"
+                    " kag.conductor.timerCallback();"
+                    " b++;"
+                    " }"
+                    " }";
                 std::wstring pump = Utf8ToWide(kIdlePumpSnippet);
                 engine->ExecScript(pump.c_str(), NULL, NULL,
                                    TJS_W("m2e47-idle-pump"), 0);

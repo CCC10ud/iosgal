@@ -140,6 +140,18 @@ class KAGParser
 			return %["tagname" => "ch", "text" => "A"];
 		}
 		// M2E45_END
+		// M2E49_BEGIN —— NOTAG49 负向对照按此标记整段删除
+		// M2e-49：队列第三发 —— 官方 l tag（行末点击等待）。官方 handler 走
+		// showLineBreak（MainWindow.tjs:4080）：elm.canskip 缺省 void ⇒ 短路
+		// 进 -4 短返回，或走行末 glyph + conductor.wait(click) ⇒ -2 —— 两条
+		// 出口都干净，lastTagName 停在 "l"。字段最小化：只带 tagname。
+		// （前提：泵升级为有界多拍 —— step>0 的 acs 等待后单拍泵够不到 l。）
+		if(gp49Left == 0)
+		{
+			gp49Left = 1;
+			return %["tagname" => "l"];
+		}
+		// M2E49_END
 		return void;
 	}
 	// M2E43_END
@@ -167,4 +179,11 @@ class KAGParser
 	// clickskip 路径 —— 变量唯一性纪律。
 	var gp45Left = 0;
 	// M2E45_END
+
+	// M2E49_BEGIN —— NOTAG49 负向对照按此标记整段删除
+	// gp49Left：队列第三发（l tag）的 one-shot 状态槽位，语义同 gp44Left /
+	// gp45Left：0 = 还没发过，1 = 已发过。独立声明让 NOTAG49 能只删 l 段、
+	// 保留 M2e-44/45 的 clickskip/ch 路径（变量唯一性纪律）。
+	var gp49Left = 0;
+	// M2E49_END
 }
