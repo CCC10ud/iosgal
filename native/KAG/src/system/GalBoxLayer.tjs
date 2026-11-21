@@ -365,6 +365,19 @@ class Layer
 	}
 	// M2E53_END
 
+	// M2E55_BEGIN —— NOBRINGTOFRONT 负向对照按此标记整段删除
+	// 官方 LayerIntf.cpp 的 bringToFront()：把图层提到最前面（z 顺序）。
+	// 官方 showBreakGlyph（MessageLayer.tjs:2519，M2e-54 修复后泵驱动的 l
+	// 路径真执行到此处）调 `glyphobj.bringToFront();` —— run 44903161505
+	// 的实测停点 `Member "bringToFront" does not exist`。全类链
+	// （AnimationLayer/KAGLayer/GalBoxLayer）都无定义，归 Layer 本体。
+	// 裸标识符无参方法调用 ⇒ 骨架方法，收参不画（无 z 顺序），返回 void
+	// 调用方不读。
+	function bringToFront()
+	{
+	}
+	// M2E55_END
+
 	function beginTransition(method, withchildren, src, elm) {}
 	function onTransitionCompleted(dest, src) {}
 }

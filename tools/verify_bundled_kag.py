@@ -368,6 +368,13 @@ def main(argv):
     if b"function clearCallStack()" not in kp43:
         return fail("system/GalBoxKAGParser.tjs 里没有 function clearCallStack()："
                     "设备端官方 l 路径会在 AnimationLayer.loadAnimInfo 断链")
+    # 第 44 条（M2e-55）：Layer.bringToFront（提到最前面）。M2e-54 修复后
+    # 官方 showBreakGlyph（MessageLayer.tjs:2519）调
+    # `glyphobj.bringToFront();` —— run 44903161505 的实测停点
+    # `Member "bringToFront" does not exist`。全类链无定义，归 Layer 本体。
+    if b"function bringToFront()" not in lay51:
+        return fail("system/GalBoxLayer.tjs 里没有 function bringToFront()："
+                    "设备端官方 l 路径会在 showBreakGlyph 断链")
 
     # 第 21 条（M2e-28）：窗口左上角坐标。MainWindow.tjs:438 的
     # `this.width + this.left`（居中修正）要读 Window.left；439 行还会回写。
@@ -404,7 +411,9 @@ def main(argv):
           "Movie 骨架 VideoOverlay+mode+visible+loop+frame+nAudio+segStart+segEnd+periodEvent(M2e-27/31/33/34/35/36/37/38/39) / Window 带 left+top(M2e-28) / "
           "Sound 带 paused×2(M2e-29) / Wave 带 pan property(M2e-30) / "
           "Scripts.evalStorage 原生方法(M2e-32，二进制内) / "
-          "Layer 带 drawText(M2e-48) / KAGParser 队列 gp49Left(M2e-49) / 宿主空闲泵(M2e-47，二进制内)"
+          "Layer 带 drawText(M2e-48) / KAGParser 队列 gp49Left(M2e-49) / "
+          "Layer 带 holdAlpha+adjustGamma+bringToFront(M2e-52/53/55) / "
+          "KAGParser 带 clearCallStack(M2e-54) / 宿主空闲泵(M2e-47，二进制内)"
           % (parsed["count"], total, init_bytes, len(SKELETONS)))
     return 0
 

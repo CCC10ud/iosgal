@@ -814,6 +814,15 @@ static int RunCaseA(const char *game, const char *storage) {
         inner.find("clearCallStack") != std::string::npos)
         return Fail("M2e-54 gap (clearCallStack) not cleared", j);
 
+    // M2e-55 硬判据：run 44903161505 的实测停点是
+    // `Member "bringToFront" does not exist`（showBreakGlyph 在
+    // glyphobj.loadImages 之后调 glyphobj.bringToFront()，
+    // MessageLayer.tjs:2519；glyphobj 是 Layer 派生实例）。GalBoxLayer
+    // 补上 bringToFront 后，泵驱动的链不许再停在这个成员上。
+    if (fatal.find("bringToFront") != std::string::npos ||
+        inner.find("bringToFront") != std::string::npos)
+        return Fail("M2e-55 gap (bringToFront) not cleared", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
     std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-43)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
@@ -3392,6 +3401,60 @@ static int RunCaseNoClearStack(const char *noclearstack, const char *storage) {
     return 0;
 }
 
+// run 44903161505 的实测停点：M2e-54 修复后泵驱动的 l 路径越过
+// clearCallStack ⇒ showBreakGlyph（MessageLayer.tjs:2519）在
+// glyphobj.loadImages 之后调 `glyphobj.bringToFront();` ⇒
+// `Member "bringToFront" does not exist`。对照 drop_marked M2E55 段
+// （GalBoxLayer.tjs）复现该缺口。
+static int RunCaseNoBringFront(const char *nobringfront, const char *storage) {
+    if (!Exists(std::string(nobringfront) + "/system/Config.tjs"))
+        return Fail("NOBRINGTOFRONT fixture missing Config.tjs", NULL);
+    const std::string skel = std::string(nobringfront) + "/system/GalBoxLayer.tjs";
+    if (!Exists(skel))
+        return Fail("NOBRINGTOFRONT fixture must keep the Layer skeleton", NULL);
+    {
+        std::ifstream f(skel.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E55_BEGIN") != std::string::npos)
+            return Fail("NOBRINGTOFRONT fixture must have the M2E55 section removed", NULL);
+        if (body.find("function bringToFront") != std::string::npos)
+            return Fail("NOBRINGTOFRONT fixture still declares bringToFront", NULL);
+        // 变量唯一：前面几轮 Layer 成员必须还在（否则删多余的也算对照成立）。
+        if (body.find("function drawText") == std::string::npos)
+            return Fail("NOBRINGTOFRONT fixture lost drawText too (variable not unique)", NULL);
+        if (body.find("var holdAlpha") == std::string::npos)
+            return Fail("NOBRINGTOFRONT fixture lost holdAlpha too (variable not unique)", NULL);
+        if (body.find("function adjustGamma") == std::string::npos)
+            return Fail("NOBRINGTOFRONT fixture lost adjustGamma too (variable not unique)", NULL);
+        if (body.find("function setPos") == std::string::npos)
+            return Fail("NOBRINGTOFRONT fixture lost setPos too (variable not unique)", NULL);
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(nobringfront, storage, arc, kTagPathProbe);
+    if (!j) return Fail("cannot run the NOBRINGTOFRONT control", NULL);
+    DumpChain("NOBRINGTOFRONT", j);
+
+    if (StrField(j, "shim").find("M2E2_LAYER_SKELETON") == std::string::npos)
+        return Fail("NOBRINGTOFRONT control lost the Layer skeleton tag", j);
+
+    if (Has(j, "\"ok\":true"))
+        return Fail("NOBRINGTOFRONT control unexpectedly completed the startup chain", j);
+    const std::string fatal = StrField(j, "fatal");
+    if (fatal.find("bringToFront") == std::string::npos)
+        return Fail("NOBRINGTOFRONT control did not reproduce the bringToFront gap — "
+                    "bringToFront would not be the variable under test", j);
+    if (fatal.find("タグ : l (") == std::string::npos)
+        return Fail("NOBRINGTOFRONT control fatal does not carry the l tag "
+                    "context (the pump-driven path is not exercised)", j);
+
+    std::printf("[m2h] NOBRINGTOFRONT verdict: without bringToFront the pump-driven l "
+                "processing stops exactly at the measured M2e-54 stop point\n");
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // ---- 场景 NOEVALSTORAGE：Scripts.evalStorage 原生方法缺失的负向对照（M2e-32）
 // 与前面所有 NOxxx 不同：evalStorage 是 C++ 原生方法，不在 TJS 骨架文件里，
 // 没法用 drop_marked/rm 夹具复现。改用宿主开关在**注册时**不挂载该方法 ——
@@ -3570,7 +3633,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                                "\"loop\"", "\"frame\"", "numberOfAudioStream",
                                "segmentLoopStartFrame", "segmentLoopEndFrame",
                                "periodEventFrame", "resetInterrupt", "curStorage", "curLine",
-                               "getNextTag", "gp44Left", "gp45Left", "drawText", "Cannot convert", "holdAlpha", "adjustGamma", "clearCallStack"}) {
+                               "getNextTag", "gp44Left", "gp45Left", "drawText", "Cannot convert", "holdAlpha", "adjustGamma", "clearCallStack", "bringToFront"}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -3657,6 +3720,7 @@ int main(int argc, char **argv) {
     const char *noholdalpha = (argc > 50) ? argv[50] : "";
     const char *noadjustgamma = (argc > 51) ? argv[51] : "";
     const char *noclearstack = (argc > 52) ? argv[52] : "";
+    const char *nobringfront = (argc > 53) ? argv[53] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -3921,6 +3985,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOBRINGTOFRONT") == 0) {
+        if (RunCaseNoBringFront(nobringfront, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -3939,6 +4008,6 @@ int main(int argc, char **argv) {
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
                 "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / NOWINLEFT / NOPAUSED / "
                 "NOPAN / NOMODE / NOEVALSTORAGE / NOVISIBLE / NOLOOP / NOFRAME / "
-                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / NOTAG44 / NOTAG45 / GEO / NOPUMP / NODRAWTEXT / NOTAG49 / NOLVOID / NOHOLDALPHA / NOADJUSTGAMMA / NOCLEARSTACK / XP3 / LEAK / LEAK2)\n", which);
+                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / NOTAG44 / NOTAG45 / GEO / NOPUMP / NODRAWTEXT / NOTAG49 / NOLVOID / NOHOLDALPHA / NOADJUSTGAMMA / NOCLEARSTACK / NOBRINGTOFRONT / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }
