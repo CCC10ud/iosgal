@@ -234,6 +234,14 @@ unsigned gExecStorageAttempts = 0;
 bool gEvalStorageEnabled = true;
 unsigned gEvalStorageCalls = 0;
 
+// M2e-47：宿主空闲泵开关。官方 atmAtIdle 的 AsyncTrigger 靠主事件循环
+// 空闲时重发被 -5 后回し的标签（Conductor.tjs case -5 的 oneshot.trigger()
+// 在 inProcessing=false 之前同步执行，会被再入门卫吞掉）—— GalBox 宿主
+// 没有事件泵，标签会永远挂在 pendings 里（M2e-46 GEO 指纹实测定案）。
+// 本开关在 ExecScript 入口脚本成功收尾后补一拍 idle 分发；默认开启，
+// NOPUMP 负向对照用 C API 关掉，复现「泵缺失」的历史行为。
+bool gIdlePumpEnabled = true;
+
 // M2e：脚本读取轨迹。只记「流已成功打开且正文已读到」的短名；
 // execStorage 的存在性检查失败不会写进来，因此 trace 里出现 KAGLayer.tjs
 // 就等于「文件真在包里、真被解码了」，而不是「碰巧名字对上了」。
@@ -342,6 +350,8 @@ std::string MakeExecResult(bool ok, const char *reason, const char *entry,
     s += ",\"evalStorageEnabled\":"
        + std::string(gEvalStorageEnabled ? "true" : "false");
     s += ",\"evalStorageCalls\":" + std::to_string(gEvalStorageCalls);
+    s += ",\"idlePumpEnabled\":"
+       + std::string(gIdlePumpEnabled ? "true" : "false");
     s += ",\"build\":\"" + std::string(kBuildTag) + "\"";
     // 这三个固定标记都会被编进 app 二进制，CI 用 strings 逐个硬断言。
     // 历史标记不能因为升级而被替换掉 —— 否则「M2a/M2b 能力是否还在包里」
@@ -426,6 +436,12 @@ unsigned gExecStorageCalls = 0;      // 成功执行完的次数（gExecStorageA
 // app 侧不调用，因此设备包里 evalStorage 恒在。
 extern "C" void GalBoxTJS2SetEvalStorageEnabled(int enabled) {
     gEvalStorageEnabled = (enabled != 0);
+}
+
+// M2e-47 负向对照专用：关掉宿主空闲泵，复现「-5 后回し标签永远挂起」的
+// 历史行为。默认开启；app 侧不要调用。
+extern "C" void GalBoxTJS2SetIdlePumpEnabled(int enabled) {
+    gIdlePumpEnabled = (enabled != 0);
 }
 
 class tTJSNC_Scripts : public tTJSNativeClass {
@@ -1421,6 +1437,27 @@ extern "C" char *GalBoxTJS2ExecScript(const char *entryName,
                 // 注意：执行成功时**不要**再用 gLastScriptError 兜底。脚本自己
                 // try/catch 吞掉的失败会把它留在那里，拿它当 reason 会把「脚本
                 // 主动容错」误报成「整体失败」。它单独走 JSON 的 lastScriptError。
+            }
+        }
+
+        // 🔴 M2e-47 宿主空闲泵：入口脚本成功收尾后，若 conductor 还有被
+        // -5 后回し挂起的标签，补一拍 idle 分发（扮演官方主事件循环）。
+        // typeof 守卫：m1/m2a/m2b 等前 KAG 时代的链没有 kag，泵必须静默
+        // 跳过。泵里的 fatal（如挂起 ch 走 processCh 撞上缺成员）照常走
+        // CaptureCurrentException → fatal/lastScriptError/fatalLine 字段，
+        // ok=false —— 上层判据按「タグ : ch (」口径识别。
+        if (reason.empty() && gIdlePumpEnabled) {
+            try {
+                static const char *kIdlePumpSnippet =
+                    "if((typeof global.kag) != \"void\" && "
+                    "kag.conductor.pendings.count > 0) "
+                    "kag.conductor.timerCallback();";
+                std::wstring pump = Utf8ToWide(kIdlePumpSnippet);
+                engine->ExecScript(pump.c_str(), NULL, NULL,
+                                   TJS_W("m2e47-idle-pump"), 0);
+            } catch (...) {
+                CaptureCurrentException();
+                reason = "idle pump raised while processing a pending tag";
             }
         }
 

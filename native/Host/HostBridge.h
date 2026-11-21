@@ -50,6 +50,10 @@ void GalBoxTJS2SetScreenSize(int width, int height);
    app 侧不要调用。传 0 关闭、非 0 开启。 */
 void GalBoxTJS2SetEvalStorageEnabled(int enabled);
 
+/* M2e-47 负向对照专用：关掉宿主空闲泵（-5 后回し标签的 idle 重发），
+   复现「标签永远挂起」的历史行为。默认开启；app 侧不要调用。 */
+void GalBoxTJS2SetIdlePumpEnabled(int enabled);
+
 void GalBoxTJS2Free(char *p);
 
 /* 供 UI 判断本包是否真的链接了 TJS2（无库时降级出包会返回 0）。 */

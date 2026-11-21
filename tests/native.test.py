@@ -221,6 +221,7 @@ swift_vc = read("ios-native/GalBoxNative/GameViewController.swift")
 pbx = read("ios-native/GalBoxNative.xcodeproj/project.pbxproj")
 ios_sh = read("tools/build_tjs2_ios.sh")
 test_sh = read("tools/build_tjs2_test.sh")
+hb_test = read("native/Host/HostBridge.cpp")
 wf = read(".github/workflows/build-native-ipa.yml")
 
 ok("extern \"C\"" in bridge_h and "GalBoxTJS2SmokeTest" in bridge_h,
@@ -825,8 +826,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把四十六个场景拆成独立进程跑（四十个负向对照 + GEO 几何诊断 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把四十七个场景拆成独立进程跑（四十一个负向对照 + GEO 几何诊断 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -2245,15 +2246,59 @@ ok('const long long combined = pv / 100000000000000LL;' in m2h_test and
    '"[m2h] GEO decoded: status=%lld pendings=%lld waitIntervalFlag=%lld"' in m2h_test,
    "M2e-46：C++ 侧真解码并打印几何指纹（不是只打印 raw 值）")
 ok('if (std::strcmp(which, "GEO") == 0) {' in m2h_test and
-   "NOTAG45 / GEO / XP3" in m2h_test,
+   "NOTAG45 / GEO /" in m2h_test,
    "M2e-46：GEO 分发与 usage 同步")
-ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO XP3" in test_sh,
+ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO" in test_sh,
    "M2e-46：场景循环 for 行加了 GEO")
-ok("NOTAG45|GEO|XP3" in test_sh,
+ok("NOTAG45|GEO|" in test_sh,
    "M2e-46：OK 判定清单加了 GEO")
 ok("GEO 几何诊断" in test_sh,
    "M2e-46：构建脚本 M2e-46 文案同步")
 
+# ---- M2e-47：宿主空闲泵（-5 后回し标签的 idle 分发）---------------------
+# M2e-46 定案：ch tag 被 -5 后回し挂进 pendings，case -5 的 oneshot.trigger()
+# 同步重入被 inProcessing 门卫吞掉，官方 atmAtIdle 靠主事件循环重发而宿主
+# 没有事件泵 ⇒ 标签永远挂起，processCh 从未执行。本轮在宿主层补空闲泵
+# （事件循环本来就是宿主职责；真机 app 同享该代码路径），负向对照用
+# NOEVALSTORAGE 同款宿主开关模式（泵不在 TJS 骨架里，无夹具可删）。
+ok('bool gIdlePumpEnabled = true;' in hb_test,
+   "M2e-47：宿主空闲泵全局开关默认开启（与 evalStorage 开关同款布局）")
+ok('extern "C" void GalBoxTJS2SetIdlePumpEnabled(int enabled) {' in hb_test,
+   "M2e-47：GalBoxTJS2SetIdlePumpEnabled C API 存在（NOPUMP 开关负向对照用）")
+ok('if((typeof global.kag) != \\"void\\" && ' in hb_test and
+   'kag.conductor.pendings.count > 0) ' in hb_test and
+   'kag.conductor.timerCallback();' in hb_test,
+   "M2e-47：泵语句形态（typeof 守卫让前 KAG 时代的链静默跳过 + pendings>0 才分发）")
+ok('"m2e47-idle-pump"' in hb_test,
+   "M2e-47：泵以独立脚本名执行（异常时可定位）")
+ok('reason.empty() && gIdlePumpEnabled' in hb_test,
+   "M2e-47：泵挂在入口脚本成功收尾之后（失败链不做 idle 分发）")
+ok('\\"idlePumpEnabled\\":"' in hb_test,
+   "M2e-47：诊断 JSON 携带 idlePumpEnabled（判据与 NOPUMP 都依赖它）")
+ok("static int RunCaseNoPump" in m2h_test and
+   "GalBoxTJS2SetIdlePumpEnabled(0);" in m2h_test and
+   'if (!Has(j, "\\"idlePumpEnabled\\":true"))\n'
+   '        return Fail("M2e-47: the host idle pump was not enabled during ' in m2h_test,
+   "M2e-47：A 场景断言泵开启 + NOPUMP 开关负向对照存在（判断语句 + Fail 连续文本）")
+ok('if (IntField(j, "probeValue") != 445)\n'
+   '        return Fail("NOPUMP control did not stop at the pending ch tag ' in m2h_test,
+   "M2e-47：NOPUMP 断言链退回挂起形态（probe==445 + 链干净；判断语句 + Fail 连续文本）")
+ok('if (Has(j, "\\"idlePumpEnabled\\":true"))\n'
+   '        return Fail("NOPUMP control ran with the idle pump still enabled ' in m2h_test,
+   "M2e-47：NOPUMP 校验开关真的是唯一变量（判断语句 + Fail 连续文本）")
+# GEO 双形态：泵开后链不再干净，GEO 必须接受 fatal 形态
+ok('if (StrField(j, "fatal").find("タグ : ch (") == std::string::npos)\n'
+   '            return Fail("GEO: chain failed without the ch tag context ' in m2h_test,
+   "M2e-47：GEO 判据双形态化（链不再干净时按 タグ : ch 口径识别泵驱动的缺口）")
+ok('if (std::strcmp(which, "NOPUMP") == 0) {' in m2h_test and
+   "NOTAG45 / GEO / NOPUMP / XP3" in m2h_test,
+   "M2e-47：NOPUMP 分发与 usage 同步（无新夹具无新 argv，NOEVALSTORAGE 模式）")
+ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP XP3" in test_sh,
+   "M2e-47：场景循环 for 行加了 NOPUMP")
+ok("NOTAG45|GEO|NOPUMP|XP3" in test_sh,
+   "M2e-47：OK 判定清单加了 NOPUMP")
+ok("宿主空闲泵" in test_sh,
+   "M2e-47：构建脚本 M2e-47 文案同步")
 
 print("\n========================================")
 print("原生引擎静态+闭环校验: %d PASS / %d FAIL" % (P, F))

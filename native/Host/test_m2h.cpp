@@ -211,6 +211,13 @@ static int RunCaseA(const char *game, const char *storage) {
     std::printf("[m2h] A (official Config.tjs) -> %s\n", j);
     DumpChain("A", j);
 
+    // 🔴 M2e-47：本轮起宿主空闲泵是链路的一部分（-5 后回し的标签靠它才能
+    // 继续）。泵没开 = 跑的是 NOPUMP 那种历史行为，A 的判据就失去前提。
+    // 与 M2e-32 的 evalStorageEnabled 检查同口径。
+    if (!Has(j, "\"idlePumpEnabled\":true"))
+        return Fail("M2e-47: the host idle pump was not enabled during "
+                    "the chain", j);
+
     // ok:true 意味着整条官方启动链**跑通了** —— 那是 M2e 系列的终点，按成功收。
     // 但「跑通」不能只是一句 ok：必须同时满足脚本数 / autoPath / 骨架 tag 三项
     // 硬指标，否则就是半路静默跳过（run #38 的教训：状态串里有 tag ≠ 真装上）。
@@ -2905,8 +2912,19 @@ static int RunCaseGeo(const char *game, const char *storage) {
     if (!j) return Fail("cannot run the GEO diagnostic", NULL);
     DumpChain("GEO", j);
 
-    if (!Has(j, "\"ok\":true"))
-        return Fail("GEO diagnostic expected the same clean chain as A", j);
+    // M2e-47 双形态：宿主空闲泵开启后，挂起的 ch 走 processCh —— 若撞上
+    // 缺成员，链不再干净（fatal 带 ch 上下文，与 A 场景同口径）；泵关掉或
+    // 未来某轮链再次干净时，走下面的几何指纹解码分支。
+    if (!Has(j, "\"ok\":true")) {
+        if (StrField(j, "fatal").find("タグ : ch (") == std::string::npos)
+            return Fail("GEO: chain failed without the ch tag context "
+                        "(neither clean nor the expected pump-driven gap)", j);
+        std::printf("[m2h] GEO verdict: the pump-driven ch processing raised "
+                    "the expected member gap (see A next gap); the geometry "
+                    "fingerprint was captured in the M2e-46 run\n");
+        GalBoxTJS2Free(j);
+        return 0;
+    }
     if (StrField(j, "fatal").size() != 0)
         return Fail("GEO diagnostic raised a script-level exception", j);
     const long long pv = IntField(j, "probeValue");
@@ -2934,6 +2952,43 @@ static int RunCaseGeo(const char *game, const char *storage) {
     std::printf("[m2h] GEO verdict: chain clean, geometry fingerprint above "
                 "(relinexpos<=x explains the autoReturn branch; void flags mean "
                 "the assignment path never ran)\n");
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
+// ---- 场景 NOPUMP：宿主空闲泵缺失的负向对照（M2e-47，NOEVALSTORAGE 模式）-
+// 与前面所有 NOxxx 不同：空闲泵是 C++ 宿主行为（扮演官方主事件循环的
+// idle 分发），不在 TJS 骨架文件里，没法用 drop_marked 夹具复现。改用
+// 宿主开关在 ExecScript 前关掉它 —— 链退回 M2e-46 的历史行为：ch tag 被
+// -5 后回し挂起、永远不处理 ⇒ 链干净跑通（ok:true、fatal 空）但
+// lastTagName 已是 "ch"（handler 返回 -5 时 onTag 照常写它）⇒ probe=445。
+// A（泵开启）在同夹具下 fatal 带 ch 上下文 —— 唯一变量是宿主开关。
+static int RunCaseNoPump(const char *game, const char *storage) {
+    if (!Exists(std::string(game) + "/system/Config.tjs"))
+        return Fail("NOPUMP fixture missing Config.tjs", NULL);
+
+    GalBoxTJS2SetIdlePumpEnabled(0);  // 唯一变量：宿主不做 idle 分发
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(game, storage, arc, kTagPathProbe);
+    GalBoxTJS2SetIdlePumpEnabled(1);  // 恢复（独立进程里也只是好习惯）
+    if (!j) return Fail("cannot run the NOPUMP control", NULL);
+    DumpChain("NOPUMP", j);
+
+    if (!Has(j, "\"ok\":true"))
+        return Fail("NOPUMP control unexpectedly failed the startup chain", j);
+    if (StrField(j, "fatal").size() != 0)
+        return Fail("NOPUMP control raised a script-level exception", j);
+    if (Has(j, "\"idlePumpEnabled\":true"))
+        return Fail("NOPUMP control ran with the idle pump still enabled "
+                    "(the switch is not the variable under test)", j);
+    if (IntField(j, "probeValue") != 445)
+        return Fail("NOPUMP control did not stop at the pending ch tag "
+                    "(probe != 445) — the control is not a negative contrast", j);
+
+    std::printf("[m2h] NOPUMP verdict: without the idle pump the pending ch tag "
+                "never gets processed (chain clean, probe=445, pendings=1); "
+                "with the pump the A case advances into processCh\n");
     GalBoxTJS2Free(j);
     return 0;
 }
@@ -3424,6 +3479,12 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOPUMP") == 0) {
+        // 宿主开关负向对照（NOEVALSTORAGE 模式）：夹具与 A 完全相同。
+        if (RunCaseNoPump(game, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -3442,6 +3503,6 @@ int main(int argc, char **argv) {
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
                 "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / NOWINLEFT / NOPAUSED / "
                 "NOPAN / NOMODE / NOEVALSTORAGE / NOVISIBLE / NOLOOP / NOFRAME / "
-                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / NOTAG44 / NOTAG45 / GEO / XP3 / LEAK / LEAK2)\n", which);
+                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / NOTAG44 / NOTAG45 / GEO / NOPUMP / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }
