@@ -376,6 +376,18 @@ def main(argv):
         return fail("system/GalBoxLayer.tjs 里没有 function bringToFront()："
                     "设备端官方 l 路径会在 showBreakGlyph 断链")
 
+    # 第 45 条（M2e-56）：Layer.clickskip（AnimationConductor 的 tag handler）。
+    # M2e-55 修复后 showBreakGlyph 走到 AnimationLayer.loadAnimInfo 尾部
+    # `seg.startProcess(true)`（AnimationLayer.tjs:435）—— 同步执行，seg 是
+    # 新建 AnimationConductor，继承 KAGParser 骨架 getNextTag() 拿到首发
+    # clickskip tag，onTag 里 `owner["clickskip"]`（AnimationLayer.tjs:288）
+    # —— run 44915072205 的实测停点 `Member "clickskip" does not exist`。
+    # owner 是 Layer 派生实例，归 Layer 骨架；官方 handler 返回 0（step），
+    # 故必须是 `return 0` 形态（void 会触发 onTag が void を返しました）。
+    if b"function clickskip(elm) { return 0; }" not in lay51:
+        return fail("system/GalBoxLayer.tjs 里没有 function clickskip(elm) { return 0; }："
+                    "设备端 seg.startProcess 的 clickskip tag 分发会断链")
+
     # 第 21 条（M2e-28）：窗口左上角坐标。MainWindow.tjs:438 的
     # `this.width + this.left`（居中修正）要读 Window.left；439 行还会回写。
     # 注意别与 Layer.left（M2e-2 已有）混淆：这里查的是 GalBoxWindow.tjs。
@@ -412,7 +424,7 @@ def main(argv):
           "Sound 带 paused×2(M2e-29) / Wave 带 pan property(M2e-30) / "
           "Scripts.evalStorage 原生方法(M2e-32，二进制内) / "
           "Layer 带 drawText(M2e-48) / KAGParser 队列 gp49Left(M2e-49) / "
-          "Layer 带 holdAlpha+adjustGamma+bringToFront(M2e-52/53/55) / "
+          "Layer 带 holdAlpha+adjustGamma+bringToFront+clickskip(M2e-52/53/55/56) / "
           "KAGParser 带 clearCallStack(M2e-54) / 宿主空闲泵(M2e-47，二进制内)"
           % (parsed["count"], total, init_bytes, len(SKELETONS)))
     return 0

@@ -378,6 +378,27 @@ class Layer
 	}
 	// M2E55_END
 
+	// M2E56_BEGIN —— NOCLICKSKIP 负向对照按此标记整段删除
+	// 官方 AnimationConductor.onTag（AnimationLayer.tjs:288）分发 tag 时做
+	// `var func = owner[obj.tagname]`，owner 是 AnimationLayer 实例（extends
+	// KAGLayer extends 本 Layer 骨架）。M2e-55 修复后 l 路径 showBreakGlyph
+	// 走到 AnimationLayer.loadAnimInfo 尾部 `seg.startProcess(true)`
+	// （AnimationLayer.tjs:435，同步执行），seg 是新建的 AnimationConductor，
+	// 它继承 KAGParser 骨架的 getNextTag() ⇒ 拿到队列首发 clickskip tag ⇒
+	// onTag 里 `owner["clickskip"]` 在全类链无定义 ⇒ run 44915072205 的
+	// 实测停点 `Member "clickskip" does not exist`（fatal 里两重错误块：
+	// 外层「タグ : l」内层「タグ : clickskip」，正是 seg 内嵌在 l handler 里
+	// 同步跑出、再被外层 catch 重抛的形态）。
+	//
+	// 归属判定（按决策树）：这是 `owner[obj.tagname]` 动态成员访问后被
+	// `return func(obj)` 当方法调用（AnimationLayer.tjs:295），owner 是
+	// Layer 派生实例 ⇒ 归 Layer 骨架的方法。返回语义：官方 MainWindow 的
+	// clickskip handler（MainWindow.tjs:5095-5100）返回 0（step==0 ⇒
+	// timerCallback continue），故这里 return 0 而不是 void —— 返回 void 会
+	// 触发 Conductor.tjs:105 的 `onTag が void を返しました` 新异常。
+	function clickskip(elm) { return 0; }
+	// M2E56_END
+
 	function beginTransition(method, withchildren, src, elm) {}
 	function onTransitionCompleted(dest, src) {}
 }

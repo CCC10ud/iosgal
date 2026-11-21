@@ -823,6 +823,18 @@ static int RunCaseA(const char *game, const char *storage) {
         inner.find("bringToFront") != std::string::npos)
         return Fail("M2e-55 gap (bringToFront) not cleared", j);
 
+    // M2e-56 硬判据：run 44915072205 的实测停点是
+    // `Member "clickskip" does not exist`（M2e-55 修复后 showBreakGlyph 走到
+    // AnimationLayer.loadAnimInfo 尾部 seg.startProcess(true)，seg 是新建
+    // AnimationConductor，继承 KAGParser 骨架 getNextTag() 拿到首发
+    // clickskip tag，onTag 里 `owner["clickskip"]` 在 Layer 派生实例上无定义）。
+    // GalBoxLayer 补上 clickskip 后，泵驱动的链不许再停在这个成员上。
+    // ⚠️ 判据用「Member \"clickskip\" does not exist」整串，而不是裸 clickskip
+    // —— fatal 文本里内层「タグ : clickskip」本就含 clickskip 字样，裸搜恒真。
+    if (fatal.find("Member \"clickskip\" does not exist") != std::string::npos ||
+        inner.find("Member \"clickskip\" does not exist") != std::string::npos)
+        return Fail("M2e-56 gap (clickskip) not cleared", j);
+
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
     std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-43)\n",
                 fatal.c_str(), gapBlock.c_str(), gapLine);
@@ -3455,6 +3467,64 @@ static int RunCaseNoBringFront(const char *nobringfront, const char *storage) {
     return 0;
 }
 
+// ---- 场景 NOCLICKSKIP：Layer.clickskip（AnimationConductor tag handler）缺失的负向对照（M2e-56）
+// M2e-55 修复后 showBreakGlyph 走到 AnimationLayer.loadAnimInfo 尾部
+// `seg.startProcess(true)`（同步执行），seg 是新建 AnimationConductor，继承
+// KAGParser 骨架 getNextTag() 拿到首发 clickskip tag ⇒ onTag 里
+// `owner["clickskip"]` —— run 44915072205 实测停点
+// `Member "clickskip" does not exist`。删 GalBoxLayer 的 M2E56 段复现。
+static int RunCaseNoClickSkip(const char *noclickskip, const char *storage) {
+    if (!Exists(std::string(noclickskip) + "/system/Config.tjs"))
+        return Fail("NOCLICKSKIP fixture missing Config.tjs", NULL);
+    const std::string skel = std::string(noclickskip) + "/system/GalBoxLayer.tjs";
+    if (!Exists(skel))
+        return Fail("NOCLICKSKIP fixture must keep the Layer skeleton", NULL);
+    {
+        std::ifstream f(skel.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E56_BEGIN") != std::string::npos)
+            return Fail("NOCLICKSKIP fixture must have the M2E56 section removed", NULL);
+        if (body.find("function clickskip") != std::string::npos)
+            return Fail("NOCLICKSKIP fixture still declares clickskip", NULL);
+        // 变量唯一：前几轮 Layer 成员必须还在，否则删多余的也算对照成立。
+        if (body.find("function drawText") == std::string::npos)
+            return Fail("NOCLICKSKIP fixture lost drawText too (variable not unique)", NULL);
+        if (body.find("var holdAlpha") == std::string::npos)
+            return Fail("NOCLICKSKIP fixture lost holdAlpha too (variable not unique)", NULL);
+        if (body.find("function adjustGamma") == std::string::npos)
+            return Fail("NOCLICKSKIP fixture lost adjustGamma too (variable not unique)", NULL);
+        if (body.find("function bringToFront") == std::string::npos)
+            return Fail("NOCLICKSKIP fixture lost bringToFront too (variable not unique)", NULL);
+        if (body.find("function setPos") == std::string::npos)
+            return Fail("NOCLICKSKIP fixture lost setPos too (variable not unique)", NULL);
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(noclickskip, storage, arc, kTagPathProbe);
+    if (!j) return Fail("cannot run the NOCLICKSKIP control", NULL);
+    DumpChain("NOCLICKSKIP", j);
+
+    if (StrField(j, "shim").find("M2E2_LAYER_SKELETON") == std::string::npos)
+        return Fail("NOCLICKSKIP control lost the Layer skeleton tag", j);
+
+    if (Has(j, "\"ok\":true"))
+        return Fail("NOCLICKSKIP control unexpectedly completed the startup chain", j);
+    const std::string fatal = StrField(j, "fatal");
+    // 精确串：fatal 内层「タグ : clickskip」本就含 clickskip 字样，裸搜恒真。
+    if (fatal.find("Member \"clickskip\" does not exist") == std::string::npos)
+        return Fail("NOCLICKSKIP control did not reproduce the clickskip gap — "
+                    "clickskip would not be the variable under test", j);
+    if (fatal.find("タグ : clickskip (") == std::string::npos)
+        return Fail("NOCLICKSKIP control fatal does not carry the clickskip tag "
+                    "context (the seg-driven dispatch path is not exercised)", j);
+
+    std::printf("[m2h] NOCLICKSKIP verdict: without Layer.clickskip the synchronously "
+                "started AnimationConductor stops exactly at the measured M2e-55 stop point\n");
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // ---- 场景 NOEVALSTORAGE：Scripts.evalStorage 原生方法缺失的负向对照（M2e-32）
 // 与前面所有 NOxxx 不同：evalStorage 是 C++ 原生方法，不在 TJS 骨架文件里，
 // 没法用 drop_marked/rm 夹具复现。改用宿主开关在**注册时**不挂载该方法 ——
@@ -3633,7 +3703,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                                "\"loop\"", "\"frame\"", "numberOfAudioStream",
                                "segmentLoopStartFrame", "segmentLoopEndFrame",
                                "periodEventFrame", "resetInterrupt", "curStorage", "curLine",
-                               "getNextTag", "gp44Left", "gp45Left", "drawText", "Cannot convert", "holdAlpha", "adjustGamma", "clearCallStack", "bringToFront"}) {
+                               "getNextTag", "gp44Left", "gp45Left", "drawText", "Cannot convert", "holdAlpha", "adjustGamma", "clearCallStack", "bringToFront", "Member \"clickskip\" does not exist"}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -3721,6 +3791,7 @@ int main(int argc, char **argv) {
     const char *noadjustgamma = (argc > 51) ? argv[51] : "";
     const char *noclearstack = (argc > 52) ? argv[52] : "";
     const char *nobringfront = (argc > 53) ? argv[53] : "";
+    const char *noclickskip = (argc > 54) ? argv[54] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -3990,6 +4061,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOCLICKSKIP") == 0) {
+        if (RunCaseNoClickSkip(noclickskip, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -4008,6 +4084,6 @@ int main(int argc, char **argv) {
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
                 "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / NOWINLEFT / NOPAUSED / "
                 "NOPAN / NOMODE / NOEVALSTORAGE / NOVISIBLE / NOLOOP / NOFRAME / "
-                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / NOTAG44 / NOTAG45 / GEO / NOPUMP / NODRAWTEXT / NOTAG49 / NOLVOID / NOHOLDALPHA / NOADJUSTGAMMA / NOCLEARSTACK / NOBRINGTOFRONT / XP3 / LEAK / LEAK2)\n", which);
+                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / NOTAG44 / NOTAG45 / GEO / NOPUMP / NODRAWTEXT / NOTAG49 / NOLVOID / NOHOLDALPHA / NOADJUSTGAMMA / NOCLEARSTACK / NOBRINGTOFRONT / NOCLICKSKIP / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

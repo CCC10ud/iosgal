@@ -826,8 +826,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT NOTAG49 NOLVOID NOHOLDALPHA NOADJUSTGAMMA NOCLEARSTACK NOBRINGTOFRONT XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把五十四个场景拆成独立进程跑（四十八个负向对照 + GEO 几何诊断 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT NOTAG49 NOLVOID NOHOLDALPHA NOADJUSTGAMMA NOCLEARSTACK NOBRINGTOFRONT NOCLICKSKIP XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把五十五个场景拆成独立进程跑（四十九个负向对照 + GEO 几何诊断 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -2569,7 +2569,8 @@ ok('if (fatal.find("clearCallStack") != std::string::npos ||\n'
    '        inner.find("clearCallStack") != std::string::npos)\n'
    '        return Fail("M2e-54 gap (clearCallStack) not cleared", j);' in m2h_test,
    "M2e-54：A 判据按变量名命中（判断语句 + Fail 连续文本形态）")
-ok('"holdAlpha", "adjustGamma", "clearCallStack", "bringToFront"}) {' in m2h_test,
+ok('"holdAlpha", "adjustGamma", "clearCallStack", "bringToFront", '
+   '"Member \\"clickskip\\" does not exist"}) {' in m2h_test,
    "M2e-54：XP3 场景的「已关闭缺口」清单加上了 clearCallStack")
 ok("RunCaseNoClearStack" in m2h_test and
    'if (fatal.find("clearCallStack") == std::string::npos)\n'
@@ -2588,9 +2589,9 @@ ok('if grep -q "M2E54_BEGIN\\|function clearCallStack"' in test_sh and
    "M2e-54：NOCLEARSTACK 夹具检查真的在查 clearCallStack 段（检查语句形态）")
 ok('"$M2H_NOADJUSTGAMMA" "$M2H_NOCLEARSTACK"' in test_sh,
    "M2e-54：m2h 调用参数加了 $M2H_NOCLEARSTACK")
-ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT NOTAG49 NOLVOID NOHOLDALPHA NOADJUSTGAMMA NOCLEARSTACK NOBRINGTOFRONT XP3" in test_sh,
+ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO NOPUMP NODRAWTEXT NOTAG49 NOLVOID NOHOLDALPHA NOADJUSTGAMMA NOCLEARSTACK NOBRINGTOFRONT NOCLICKSKIP XP3" in test_sh,
    "M2e-54：场景循环 for 行加了 NOCLEARSTACK")
-ok("NOTAG45|GEO|NOPUMP|NODRAWTEXT|NOTAG49|NOLVOID|NOHOLDALPHA|NOADJUSTGAMMA|NOCLEARSTACK|NOBRINGTOFRONT|XP3" in test_sh,
+ok("NOTAG45|GEO|NOPUMP|NODRAWTEXT|NOTAG49|NOLVOID|NOHOLDALPHA|NOADJUSTGAMMA|NOCLEARSTACK|NOBRINGTOFRONT|NOCLICKSKIP|XP3" in test_sh,
    "M2e-54：OK 判定清单加了 NOCLEARSTACK")
 ok("KAGParser.clearCallStack 清空调用栈" in test_sh,
    "M2e-54：构建脚本 M2e-54 文案同步")
@@ -2611,7 +2612,8 @@ ok('if (fatal.find("bringToFront") != std::string::npos ||\n'
    '        inner.find("bringToFront") != std::string::npos)\n'
    '        return Fail("M2e-55 gap (bringToFront) not cleared", j);' in m2h_test,
    "M2e-55：A 判据按变量名命中（判断语句 + Fail 连续文本形态）")
-ok('"adjustGamma", "clearCallStack", "bringToFront"}) {' in m2h_test,
+ok('"adjustGamma", "clearCallStack", "bringToFront", '
+   '"Member \\"clickskip\\" does not exist"}) {' in m2h_test,
    "M2e-55：XP3 场景的「已关闭缺口」清单加上了 bringToFront")
 ok("RunCaseNoBringFront" in m2h_test and
    'if (fatal.find("bringToFront") == std::string::npos)\n'
@@ -2630,15 +2632,61 @@ ok('if grep -q "M2E55_BEGIN\\|function bringToFront"' in test_sh and
    "M2e-55：NOBRINGTOFRONT 夹具检查真的在查 bringToFront 段（检查语句形态）")
 ok('"$M2H_NOCLEARSTACK" "$M2H_NOBRINGTOFRONT"' in test_sh,
    "M2e-55：m2h 调用参数加了 $M2H_NOBRINGTOFRONT")
-ok("NOADJUSTGAMMA NOCLEARSTACK NOBRINGTOFRONT XP3" in test_sh,
+ok("NOADJUSTGAMMA NOCLEARSTACK NOBRINGTOFRONT NOCLICKSKIP XP3" in test_sh,
    "M2e-55：场景循环 for 行加了 NOBRINGTOFRONT")
-ok("NOCLEARSTACK|NOBRINGTOFRONT|XP3" in test_sh,
+ok("NOCLEARSTACK|NOBRINGTOFRONT|NOCLICKSKIP|XP3" in test_sh,
    "M2e-55：OK 判定清单加了 NOBRINGTOFRONT")
 ok("Layer.bringToFront 提到最前面" in test_sh,
    "M2e-55：构建脚本 M2e-55 文案同步")
 # 出包核验器第 44 条：断言整条判断语句的形态。
 ok('if b"function bringToFront()" not in lay51:' in verifier,
    "M2e-55：出包核验器第 44 条要求 Layer.bringToFront"
+   "（断言整条判断语句的形态 —— 只搜字样会被检查代码自身满足，恒真）")
+
+# ---- M2e-56：Layer.clickskip（AnimationConductor 的 tag handler）------------
+# M2e-55 修复后 l 路径走到 AnimationLayer.loadAnimInfo 尾部
+# `seg.startProcess(true)`（AnimationLayer.tjs:435，同步执行）；seg 是新建的
+# AnimationConductor，继承 KAGParser 骨架 getNextTag() 拿到首发 clickskip tag，
+# onTag 里 `owner["clickskip"]`（AnimationLayer.tjs:288）在 Layer 派生实例上无
+# 定义 ⇒ run 44915072205 的实测停点 `Member "clickskip" does not exist`。
+# ⚠️ fatal 内层「タグ : clickskip」本就含 clickskip 字样 —— 所有判据/对照断言
+# 一律用精确串 `Member "clickskip" does not exist`，裸搜恒真（铁律 1）。
+_m56 = _gb_lay55.split("M2E56_BEGIN", 1)[-1].split("M2E56_END", 1)[0]
+ok("function clickskip(elm) { return 0; }" in _m56,
+   "M2e-56：Layer 骨架声明 clickskip，且 return 0（官方 handler 的 step 契约；"
+   "void 会触发 onTag が void を返しました）")
+ok('if (fatal.find("Member \\"clickskip\\" does not exist") != std::string::npos ||\n'
+   '        inner.find("Member \\"clickskip\\" does not exist") != std::string::npos)\n'
+   '        return Fail("M2e-56 gap (clickskip) not cleared", j);' in m2h_test,
+   "M2e-56：A 判据用精确 Member 串 + 判断语句/Fail 连续文本形态（裸 clickskip 恒真）")
+ok('"bringToFront", "Member \\"clickskip\\" does not exist"}) {' in m2h_test,
+   "M2e-56：XP3 场景的「已关闭缺口」清单加上精确 Member clickskip 串")
+ok("RunCaseNoClickSkip" in m2h_test and
+   'if (fatal.find("Member \\"clickskip\\" does not exist") == std::string::npos)\n'
+   '        return Fail("NOCLICKSKIP control did not reproduce the clickskip gap' in m2h_test,
+   "M2e-56：NOCLICKSKIP 独立负向对照用精确 Member 串复现判据（判断语句 + Fail 连续文本）")
+ok('if (body.find("function clickskip") != std::string::npos)\n'
+   '            return Fail("NOCLICKSKIP fixture still declares clickskip' in m2h_test and
+   'if (body.find("function bringToFront") == std::string::npos)\n'
+   '            return Fail("NOCLICKSKIP fixture lost bringToFront too' in m2h_test,
+   "M2e-56：C++ 侧校验 NOCLICKSKIP 夹具确实缺 clickskip 且变量唯一（判断语句形态）")
+ok('M2H_NOCLICKSKIP="$OUT/m2h_noclickskip"' in test_sh and
+   'drop_marked "$M2H_NOCLICKSKIP/system/GalBoxLayer.tjs" M2E56_BEGIN M2E56_END' in test_sh,
+   "M2e-56：构建脚本生成 NOCLICKSKIP 夹具（drop_marked M2E56 段）")
+ok('if grep -q "M2E56_BEGIN\\|function clickskip"' in test_sh and
+   '! grep -q "function bringToFront" "$M2H_NOCLICKSKIP' in test_sh,
+   "M2e-56：NOCLICKSKIP 夹具检查真的在查 clickskip 段（检查语句形态）")
+ok('"$M2H_NOBRINGTOFRONT" "$M2H_NOCLICKSKIP"' in test_sh,
+   "M2e-56：m2h 调用参数加了 $M2H_NOCLICKSKIP")
+ok("NOBRINGTOFRONT NOCLICKSKIP XP3" in test_sh,
+   "M2e-56：场景循环 for 行加了 NOCLICKSKIP")
+ok("NOBRINGTOFRONT|NOCLICKSKIP|XP3" in test_sh,
+   "M2e-56：OK 判定清单加了 NOCLICKSKIP")
+ok("Layer.clickskip handler" in test_sh,
+   "M2e-56：构建脚本 M2e-56 文案同步")
+# 出包核验器第 45 条：断言整条判断语句的形态（含 return 0 语义本体）。
+ok('if b"function clickskip(elm) { return 0; }" not in lay51:' in verifier,
+   "M2e-56：出包核验器第 45 条要求 Layer.clickskip 且 return 0"
    "（断言整条判断语句的形态 —— 只搜字样会被检查代码自身满足，恒真）")
 
 print("\n========================================")
