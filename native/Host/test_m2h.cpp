@@ -145,12 +145,17 @@ static void DumpChain(const char *tag, const char *j) {
                 StrField(j, "scriptTrace").c_str());
 }
 
-// M2e-44 的 probe 表达式：链条跑完后求值，整数结果进 JSON 的 probeValue。
-// 官方 Conductor.onTag(elm)（433 行）只在 handler 命中分支里写 lastTagName，
-// 它等于 "clickskip" 就证明 onTag 分发链路真跑过了；没跑过时官方初始值
-// 是 ''（Conductor.tjs:341），表达式取 0。
+// M2e-44/45 的 probe 表达式：链条跑完后求值，整数结果进 JSON 的 probeValue。
+// 官方 Conductor.onTag(elm)（433 行）只在 handler 命中分支里写 lastTagName。
+// 队列语义（M2e-45 起）：链走 clickskip → ch → void ——
+//   445 = 走到了 ch（最深路径已分发）
+//   444 = 只走到了 clickskip（ch 段被删时的历史路径）
+//     0 = 什么都没分发（one-shot 全部缺失）
+// 链条 fatal 时 probe 不求值，probeValue 保持 -1 —— 此时标签上下文要看
+// fatal 文本（官方 catch 拼的「タグ : <tagname>」）。
 static const char *kTagPathProbe =
-    "kag.mainConductor.lastTagName == \"clickskip\" ? 444 : 0";
+    "kag.mainConductor.lastTagName == \"ch\" ? 445 : "
+    "(kag.mainConductor.lastTagName == \"clickskip\" ? 444 : 0)";
 
 // 跑一次完整官方启动链，返回 JSON（调用方负责 free）；失败返回 NULL。
 // probe 可选：非 NULL 时链条成功收尾后求值（见 kTagPathProbe）。
@@ -220,20 +225,25 @@ static int RunCaseA(const char *game, const char *storage) {
                         "reports a fatal line", j);
         // 🔴 M2e-44 的出口判据：链条不只收尾干净，还必须真走过 onTag 分发。
         // getNextTag() 首调返回最小 tag 字典 ⇒ 官方 Conductor.tjs:104
-        // `var step = onTag(obj);` 首次真执行 ⇒ handlers["clickskip"] 命中 ⇒
-        // 官方 handler 把 lastTagName 写成 "clickskip" ⇒ probe 表达式取 444。
+        // `var step = onTag(obj);` 首次真执行 ⇒ handlers 命中 ⇒
+        // 官方 handler 把 lastTagName 写成 tagname ⇒ probe 表达式取 444/445。
         // lastTagName 是官方 Conductor 成员（341 行初始 ''），只在 onTag 的
-        // handler 分支里被写 —— 它等于 clickskip 就证明分发链路真跑了。
-        // 判据匹配判断语句 + return Fail 连续文本（铁律 1：把 444 改成别的
+        // handler 分支里被写 —— 它非空就证明分发链路真跑了。
+        // 判据匹配判断语句 + return Fail 连续文本（铁律 1：把阈值改成别的
         // 值、或把判断改成 if(false) 都必须让静态断言变红）。
         const long long probeOk = IntField(j, "probeValue");
-        if (probeOk != 444)
+        if (probeOk < 444)
             return Fail("M2e-44: the tag dispatch path did not run "
-                        "(mainConductor.lastTagName != \"clickskip\")", j);
+                        "(mainConductor.lastTagName is neither \"ch\" nor \"clickskip\")", j);
+        // 🔴 M2e-45 的出口判据：ok:true 意味着 ch 路径也干净走完了
+        //（fatal 的话根本进不了本分支）⇒ lastTagName 必须已是 "ch"。
+        if (probeOk != 445)
+            return Fail("M2e-45: the ch tag path did not run "
+                        "(mainConductor.lastTagName != \"ch\")", j);
         std::printf("[m2h] A: startup chain COMPLETED (fatal empty, %d scripts, "
                     "trace ends at MainWindow.tjs)\n", nOk);
         std::printf("[m2h] A: tag dispatch path verified (probeValue=%lld, "
-                    "lastTagName=clickskip)\n", probeOk);
+                    "lastTagName=ch)\n", probeOk);
         GalBoxTJS2Free(j);
         return 0;
     }
@@ -699,6 +709,18 @@ static int RunCaseA(const char *game, const char *storage) {
     if (fatal.find("getNextTag") != std::string::npos ||
         inner.find("getNextTag") != std::string::npos)
         return Fail("M2e-43 gap (getNextTag) not cleared", j);
+
+    // 🔴 M2e-45 判据：本轮把链条推进到官方 ch tag（文字表示路径）。
+    // 链条在 ch 处理中抛错时，官方 timerCallback catch 拼的错误信息里
+    // 带着正在处理的标签名（Conductor.tjs:178 `タグ : ` + obj.tagname）。
+    // 匹配形态用「タグ : ch (」带尾括号 —— "clickskip" 以 "ch" 开头，
+    // 不带尾括号会被 clickskip 的 fatal 误命中。ok:false 且 fatal 里没有
+    // ch 的标签上下文 ⇒ 深路径根本没被走到（回归）。
+    // 预测的实测停点：MessageLayer.processCh → lineLayer.drawText ——
+    // GalBoxLayer 骨架没有 drawText（M2e-46 候选）。
+    if (fatal.find("タグ : ch (") == std::string::npos)
+        return Fail("M2e-45: the chain stopped before reaching the ch tag "
+                    "(fatal does not carry the ch tag context)", j);
 
     // 新缺口只记录，不预设下一缺口的名字 —— 避免判据变成自我实现的预言。
     std::printf("[m2h] A next gap: '%s' @ %s:%lld (after M2e-43)\n",
@@ -2706,13 +2728,15 @@ static int RunCaseNoGetNext(const char *nogetnext, const char *storage) {
 }
 
 // ---- 场景 NOTAG44：M2e-44 one-shot 分发分支缺失的负向对照 --------------
-// 删掉 M2E44 两个段（getNextTag 体内的 one-shot 分支 + 状态槽位声明）后，
-// getNextTag 退回 M2e-43 的恒 void 版本 ⇒ 链条仍干净跑通（所以 ok 仍 true），
-// 但 onTag 分发链路从未执行 ⇒ lastTagName 保持官方初始值 '' ⇒ probe 取 0。
-// A（有 M2E44）probe=444、本对照 probe=0，唯一变量是那一段分发分支 ——
-// 这证明 A 判据里的 probe==444 不是恒真，而是真的由 M2E44 段驱动的。
+// 删掉 M2E44 两个段（clickskip 分支 + 状态槽位声明）—— M2e-45 起 getNextTag
+// 是队列，**还必须连带删 M2E45 段**：只删 M2E44 的话，第一次调用直接落到
+// 队列第二发的 ch tag，链条在 ch 处理中抛错（不再干净），对照口径就变了
+//（同 NOCURSTOR/NOCURLINE 连带删 M2E43 的道理）。删干净后 getNextTag 退回
+// 恒 void 版本 ⇒ 链条干净跑通（ok 仍 true），但 onTag 分发链路从未执行 ⇒
+// lastTagName 保持官方初始值 '' ⇒ probe 取 0。
+// A（有 M2E44/M2E45）probe=445、NOTAG45 probe=444、本对照 probe=0。
 // 夹具检查查声明形态（var gp44Left / 字典字面量），不查裸字样：
-// M2E44 段内的注释也提到 gp44Left，drop_marked 删整段后字样一并消失。
+// 段内注释也提到这些名字，drop_marked 删整段后字样一并消失。
 static int RunCaseNoTag44(const char *notag44, const char *storage) {
     if (!Exists(std::string(notag44) + "/system/Config.tjs"))
         return Fail("NOTAG44 fixture missing Config.tjs", NULL);
@@ -2723,13 +2747,18 @@ static int RunCaseNoTag44(const char *notag44, const char *storage) {
         std::ifstream f(skel.c_str());
         std::string body((std::istreambuf_iterator<char>(f)),
                          std::istreambuf_iterator<char>());
-        if (body.find("M2E44_BEGIN") != std::string::npos)
-            return Fail("NOTAG44 fixture must have the M2E44 sections removed", NULL);
+        if (body.find("M2E44_BEGIN") != std::string::npos ||
+            body.find("M2E45_BEGIN") != std::string::npos)
+            return Fail("NOTAG44 fixture must have the M2E44/M2E45 sections removed", NULL);
         if (body.find("var gp44Left") != std::string::npos)
             return Fail("NOTAG44 fixture still declares the one-shot slot", NULL);
-        if (body.find("%[\"tagname\"") != std::string::npos)
-            return Fail("NOTAG44 fixture still builds the tag object", NULL);
-        // getNextTag 本体（M2e-43 的恒 void 版本）必须还在 —— 删的只是 one-shot。
+        if (body.find("var gp45Left") != std::string::npos)
+            return Fail("NOTAG44 fixture still declares the M2e-45 slot", NULL);
+        if (body.find("%[\"tagname\" => \"clickskip\"") != std::string::npos)
+            return Fail("NOTAG44 fixture still builds the clickskip tag object", NULL);
+        if (body.find("%[\"tagname\" => \"ch\"") != std::string::npos)
+            return Fail("NOTAG44 fixture still builds the ch tag object", NULL);
+        // getNextTag 本体（M2e-43 的恒 void 版本）必须还在 —— 删的只是队列段。
         if (body.find("function getNextTag") == std::string::npos)
             return Fail("NOTAG44 fixture lost getNextTag itself", NULL);
         // 变量唯一：其他 KAGParser 成员/方法必须还在。
@@ -2759,9 +2788,70 @@ static int RunCaseNoTag44(const char *notag44, const char *storage) {
         return Fail("NOTAG44 control ran the tag dispatch path without the "
                     "M2E44 branch — the control is not a negative contrast", j);
 
-    std::printf("[m2h] NOTAG44 verdict: without the one-shot branch the chain is still "
-                "clean but lastTagName stays empty (probe=0); with M2E44 the A case "
-                "sees probe=444\n");
+    std::printf("[m2h] NOTAG44 verdict: without the one-shot branches the chain is still "
+                "clean but lastTagName stays empty (probe=0); with them the A case "
+                "sees probe=444/445\n");
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
+// ---- 场景 NOTAG45：M2e-45 ch 队列段缺失的负向对照 ----------------------
+// 只删 M2E45 两个段（ch 分支 + gp45Left 槽位），保留 M2e-44 的 clickskip：
+// 队列退化为 clickskip → void ⇒ 链条干净、lastTagName 停在 "clickskip" ⇒
+// probe 取 444。A（有 M2E45）probe=445、本对照 probe=444，唯一变量是 ch
+// 那一段 —— 证明 A 判据的 445 真由 M2E45 段驱动，而非恒真。
+static int RunCaseNoTag45(const char *notag45, const char *storage) {
+    if (!Exists(std::string(notag45) + "/system/Config.tjs"))
+        return Fail("NOTAG45 fixture missing Config.tjs", NULL);
+    const std::string skel = std::string(notag45) + "/system/GalBoxKAGParser.tjs";
+    if (!Exists(skel))
+        return Fail("NOTAG45 fixture must keep the KAGParser skeleton", NULL);
+    {
+        std::ifstream f(skel.c_str());
+        std::string body((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+        if (body.find("M2E45_BEGIN") != std::string::npos)
+            return Fail("NOTAG45 fixture must have the M2E45 sections removed", NULL);
+        if (body.find("var gp45Left") != std::string::npos)
+            return Fail("NOTAG45 fixture still declares the M2e-45 slot", NULL);
+        if (body.find("%[\"tagname\" => \"ch\"") != std::string::npos)
+            return Fail("NOTAG45 fixture still builds the ch tag object", NULL);
+        // M2e-44 的 clickskip 路径必须还在 —— 删的只是队列第二发。
+        if (body.find("var gp44Left") == std::string::npos)
+            return Fail("NOTAG45 fixture lost gp44Left too (variable not unique)", NULL);
+        if (body.find("%[\"tagname\" => \"clickskip\"") == std::string::npos)
+            return Fail("NOTAG45 fixture lost the clickskip tag object too (variable not unique)", NULL);
+        if (body.find("function getNextTag") == std::string::npos)
+            return Fail("NOTAG45 fixture lost getNextTag itself", NULL);
+        if (body.find("var curStorage") == std::string::npos)
+            return Fail("NOTAG45 fixture lost curStorage too (variable not unique)", NULL);
+        if (body.find("var curLine") == std::string::npos)
+            return Fail("NOTAG45 fixture lost curLine too (variable not unique)", NULL);
+        if (body.find("function goToLabel()") == std::string::npos)
+            return Fail("NOTAG45 fixture lost goToLabel too (variable not unique)", NULL);
+        if (body.find("function resetInterrupt()") == std::string::npos)
+            return Fail("NOTAG45 fixture lost resetInterrupt too (variable not unique)", NULL);
+    }
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(notag45, storage, arc, kTagPathProbe);
+    if (!j) return Fail("cannot run the NOTAG45 control", NULL);
+    DumpChain("NOTAG45", j);
+
+    if (StrField(j, "shim").find("M2E11_KAGPARSER_SKELETON") == std::string::npos)
+        return Fail("NOTAG45 control lost the KAGParser skeleton tag", j);
+
+    if (!Has(j, "\"ok\":true"))
+        return Fail("NOTAG45 control unexpectedly failed the startup chain", j);
+    if (StrField(j, "fatal").size() != 0)
+        return Fail("NOTAG45 control raised a script-level exception", j);
+    if (IntField(j, "probeValue") != 444)
+        return Fail("NOTAG45 control did not stop at the clickskip path "
+                    "(probe != 444) — the control is not a negative contrast", j);
+
+    std::printf("[m2h] NOTAG45 verdict: without the ch segment the chain stops at "
+                "clickskip (probe=444); with M2E45 the A case advances to the ch "
+                "tag path (probe=445 or the measured ch-path fatal)\n");
     GalBoxTJS2Free(j);
     return 0;
 }
@@ -2944,7 +3034,7 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
                                "\"loop\"", "\"frame\"", "numberOfAudioStream",
                                "segmentLoopStartFrame", "segmentLoopEndFrame",
                                "periodEventFrame", "resetInterrupt", "curStorage", "curLine",
-                               "getNextTag", "gp44Left"}) {
+                               "getNextTag", "gp44Left", "gp45Left"}) {
         if (fatal.find(closed) != std::string::npos ||
             inner.find(closed) != std::string::npos) {
             std::printf("[m2h] XP3 still stuck at closed gap: %s\n", closed);
@@ -2952,10 +3042,18 @@ static int RunCasePacked(const char *dir_game, const char *xp3,
         }
     }
 
-    // M2e-44：包内链路与 A 场景同口径 —— onTag 分发必须真跑过（probe 444）。
-    if (IntField(j, "probeValue") != 444)
-        return Fail("packed xp3 did not run the tag dispatch path "
-                    "(mainConductor.lastTagName != \"clickskip\")", j);
+    // M2e-44/45：包内链路与 A 场景同口径 —— onTag 分发必须真跑过，且链要
+    // 走到 ch tag（文字路径）。跑干净（ok:true）⇒ probe 必须 445（lastTagName
+    // 已是 ch）；ch 处理中抛错（本轮预期的新缺口形态）⇒ fatal 必须带着
+    // ch 的标签上下文（同 A 场景口径，带尾括号防 clickskip 前缀误命中）。
+    if (Has(j, "\"ok\":true")) {
+        if (IntField(j, "probeValue") != 445)
+            return Fail("packed xp3 tag dispatch did not reach the ch tag "
+                        "(probe != 445)", j);
+    } else if (fatal.find("タグ : ch (") == std::string::npos) {
+        return Fail("packed xp3 stopped before reaching the ch tag "
+                    "(fatal does not carry the ch tag context)", j);
+    }
 
     std::printf("[m2h] XP3 verdict: real .xp3 ran the same chain "
                 "(%lld scripts, debugLevel/hitType/hitThreshold/"
@@ -3015,6 +3113,7 @@ int main(int argc, char **argv) {
     const char *nocurline = (argc > 43) ? argv[43] : "";
     const char *nogetnext = (argc > 44) ? argv[44] : "";
     const char *notag44   = (argc > 45) ? argv[45] : "";
+    const char *notag45   = (argc > 46) ? argv[46] : "";
 
     if (std::strcmp(which, "A") == 0) {
         if (RunCaseA(game, storage) != 0) return 3;
@@ -3232,6 +3331,11 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "NOTAG45") == 0) {
+        if (RunCaseNoTag45(notag45, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -3250,6 +3354,6 @@ int main(int argc, char **argv) {
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
                 "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / NOWINLEFT / NOPAUSED / "
                 "NOPAN / NOMODE / NOEVALSTORAGE / NOVISIBLE / NOLOOP / NOFRAME / "
-                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / NOTAG44 / XP3 / LEAK / LEAK2)\n", which);
+                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / NOTAG44 / NOTAG45 / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }

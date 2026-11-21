@@ -318,6 +318,12 @@ def main(argv):
     if b"var gp44Left = 0;" not in kp43:
         return fail("system/GalBoxKAGParser.tjs 里没有 var gp44Left = 0："
                     "设备端 onTag 分发链路无从验证（Conductor.tjs:104）")
+    # 第 37 条（M2e-45）：getNextTag 队列第二发 —— ch tag 的状态槽位。
+    # 官方 ch handler → MessageLayer.processCh → lineLayer.drawText（文字
+    # 表示路径的实测停点所在）。没有这一槽位，设备端 ch 路径无从验证。
+    if b"var gp45Left = 0;" not in kp43:
+        return fail("system/GalBoxKAGParser.tjs 里没有 var gp45Left = 0："
+                    "设备端 ch tag 路径无从验证（MessageLayer.processCh）")
 
     # 第 21 条（M2e-28）：窗口左上角坐标。MainWindow.tjs:438 的
     # `this.width + this.left`（居中修正）要读 Window.left；439 行还会回写。
@@ -343,7 +349,7 @@ def main(argv):
 
     print("[m2e12b] 内置包核验通过: %d 个文件 / 解压后 %d B / "
           "Initialize.tjs %d B / startup.tjs 真调 Initialize / %d 个骨架全在 / "
-          "KAGParser 带 debugLevel(M2e-13)+resetInterrupt(M2e-40)+curStorage+curLine(M2e-41/42)+getNextTag(M2e-43)+one-shot gp44Left(M2e-44) / Layer 带 hitType+hitThreshold(M2e-14) / "
+          "KAGParser 带 debugLevel(M2e-13)+resetInterrupt(M2e-40)+curStorage+curLine(M2e-41/42)+getNextTag(M2e-43)+队列 gp44Left/gp45Left(M2e-44/45) / Layer 带 hitType+hitThreshold(M2e-14) / "
           "Layer 带 setImageSize+setSizeToImageSize(M2e-15) / "
           "Layer 带 face+fillRect(M2e-16) / Layer 带 cursor(M2e-17) / "
           "Layer 带 name(M2e-18) / Layer 带 focusable(M2e-19) / "

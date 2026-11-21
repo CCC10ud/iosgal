@@ -100,9 +100,9 @@ class KAGParser
 	//     if(obj === void) { ... シナリオ終了 ... return; }
 	// ⇒ getNextTag() 在没有更多标签时必须返回 **void**，官方才走"结束"分支。
 	//
-	// M2e-44 起本方法**有状态化**（见下方 M2E44 段）：首次调用返回一个
-	// 最小 tag 对象，让官方 Conductor.tjs:104 `var step = onTag(obj);` 的
-	// 分发链路第一次真执行；之后返回 void，官方仍走"结束"分支干净收尾。
+	// M2e-44 起本方法**有状态化**（见下方 M2E44/M2E45 段）：按队列返回
+	// tag 对象 —— 首调 clickskip（打通 onTag 分发），第二调 ch（官方文字
+	// 表示路径，M2e-45），之后返回 void，官方仍走"结束"分支干净收尾。
 	// 链条若无标签可发，下面的 return void; 仍是唯一出口 —— 这行就是
 	// M2e-43 判据锁住的语义本体（空 ⇒ void）。
 	//
@@ -126,6 +126,20 @@ class KAGParser
 			return %["tagname" => "clickskip", "enabled" => 1];
 		}
 		// M2E44_END
+		// M2E45_BEGIN —— NOTAG45 负向对照按此标记整段删除
+		// M2e-45：队列第二发 —— 官方 ch tag（文字表示）。官方 MessageLayer.
+		// processCh(ch) 会走布局计算后调 lineLayer.drawText(...)，而 GalBox
+		// Layer 骨架（M2e-2 起）没有 drawText —— 静态推演的本轮实测停点。
+		// text 给 ASCII "A"：字面内容不参与任何比较，避开编码变量。
+		// ch handler 前置状态全部已声明：updateBeforeCh=0（跳过 -5 事件分支）、
+		// currentWithBack=false（跳过 comp 行）、autoWCEnabled=false（跳过
+		// 自动等待）、current=fore.messages[0]（MainWindow 构造器 371 行）。
+		if(gp45Left == 0)
+		{
+			gp45Left = 1;
+			return %["tagname" => "ch", "text" => "A"];
+		}
+		// M2E45_END
 		return void;
 	}
 	// M2E43_END
@@ -145,4 +159,12 @@ class KAGParser
 	// 换更深的 tag（wait / s / ch / bg）或补 readFile 就能继续按停点推进。
 	var gp44Left = 0;
 	// M2E44_END
+
+	// M2E45_BEGIN —— NOTAG45 负向对照按此标记整段删除
+	// gp45Left：队列第二发（ch tag）的 one-shot 状态槽位，语义同 gp44Left：
+	// 0 = 还没发过，1 = 已发过。与 gp44Left 分开声明（而不是合成一个计数
+	// 槽位）是为了让 NOTAG45 负向对照能**只删 ch 那一段**、保留 M2e-44 的
+	// clickskip 路径 —— 变量唯一性纪律。
+	var gp45Left = 0;
+	// M2E45_END
 }

@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE NOGETNEXT NOTAG44 XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把四十四个场景拆成独立进程跑（三十九个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE NOGETNEXT NOTAG44 NOTAG45 XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把四十五个场景拆成独立进程跑（四十个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -2097,26 +2097,28 @@ ok("var gp44Left = 0;" in _gb_kp44,
 ok("gp44Left = 1;" in _m44,
    "M2e-44：one-shot 分支真的翻转状态槽位（没有它就不是 one-shot，会无限循环）")
 # A 判据的 probe 表达式（C++ 源码里是转义引号的字符串字面量）。
-ok('kag.mainConductor.lastTagName == \\"clickskip\\" ? 444 : 0' in m2h_test,
-   "M2e-44：A 场景挂上 probe 表达式（kag.mainConductor.lastTagName 判分发）")
+# M2e-45 起为嵌套三元式：ch→445 / clickskip→444 / 其他→0。
+ok('kag.mainConductor.lastTagName == \\"ch\\" ? 445 : ' in m2h_test and
+   '(kag.mainConductor.lastTagName == \\"clickskip\\" ? 444 : 0)' in m2h_test,
+   "M2e-44/45：A 场景挂上嵌套 probe 表达式（lastTagName 判分发深度）")
 ok("RunChain(game, storage, arc, kTagPathProbe)" in m2h_test,
    "M2e-44：A 场景的 RunChain 真把 probe 传给宿主（不是声明了却没用）")
 # 🔴 出口判据必须匹配「判断语句 + return Fail」连续文本形态（铁律 1）：
-# 只搜消息字样的话，把 if(probeOk != 444) 改成 if(false) 静态照样全绿。
-ok('if (probeOk != 444)\n'
+# 只搜消息字样的话，把 if(probeOk < 444) 改成 if(false) 静态照样全绿。
+ok('if (probeOk < 444)\n'
    '            return Fail("M2e-44: the tag dispatch path did not run '
    in m2h_test,
-   "M2e-44：A 出口判据 probe==444 挂在判断语句 + return Fail 连续文本上")
-# XP3（包内链路）同口径：RunArchive 也要传 probe 并断言 444。
+   "M2e-44：A 出口判据 probe>=444 挂在判断语句 + return Fail 连续文本上")
+# XP3（包内链路）同口径：RunArchive 也要传 probe 并按 ok 分支断言。
 ok("RunArchive(xp3, st.c_str(), arc, &opened, &dirMode, &cntXp3,\n"
    "                         kTagPathProbe)" in m2h_test,
    "M2e-44：XP3 场景的 RunArchive 也传 probe（包内链路与目录侧同口径）")
-ok('if (IntField(j, "probeValue") != 444)\n'
-   '        return Fail("packed xp3 did not run the tag dispatch path '
+ok('if (IntField(j, "probeValue") != 445)\n'
+   '            return Fail("packed xp3 tag dispatch did not reach the ch tag '
    in m2h_test,
-   "M2e-44：XP3 出口判据 probe==444（判断语句 + return Fail 连续文本形态）")
-# NOTAG44 负向对照：夹具删 M2E44 两段后链条仍干净、但 probe 必须 0 ——
-# 证明 A 的 444 真由 M2E44 段驱动，不是恒真。
+   "M2e-44/45：XP3 出口判据 ok:true ⇒ probe==445（判断语句 + return Fail 连续文本形态）")
+# NOTAG44 负向对照：夹具删 M2E44+M2E45 段后链条仍干净、但 probe 必须 0 ——
+# 证明 A 的分发判据真由这些段驱动，不是恒真。
 ok("RunCaseNoTag44" in m2h_test and
    'if (IntField(j, "probeValue") != 0)\n'
    '        return Fail("NOTAG44 control ran the tag dispatch path without the '
@@ -2124,31 +2126,90 @@ ok("RunCaseNoTag44" in m2h_test and
    "M2e-44：NOTAG44 负向对照存在且断言 probe==0（判断语句 + return Fail 连续文本）")
 ok('if (body.find("var gp44Left") != std::string::npos)\n'
    '            return Fail("NOTAG44 fixture still declares the one-shot slot' in m2h_test and
-   'if (body.find("%[\\"tagname\\"") != std::string::npos)\n'
-   '            return Fail("NOTAG44 fixture still builds the tag object' in m2h_test,
-   "M2e-44：C++ 侧校验 NOTAG44 夹具确实缺 one-shot 段（断言判断语句形态）")
+   'if (body.find("%[\\"tagname\\" => \\"clickskip\\"") != std::string::npos)\n'
+   '            return Fail("NOTAG44 fixture still builds the clickskip tag object' in m2h_test,
+   "M2e-44：C++ 侧校验 NOTAG44 夹具确实缺 clickskip 段（断言判断语句形态）")
 # 构建脚本：NOTAG44 夹具生成 + 检查语句形态 + 场景循环/参数/OK 清单同步。
 ok("M2H_NOTAG44=\"$OUT/m2h_notag44\"" in test_sh and
    'drop_marked "$M2H_NOTAG44/system/GalBoxKAGParser.tjs" M2E44_BEGIN M2E44_END' in test_sh,
    "M2e-44：构建脚本生成 NOTAG44 夹具（drop_marked M2E44 两段）")
 # ⚠️ 断言完整的检查语句形态：只搜字样的话，把检查改成永不命中的 grep 照样过。
 ok('if grep -q "M2E44_BEGIN\\|var gp44Left"' in test_sh and
-   "if grep -qF '%[\"tagname\"'" in test_sh and
+   "if grep -qF '%[\"tagname\" => \"clickskip\"'" in test_sh and
    '! grep -q "function getNextTag" "$M2H_NOTAG44' in test_sh,
-   "M2e-44：NOTAG44 夹具检查真的在查 one-shot 段（断言检查语句形态，非仅字样）")
-ok("NOCURLINE NOGETNEXT NOTAG44 XP3" in test_sh,
+   "M2e-44：NOTAG44 夹具检查真的在查 clickskip 段（断言检查语句形态，非仅字样）")
+ok("NOCURLINE NOGETNEXT NOTAG44" in test_sh,
    "M2e-44：场景循环 for 行加了 NOTAG44")
 ok('"$M2H_NOCURLINE" "$M2H_NOGETNEXT" "$M2H_NOTAG44"' in test_sh,
    "M2e-44：m2h 调用参数加了 $M2H_NOTAG44（两个长参数行都同步了）")
-ok("NOGETNEXT|NOTAG44|XP3" in test_sh,
+ok("NOGETNEXT|NOTAG44|" in test_sh,
    "M2e-44：OK 判定清单加了 NOTAG44")
 # 出包核验器第 36 条：断言整条判断语句的形态（只搜字样会被检查代码自身满足）。
 ok('if b"var gp44Left = 0;" not in kp43:' in verifier,
    "M2e-44：出包核验器第 36 条要求 KAGParser 的 one-shot 槽位"
    "（断言整条判断语句的形态 —— 只搜字样会被检查代码自身满足，恒真）")
 # XP3 场景的「已关闭缺口」清单：断言在 getNextTag 之后新增了 gp44Left。
-ok('"getNextTag", "gp44Left"})' in m2h_test,
+ok('"getNextTag", "gp44Left"' in m2h_test,
    "M2e-44：XP3 场景的「已关闭缺口」清单加上了 gp44Left")
+
+# ---- M2e-45：getNextTag 队列第二发 —— ch tag（官方文字表示路径）---------
+# M2e-44 打通分发后，本轮把链推进到官方 ch handler → MessageLayer.processCh
+# → lineLayer.drawText(...)。GalBoxLayer 骨架没有 drawText ⇒ 预测的实测停点
+# Member "drawText" does not exist @ MessageLayer.tjs（M2e-46 候选）。
+# A 场景两种形态都判：ok:true ⇒ probe==445（链干净走到 ch）；ok:false ⇒
+# fatal 必须带 ch 的标签上下文（官方 catch 拼的「タグ : ch (」，带尾括号
+# 防 clickskip 前缀误命中）。
+_gb_kp45 = open("native/KAG/src/system/GalBoxKAGParser.tjs", encoding="utf-8").read()
+_m45 = _gb_kp45.split("M2E45_BEGIN",1)[-1].split("M2E45_END",1)[0]
+ok('return %["tagname" => "ch", "text" => "A"];' in _m45,
+   "M2e-45：getNextTag 队列第二发返回 ch tag 字典（官方文字路径入口）")
+ok("var gp45Left = 0;" in _gb_kp45,
+   "M2e-45：KAGParser 骨架声明 ch 队列段状态槽位 var gp45Left = 0")
+ok("gp45Left = 1;" in _m45,
+   "M2e-45：ch 分支真的翻转状态槽位（与 gp44Left 独立，NOTAG45 才能只删它）")
+ok('if (probeOk != 445)\n'
+   '            return Fail("M2e-45: the ch tag path did not run '
+   in m2h_test,
+   "M2e-45：A 出口判据 ok:true ⇒ probe==445（判断语句 + return Fail 连续文本）")
+ok('if (fatal.find("タグ : ch (") == std::string::npos)\n'
+   '        return Fail("M2e-45: the chain stopped before reaching the ch tag '
+   in m2h_test,
+   "M2e-45：A 出口判据 ok:false ⇒ fatal 带 ch 标签上下文（带尾括号防 clickskip 误命中）")
+# NOTAG45 负向对照：只删 M2E45 ⇒ 队列退化 clickskip → void ⇒ probe==444。
+ok("RunCaseNoTag45" in m2h_test and
+   'if (IntField(j, "probeValue") != 444)\n'
+   '        return Fail("NOTAG45 control did not stop at the clickskip path '
+   in m2h_test,
+   "M2e-45：NOTAG45 负向对照存在且断言 probe==444（判断语句 + return Fail 连续文本）")
+ok('if (body.find("var gp45Left") != std::string::npos)\n'
+   '            return Fail("NOTAG45 fixture still declares the M2e-45 slot' in m2h_test and
+   'if (body.find("%[\\"tagname\\" => \\"ch\\"") != std::string::npos)\n'
+   '            return Fail("NOTAG45 fixture still builds the ch tag object' in m2h_test and
+   'if (body.find("%[\\"tagname\\" => \\"clickskip\\"") == std::string::npos)\n'
+   '            return Fail("NOTAG45 fixture lost the clickskip tag object too' in m2h_test,
+   "M2e-45：C++ 侧校验 NOTAG45 夹具缺 ch 段且保留 clickskip（断言判断语句形态）")
+# 构建脚本：NOTAG45 夹具 + NOTAG44 连带删 M2E45 的检查。
+ok("M2H_NOTAG45=\"$OUT/m2h_notag45\"" in test_sh and
+   'drop_marked "$M2H_NOTAG45/system/GalBoxKAGParser.tjs" M2E45_BEGIN M2E45_END' in test_sh,
+   "M2e-45：构建脚本生成 NOTAG45 夹具（drop_marked M2E45 两段）")
+ok('drop_marked "$M2H_NOTAG44/system/GalBoxKAGParser.tjs" M2E45_BEGIN M2E45_END' in test_sh and
+   'if grep -q "M2E45_BEGIN\\|var gp45Left" "$M2H_NOTAG44' in test_sh,
+   "M2e-45：NOTAG44 夹具连带删 M2E45 段（不删的话链落到 ch tag，对照失效）")
+ok("if grep -qF '%[\"tagname\" => \"ch\"'" in test_sh,
+   "M2e-45：夹具检查真的在查 ch 字典字面量（断言检查语句形态，非仅字样）")
+ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 XP3" in test_sh,
+   "M2e-45：场景循环 for 行加了 NOTAG45")
+ok('"$M2H_NOCURLINE" "$M2H_NOGETNEXT" "$M2H_NOTAG44" "$M2H_NOTAG45"' in test_sh,
+   "M2e-45：m2h 调用参数加了 $M2H_NOTAG45")
+ok("NOGETNEXT|NOTAG44|NOTAG45|XP3" in test_sh,
+   "M2e-45：OK 判定清单加了 NOTAG45")
+# 出包核验器第 37 条：断言整条判断语句的形态。
+ok('if b"var gp45Left = 0;" not in kp43:' in verifier,
+   "M2e-45：出包核验器第 37 条要求 KAGParser 的 ch 队列槽位"
+   "（断言整条判断语句的形态 —— 只搜字样会被检查代码自身满足，恒真）")
+# XP3 场景「已关闭缺口」清单加 gp45Left（防包内骨架丢槽位的悬空引用）。
+ok('"gp44Left", "gp45Left"})' in m2h_test,
+   "M2e-45：XP3 场景的「已关闭缺口」清单加上了 gp45Left")
 
 
 print("\n========================================")

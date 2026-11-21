@@ -1277,22 +1277,34 @@ PYEOF
     exit 1
   fi
 
-  # M2e-44 负向对照：只删 getNextTag 的 one-shot 分发段（M2E44 两个段：
-  # 函数体内的分支 + 状态槽位声明），getNextTag 退回 M2e-43 的恒 void 版本。
-  # 链条仍干净跑通（ok 仍 true），但 onTag 分发链路从未执行 ⇒ probe 取 0 ——
-  # 与 A 场景的 probe 444 形成正负对照，证明 A 判据非恒真。
-  # ⚠️ 查声明形态（var gp44Left / 字典字面量 %["tagname"），不查裸字样：
-  # M2E44 段内的注释也提到 gp44Left，drop_marked 删整段后字样一并消失。
+  # M2e-44 负向对照：删 getNextTag 的 clickskip 分发段（M2E44 两个段）。
+  # 🔴 M2e-45 起 getNextTag 是队列，**必须连带删 M2E45 段**：只删 M2E44 的
+  # 话，第一次调用直接落到队列第二发的 ch tag，链条在 ch 处理中抛错（不再
+  # 干净），对照口径就变了（同 NOCURSTOR/NOCURLINE 连带删 M2E43 的道理）。
+  # 删干净后 getNextTag 退回恒 void 版本 ⇒ 链条仍干净跑通（ok 仍 true），
+  # 但 onTag 分发链路从未执行 ⇒ probe 取 0 —— 与 A 的 445/NOTAG45 的 444
+  # 形成三级正负对照，证明判据非恒真。
+  # ⚠️ 查声明形态（var gp44Left / clickskip 字典字面量），不查裸字样：
+  # 段内注释也提到这些名字，drop_marked 删整段后字样一并消失。
   M2H_NOTAG44="$OUT/m2h_notag44"
   rm -rf "$M2H_NOTAG44"
   cp -R "$M2H_GAME" "$M2H_NOTAG44"
   drop_marked "$M2H_NOTAG44/system/GalBoxKAGParser.tjs" M2E44_BEGIN M2E44_END
+  drop_marked "$M2H_NOTAG44/system/GalBoxKAGParser.tjs" M2E45_BEGIN M2E45_END
   if grep -q "M2E44_BEGIN\|var gp44Left" "$M2H_NOTAG44/system/GalBoxKAGParser.tjs"; then
     echo "[tjs2] M2e-44 NOTAG44 夹具里 one-shot 段还在"
     exit 1
   fi
-  if grep -qF '%["tagname"' "$M2H_NOTAG44/system/GalBoxKAGParser.tjs"; then
-    echo "[tjs2] M2e-44 NOTAG44 夹具里 tag 字典字面量还在"
+  if grep -q "M2E45_BEGIN\|var gp45Left" "$M2H_NOTAG44/system/GalBoxKAGParser.tjs"; then
+    echo "[tjs2] M2e-44 NOTAG44 夹具里 M2E45 段还在（不连带删会让链落到 ch tag，对照失效）"
+    exit 1
+  fi
+  if grep -qF '%["tagname" => "clickskip"' "$M2H_NOTAG44/system/GalBoxKAGParser.tjs"; then
+    echo "[tjs2] M2e-44 NOTAG44 夹具里 clickskip 字典字面量还在"
+    exit 1
+  fi
+  if grep -qF '%["tagname" => "ch"' "$M2H_NOTAG44/system/GalBoxKAGParser.tjs"; then
+    echo "[tjs2] M2e-44 NOTAG44 夹具里 ch 字典字面量还在"
     exit 1
   fi
   if ! grep -q "function getNextTag" "$M2H_NOTAG44/system/GalBoxKAGParser.tjs"; then
@@ -1313,6 +1325,51 @@ PYEOF
   fi
   if ! grep -q "function resetInterrupt()" "$M2H_NOTAG44/system/GalBoxKAGParser.tjs"; then
     echo "[tjs2] M2e-44 NOTAG44 夹具把 resetInterrupt 也删了（变量不唯一）"
+    exit 1
+  fi
+
+  # M2e-45 负向对照：只删 ch 队列段（M2E45 两个段），保留 M2e-44 的
+  # clickskip。队列退化为 clickskip → void ⇒ 链条干净、lastTagName 停在
+  # "clickskip" ⇒ probe 取 444。A（有 M2E45）probe=445 或 ch 路径实测 fatal，
+  # 唯一变量是 ch 那一段 —— 证明 A 的 M2e-45 判据非恒真。
+  M2H_NOTAG45="$OUT/m2h_notag45"
+  rm -rf "$M2H_NOTAG45"
+  cp -R "$M2H_GAME" "$M2H_NOTAG45"
+  drop_marked "$M2H_NOTAG45/system/GalBoxKAGParser.tjs" M2E45_BEGIN M2E45_END
+  if grep -q "M2E45_BEGIN\|var gp45Left" "$M2H_NOTAG45/system/GalBoxKAGParser.tjs"; then
+    echo "[tjs2] M2e-45 NOTAG45 夹具里 ch 段还在"
+    exit 1
+  fi
+  if grep -qF '%["tagname" => "ch"' "$M2H_NOTAG45/system/GalBoxKAGParser.tjs"; then
+    echo "[tjs2] M2e-45 NOTAG45 夹具里 ch 字典字面量还在"
+    exit 1
+  fi
+  if ! grep -qF '%["tagname" => "clickskip"' "$M2H_NOTAG45/system/GalBoxKAGParser.tjs"; then
+    echo "[tjs2] M2e-45 NOTAG45 夹具把 clickskip 路径也删了（变量不唯一）"
+    exit 1
+  fi
+  if ! grep -q "var gp44Left" "$M2H_NOTAG45/system/GalBoxKAGParser.tjs"; then
+    echo "[tjs2] M2e-45 NOTAG45 夹具把 gp44Left 也删了（变量不唯一）"
+    exit 1
+  fi
+  if ! grep -q "function getNextTag" "$M2H_NOTAG45/system/GalBoxKAGParser.tjs"; then
+    echo "[tjs2] M2e-45 NOTAG45 夹具把 getNextTag 本体也删了（M2E43 段不该动）"
+    exit 1
+  fi
+  if ! grep -q "var curStorage" "$M2H_NOTAG45/system/GalBoxKAGParser.tjs"; then
+    echo "[tjs2] M2e-45 NOTAG45 夹具把 curStorage 也删了（变量不唯一）"
+    exit 1
+  fi
+  if ! grep -q "var curLine" "$M2H_NOTAG45/system/GalBoxKAGParser.tjs"; then
+    echo "[tjs2] M2e-45 NOTAG45 夹具把 curLine 也删了（变量不唯一）"
+    exit 1
+  fi
+  if ! grep -q "function goToLabel()" "$M2H_NOTAG45/system/GalBoxKAGParser.tjs"; then
+    echo "[tjs2] M2e-45 NOTAG45 夹具把 goToLabel 也删了（变量不唯一）"
+    exit 1
+  fi
+  if ! grep -q "function resetInterrupt()" "$M2H_NOTAG45/system/GalBoxKAGParser.tjs"; then
+    echo "[tjs2] M2e-45 NOTAG45 夹具把 resetInterrupt 也删了（变量不唯一）"
     exit 1
   fi
 
@@ -1400,12 +1457,12 @@ PYEOF
     # 负向对照就会假红。独立进程 => 每个场景都是干净首跑。
     # M2e-32：NOEVALSTORAGE 的夹具与 A 完全相同（evalStorage 是 C++ 原生方法，
     # 不在 TJS 骨架文件里），变量是宿主注册开关，由场景函数在进程内切换。
-    for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE NOGETNEXT NOTAG44 XP3 LEAK LEAK2; do
-      OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER" "$GALBOX_KAG_XP3" "$M2H_NODEBUGLEVEL" "$M2H_NOHITTYPE" "$M2H_NOHITTHRESHOLD" "$M2H_NOIMAGESIZE" "$M2H_NOSIZETOIMAGESIZE" "$M2H_NODRAWFACE" "$M2H_NOFILLRECT" "$M2H_NOCURSOR" "$M2H_NONAME" "$M2H_NOFOCUSABLE" "$M2H_NOSIZE" "$M2H_NOIMAGEMODIFIED" "$M2H_NOCOLORRECT" "$M2H_NOSHOWPARENTHINT" "$M2H_NOCURSORX" "$M2H_NOMIDI" "$M2H_NOWAVE" "$M2H_NOVIDEO" "$M2H_NOWINLEFT" "$M2H_NOPAUSED" "$M2H_NOPAN" "$M2H_NOMODE" "$M2H_NOVISIBLE" "$M2H_NOLOOP" "$M2H_NOFRAME" "$M2H_NOAUDIO" "$M2H_NOSEG" "$M2H_NOSEGEND" "$M2H_NOPERIOD" "$M2H_NORESINT" "$M2H_NOCURSTOR" "$M2H_NOCURLINE" "$M2H_NOGETNEXT" "$M2H_NOTAG44" 2>&1)
-      diag_crash "M2h-$M2H_CASE" "$?" "$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER" "$GALBOX_KAG_XP3" "$M2H_NODEBUGLEVEL" "$M2H_NOHITTYPE" "$M2H_NOHITTHRESHOLD" "$M2H_NOIMAGESIZE" "$M2H_NOSIZETOIMAGESIZE" "$M2H_NODRAWFACE" "$M2H_NOFILLRECT" "$M2H_NOCURSOR" "$M2H_NONAME" "$M2H_NOFOCUSABLE" "$M2H_NOSIZE" "$M2H_NOIMAGEMODIFIED" "$M2H_NOCOLORRECT" "$M2H_NOSHOWPARENTHINT" "$M2H_NOCURSORX" "$M2H_NOMIDI" "$M2H_NOWAVE" "$M2H_NOVIDEO" "$M2H_NOWINLEFT" "$M2H_NOPAUSED" "$M2H_NOPAN" "$M2H_NOMODE" "$M2H_NOVISIBLE" "$M2H_NOLOOP" "$M2H_NOFRAME" "$M2H_NOAUDIO" "$M2H_NOSEG" "$M2H_NOSEGEND" "$M2H_NOPERIOD" "$M2H_NORESINT" "$M2H_NOCURSTOR" "$M2H_NOCURLINE" "$M2H_NOGETNEXT" "$M2H_NOTAG44"
+    for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE NOGETNEXT NOTAG44 NOTAG45 XP3 LEAK LEAK2; do
+      OUTPUT_M2H=$("$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER" "$GALBOX_KAG_XP3" "$M2H_NODEBUGLEVEL" "$M2H_NOHITTYPE" "$M2H_NOHITTHRESHOLD" "$M2H_NOIMAGESIZE" "$M2H_NOSIZETOIMAGESIZE" "$M2H_NODRAWFACE" "$M2H_NOFILLRECT" "$M2H_NOCURSOR" "$M2H_NONAME" "$M2H_NOFOCUSABLE" "$M2H_NOSIZE" "$M2H_NOIMAGEMODIFIED" "$M2H_NOCOLORRECT" "$M2H_NOSHOWPARENTHINT" "$M2H_NOCURSORX" "$M2H_NOMIDI" "$M2H_NOWAVE" "$M2H_NOVIDEO" "$M2H_NOWINLEFT" "$M2H_NOPAUSED" "$M2H_NOPAN" "$M2H_NOMODE" "$M2H_NOVISIBLE" "$M2H_NOLOOP" "$M2H_NOFRAME" "$M2H_NOAUDIO" "$M2H_NOSEG" "$M2H_NOSEGEND" "$M2H_NOPERIOD" "$M2H_NORESINT" "$M2H_NOCURSTOR" "$M2H_NOCURLINE" "$M2H_NOGETNEXT" "$M2H_NOTAG44" "$M2H_NOTAG45" 2>&1)
+      diag_crash "M2h-$M2H_CASE" "$?" "$OUT/tjs2test_m2h" "$M2H_CASE" "$M2H_GAME" "$M2H_CTRL" "$OUT" "$M2H_NOMENU" "$M2H_NOSTYLE" "$M2H_NOTIMER" "$M2H_NOFONT" "$M2H_NOKAGPARSER" "$M2H_NOASYNCTRIGGER" "$GALBOX_KAG_XP3" "$M2H_NODEBUGLEVEL" "$M2H_NOHITTYPE" "$M2H_NOHITTHRESHOLD" "$M2H_NOIMAGESIZE" "$M2H_NOSIZETOIMAGESIZE" "$M2H_NODRAWFACE" "$M2H_NOFILLRECT" "$M2H_NOCURSOR" "$M2H_NONAME" "$M2H_NOFOCUSABLE" "$M2H_NOSIZE" "$M2H_NOIMAGEMODIFIED" "$M2H_NOCOLORRECT" "$M2H_NOSHOWPARENTHINT" "$M2H_NOCURSORX" "$M2H_NOMIDI" "$M2H_NOWAVE" "$M2H_NOVIDEO" "$M2H_NOWINLEFT" "$M2H_NOPAUSED" "$M2H_NOPAN" "$M2H_NOMODE" "$M2H_NOVISIBLE" "$M2H_NOLOOP" "$M2H_NOFRAME" "$M2H_NOAUDIO" "$M2H_NOSEG" "$M2H_NOSEGEND" "$M2H_NOPERIOD" "$M2H_NORESINT" "$M2H_NOCURSTOR" "$M2H_NOCURLINE" "$M2H_NOGETNEXT" "$M2H_NOTAG44" "$M2H_NOTAG45"
       echo "$OUTPUT_M2H" | sed 's/^/[tjs2]   /'
       case "$M2H_CASE" in
-        A|B|NOMENU|NOSTYLE|NOTIMER|NOFONT|NOKAGPARSER|NOASYNCTRIGGER|NODEBUGLEVEL|NOHITTYPE|NOHITTHRESHOLD|NOIMAGESIZE|NOSIZETOIMAGESIZE|NODRAWFACE|NOFILLRECT|NOCURSOR|NONAME|NOFOCUSABLE|NOSIZE|NOIMAGEMODIFIED|NOCOLORRECT|NOSHOWPARENTHINT|NOCURSORX|NOMIDI|NOWAVE|NOVIDEO|NOWINLEFT|NOPAUSED|NOPAN|NOMODE|NOEVALSTORAGE|NOVISIBLE|NOLOOP|NOFRAME|NOAUDIOSTREAM|NOSEGSTART|NOSEGEND|NOPERIOD|NORESINT|NOCURSTOR|NOCURLINE|NOGETNEXT|NOTAG44|XP3)
+        A|B|NOMENU|NOSTYLE|NOTIMER|NOFONT|NOKAGPARSER|NOASYNCTRIGGER|NODEBUGLEVEL|NOHITTYPE|NOHITTHRESHOLD|NOIMAGESIZE|NOSIZETOIMAGESIZE|NODRAWFACE|NOFILLRECT|NOCURSOR|NONAME|NOFOCUSABLE|NOSIZE|NOIMAGEMODIFIED|NOCOLORRECT|NOSHOWPARENTHINT|NOCURSORX|NOMIDI|NOWAVE|NOVIDEO|NOWINLEFT|NOPAUSED|NOPAN|NOMODE|NOEVALSTORAGE|NOVISIBLE|NOLOOP|NOFRAME|NOAUDIOSTREAM|NOSEGSTART|NOSEGEND|NOPERIOD|NORESINT|NOCURSTOR|NOCURLINE|NOGETNEXT|NOTAG44|NOTAG45|XP3)
           if ! echo "$OUTPUT_M2H" | grep -q "M2H_RESULT=OK"; then
             echo "[tjs2] 场景 $M2H_CASE 未通过"
             # M2e-32 诊断开关：一次跑完全部场景收集实测停点（判据校准用）。
@@ -1457,6 +1514,7 @@ PYEOF
     echo "[tjs2] M2e-39 自测通过（VideoOverlay 周期事件帧 periodEventFrame + NOPERIOD 独立负向对照）"
     echo "[tjs2] M2e-43 自测通过（KAGParser 取下一个标签 getNextTag + NOGETNEXT 独立负向对照）"
     echo "[tjs2] M2e-44 自测通过（getNextTag 有状态化：one-shot tag 走 onTag 分发链路 + NOTAG44 独立负向对照）"
+    echo "[tjs2] M2e-45 自测通过（getNextTag 队列第二发 ch tag：官方文字路径 + NOTAG45 独立负向对照）"
     echo "[tjs2] M2e-12b 自测通过（内置 xp3 与目录夹具跑出同一条 trace、同一停点）"
   else
     echo "[tjs2] M2e-5 自测链接失败:"; cat "$OUT/link_m2h.log"; exit 1
