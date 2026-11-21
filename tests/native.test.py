@@ -825,8 +825,8 @@ ok("LEAK verdict" in m2h_test and "LEAK REPRODUCED" in m2h_test,
 ok("LEAK2" in m2h_test and "warmup" in m2h_test,
    "自测带「先跑一个抛异常的脚本」的变体（区分异常污染与多引擎问题）")
 # 每个场景必须独立进程 —— 否则前一个场景的污染会让负向对照假红。
-ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE NOGETNEXT NOTAG44 NOTAG45 XP3 LEAK LEAK2" in test_sh,
-   "构建脚本把四十五个场景拆成独立进程跑（四十个负向对照 + XP3 容器等价场景 + 两个泄漏诊断）")
+ok("for M2H_CASE in A B NOMENU NOSTYLE NOTIMER NOFONT NOKAGPARSER NOASYNCTRIGGER NODEBUGLEVEL NOHITTYPE NOHITTHRESHOLD NOIMAGESIZE NOSIZETOIMAGESIZE NODRAWFACE NOFILLRECT NOCURSOR NONAME NOFOCUSABLE NOSIZE NOIMAGEMODIFIED NOCOLORRECT NOSHOWPARENTHINT NOCURSORX NOMIDI NOWAVE NOVIDEO NOWINLEFT NOPAUSED NOPAN NOMODE NOEVALSTORAGE NOVISIBLE NOLOOP NOFRAME NOAUDIOSTREAM NOSEGSTART NOSEGEND NOPERIOD NORESINT NOCURSTOR NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO XP3 LEAK LEAK2" in test_sh,
+   "构建脚本把四十六个场景拆成独立进程跑（四十个负向对照 + GEO 几何诊断 + XP3 容器等价场景 + 两个泄漏诊断）")
 
 # ---- M2e-6：UpdateConfig.tjs 配置升级路径（Pad + getLocalName + exec）----
 pad_shim = read("native/KAG/src/system/GalBoxPad.tjs")
@@ -2197,11 +2197,11 @@ ok('drop_marked "$M2H_NOTAG44/system/GalBoxKAGParser.tjs" M2E45_BEGIN M2E45_END'
    "M2e-45：NOTAG44 夹具连带删 M2E45 段（不删的话链落到 ch tag，对照失效）")
 ok("if grep -qF '%[\"tagname\" => \"ch\"'" in test_sh,
    "M2e-45：夹具检查真的在查 ch 字典字面量（断言检查语句形态，非仅字样）")
-ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 XP3" in test_sh,
+ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45" in test_sh,
    "M2e-45：场景循环 for 行加了 NOTAG45")
 ok('"$M2H_NOCURLINE" "$M2H_NOGETNEXT" "$M2H_NOTAG44" "$M2H_NOTAG45"' in test_sh,
    "M2e-45：m2h 调用参数加了 $M2H_NOTAG45")
-ok("NOGETNEXT|NOTAG44|NOTAG45|XP3" in test_sh,
+ok("NOGETNEXT|NOTAG44|NOTAG45|" in test_sh,
    "M2e-45：OK 判定清单加了 NOTAG45")
 # 出包核验器第 37 条：断言整条判断语句的形态。
 ok('if b"var gp45Left = 0;" not in kp43:' in verifier,
@@ -2210,6 +2210,49 @@ ok('if b"var gp45Left = 0;" not in kp43:' in verifier,
 # XP3 场景「已关闭缺口」清单加 gp45Left（防包内骨架丢槽位的悬空引用）。
 ok('"gp44Left", "gp45Left"})' in m2h_test,
    "M2e-45：XP3 场景的「已关闭缺口」清单加上了 gp45Left")
+
+# ---- M2e-46：GEO 几何诊断场景（纯测量，无骨架改动）---------------------
+# M2e-45 实测 ch 路径干净走完，drawText 被 autoReturn/reline 翻页分支挡住。
+# 本轮把「x >= relinexpos 为什么成立」变成 CI 日志里的实测数字：链是干净的
+# ⇒ probe 可直读活状态。打包布局（各槽位互不溢出，long long 内）：
+#   packed = combined*10^14 + R'*10^8 + X'*10^4 + W'
+#   combined = status*10000 + pendings.count*1000 + (interval>0)*100 + voidFlags
+#   R' = relinexpos+5000 / X' = x+5000 / W' = imageWidth（typeof 守卫防抛）
+# 链没走到 ch 返回 -333。判据：链干净 + probe 真求值 + 真走到 ch。
+ok('kag.mainConductor.lastTagName == \\"ch\\" ? (' in m2h_test and
+   '"kag.mainConductor.status * 10000"' in m2h_test and
+   '" + kag.mainConductor.pendings.count * 1000"' in m2h_test and
+   '" + (kag.mainConductor.timer.interval > 0 ? 1 : 0) * 100"' in m2h_test,
+   "M2e-46：GEO probe 编码 conductor 终态（status/pendings/interval 判 ch 出口）")
+ok('((typeof kag.fore.messages[0].relinexpos) == \\"void\\" ? 8 : 0)' in m2h_test and
+   '((typeof kag.fore.messages[0].x) == \\"void\\" ? 4 : 0)' in m2h_test and
+   '((typeof kag.fore.messages[0].imageWidth) == \\"void\\" ? 1 : 0)' in m2h_test,
+   "M2e-46：GEO probe 对三个几何字段做 typeof 守卫（void 有专门标志位，不抛异常）")
+ok('" kag.fore.messages[0].relinexpos + 5000) * 100000000"' in m2h_test and
+   '" kag.fore.messages[0].x + 5000) * 10000"' in m2h_test and
+   '" kag.fore.messages[0].imageWidth)"' in m2h_test and
+   '" : -333";' in m2h_test,
+   "M2e-46：GEO probe 的几何槽位算术与 -333 哨兵（槽位算术即打包语义本体）")
+ok("static int RunCaseGeo" in m2h_test and
+   "char *j = RunChain(game, storage, arc, kGeoProbe);" in m2h_test,
+   "M2e-46：GEO 场景存在且用 kGeoProbe 跑 A 同一份干净夹具（无新夹具无新 argv）")
+ok('if (pv == -333)\n'
+   '        return Fail("GEO: the chain did not reach the ch tag ' in m2h_test and
+   'if (pv < 0)\n'
+   '        return Fail("GEO: probe expression did not evaluate' in m2h_test,
+   "M2e-46：GEO 判据挂在判断语句 + return Fail 连续文本上（-333=没到 ch / 负=没求值）")
+ok('const long long combined = pv / 100000000000000LL;' in m2h_test and
+   '"[m2h] GEO decoded: status=%lld pendings=%lld waitIntervalFlag=%lld"' in m2h_test,
+   "M2e-46：C++ 侧真解码并打印几何指纹（不是只打印 raw 值）")
+ok('if (std::strcmp(which, "GEO") == 0) {' in m2h_test and
+   "NOTAG45 / GEO / XP3" in m2h_test,
+   "M2e-46：GEO 分发与 usage 同步")
+ok("NOCURLINE NOGETNEXT NOTAG44 NOTAG45 GEO XP3" in test_sh,
+   "M2e-46：场景循环 for 行加了 GEO")
+ok("NOTAG45|GEO|XP3" in test_sh,
+   "M2e-46：OK 判定清单加了 GEO")
+ok("GEO 几何诊断" in test_sh,
+   "M2e-46：构建脚本 M2e-46 文案同步")
 
 
 print("\n========================================")

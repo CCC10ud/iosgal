@@ -157,6 +157,36 @@ static const char *kTagPathProbe =
     "kag.mainConductor.lastTagName == \"ch\" ? 445 : "
     "(kag.mainConductor.lastTagName == \"clickskip\" ? 444 : 0)";
 
+// M2e-46 的几何诊断 probe（GEO 场景专用；A 场景的判据 probe 保持不变）。
+// 链条是干净收尾的（M2e-45 实测 probe=445），所以 probe 可以在链后直读
+// 活状态。打包布局（long long，各槽位互不溢出）：
+//   packed = combined * 10^14 + R' * 10^8 + X' * 10^4 + W'
+//   combined = status*10000 + pendings.count*1000 + (timer.interval>0)*100
+//              + voidFlags        （voidFlags = 8=relinexpos void / 4=x void /
+//                                1=imageWidth void；全部字段 typeof 守卫防抛）
+//   R' = relinexpos + 5000 （[-5000,4999] 映射到 [0,9999]；void 时槽位 0）
+//   X' = x + 5000          （同上）
+//   W' = imageWidth        （[0,9999]）
+// 链没走到 ch 时返回 -333（GEO 判据用它区分「没到 ch」与「probe 没求值」）。
+// C++ 侧解码打印，CI 日志即几何指纹 —— 回答 drawText 为什么没被执行：
+// relinexpos<=x 则坐实 autoReturn 分支，void 则说明 setFont 路径没跑。
+static const char *kGeoProbe =
+    "kag.mainConductor.lastTagName == \"ch\" ? ("
+    "kag.mainConductor.status * 10000"
+    " + kag.mainConductor.pendings.count * 1000"
+    " + (kag.mainConductor.timer.interval > 0 ? 1 : 0) * 100"
+    " + ((typeof kag.fore.messages[0].relinexpos) == \"void\" ? 8 : 0)"
+    " + ((typeof kag.fore.messages[0].x) == \"void\" ? 4 : 0)"
+    " + ((typeof kag.fore.messages[0].imageWidth) == \"void\" ? 1 : 0)"
+    ") * 100000000000000"
+    " + ((typeof kag.fore.messages[0].relinexpos) == \"void\" ? 0 :"
+    " kag.fore.messages[0].relinexpos + 5000) * 100000000"
+    " + ((typeof kag.fore.messages[0].x) == \"void\" ? 0 :"
+    " kag.fore.messages[0].x + 5000) * 10000"
+    " + ((typeof kag.fore.messages[0].imageWidth) == \"void\" ? 0 :"
+    " kag.fore.messages[0].imageWidth)"
+    " : -333";
+
 // 跑一次完整官方启动链，返回 JSON（调用方负责 free）；失败返回 NULL。
 // probe 可选：非 NULL 时链条成功收尾后求值（见 kTagPathProbe）。
 static char *RunChain(const char *dir, const char *storage,
@@ -2856,6 +2886,58 @@ static int RunCaseNoTag45(const char *notag45, const char *storage) {
     return 0;
 }
 
+// ---- 场景 GEO：M2e-46 图层几何诊断（纯测量，无骨架改动）---------------
+// M2e-45 实测：ch 路径干净走完 ⇒ drawText 被 autoReturn/reline 翻页分支
+// 挡住。本轮不改任何骨架 —— 用 GEO probe 在干净链后直读活状态，把
+// 「x >= relinexpos 为什么成立」变成 CI 日志里的实测数字：
+//   - status/pendings/timer.interval ⇒ ch handler 走的哪个出口
+//     （mRun+pendings=1 ⇒ -5/-3 翻页路径；mRun+interval>0 ⇒ step>0 等待；
+//      mStop ⇒ step==0 → continue → void 正常收尾）
+//   - relinexpos/x/imageWidth（typeof 守卫，void 有专门标志位）
+// 复用 A 场景的同一份干净夹具（game），无新夹具、无新 argv —— 判据：
+// 链干净 + probe 真求值 + 真走到 ch（-333 哨兵区分「没到 ch」）。
+static int RunCaseGeo(const char *game, const char *storage) {
+    if (!Exists(std::string(game) + "/system/Config.tjs"))
+        return Fail("GEO fixture missing Config.tjs", NULL);
+
+    galbox::XP3Archive arc;
+    char *j = RunChain(game, storage, arc, kGeoProbe);
+    if (!j) return Fail("cannot run the GEO diagnostic", NULL);
+    DumpChain("GEO", j);
+
+    if (!Has(j, "\"ok\":true"))
+        return Fail("GEO diagnostic expected the same clean chain as A", j);
+    if (StrField(j, "fatal").size() != 0)
+        return Fail("GEO diagnostic raised a script-level exception", j);
+    const long long pv = IntField(j, "probeValue");
+    if (pv == -333)
+        return Fail("GEO: the chain did not reach the ch tag "
+                    "(lastTagName != ch)", j);
+    if (pv < 0)
+        return Fail("GEO: probe expression did not evaluate", j);
+
+    const long long combined = pv / 100000000000000LL;          // 10^14
+    const long long rslot = (pv / 100000000LL) % 10000LL;       // 10^8
+    const long long xslot = (pv / 10000LL) % 10000LL;           // 10^4
+    const long long wslot = pv % 10000LL;
+    const long long st = combined / 10000LL;
+    const long long pc = (combined / 1000LL) % 10LL;
+    const long long ti = (combined / 100LL) % 10LL;
+    const long long fl = combined % 100LL;
+    std::printf("[m2h] GEO decoded: status=%lld pendings=%lld waitIntervalFlag=%lld"
+                " | voidFlags=%lld (8=relinexpos,4=x,1=imageWidth)"
+                " | relinexpos=%lld x=%lld imageWidth=%lld\n",
+                st, pc, ti, fl,
+                (fl & 8) ? -999999LL : rslot - 5000,
+                (fl & 4) ? -999999LL : xslot - 5000,
+                (fl & 1) ? -999999LL : wslot);
+    std::printf("[m2h] GEO verdict: chain clean, geometry fingerprint above "
+                "(relinexpos<=x explains the autoReturn branch; void flags mean "
+                "the assignment path never ran)\n");
+    GalBoxTJS2Free(j);
+    return 0;
+}
+
 // ---- 场景 NOEVALSTORAGE：Scripts.evalStorage 原生方法缺失的负向对照（M2e-32）
 // 与前面所有 NOxxx 不同：evalStorage 是 C++ 原生方法，不在 TJS 骨架文件里，
 // 没法用 drop_marked/rm 夹具复现。改用宿主开关在**注册时**不挂载该方法 ——
@@ -3336,6 +3418,12 @@ int main(int argc, char **argv) {
         std::printf("M2H_RESULT=OK\n");
         return 0;
     }
+    if (std::strcmp(which, "GEO") == 0) {
+        // 复用 argv[2] 的目录夹具（与 A 同一份），无新夹具。
+        if (RunCaseGeo(game, storage) != 0) return 3;
+        std::printf("M2H_RESULT=OK\n");
+        return 0;
+    }
     if (std::strcmp(which, "XP3") == 0) {
         // argv[2] 是目录夹具，argv[11] 是同一份内容打成的内置包。
         if (RunCasePacked(game, kagxp3, storage) != 0) return 3;
@@ -3354,6 +3442,6 @@ int main(int argc, char **argv) {
                 "NOIMAGEMODIFIED / NOCOLORRECT / NOSHOWPARENTHINT / "
                 "NOCURSORX / NOMIDI / NOWAVE / NOVIDEO / NOWINLEFT / NOPAUSED / "
                 "NOPAN / NOMODE / NOEVALSTORAGE / NOVISIBLE / NOLOOP / NOFRAME / "
-                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / NOTAG44 / NOTAG45 / XP3 / LEAK / LEAK2)\n", which);
+                "NOAUDIOSTREAM / NOSEGSTART / NOSEGEND / NOPERIOD / NORESINT / NOCURSTOR / NOCURLINE / NOGETNEXT / NOTAG44 / NOTAG45 / GEO / XP3 / LEAK / LEAK2)\n", which);
     return 2;
 }
